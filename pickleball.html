@@ -587,6 +587,46 @@
     align-self: center;
   }
   .quickfill-pill:active { background: rgba(251, 191, 36, 0.3); }
+  /* Round-complete toast */
+  .toast-stack {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 80;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toast {
+    background: var(--panel);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 12px 22px;
+    font-weight: 800;
+    font-size: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(-16px);
+    animation: toast-in 220ms ease-out forwards, toast-out 220ms ease-in 2280ms forwards;
+  }
+  @keyframes toast-in {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes toast-out {
+    to { opacity: 0; transform: translateY(-16px); }
+  }
+  /* Shimmer on the primary nav button */
+  .row-actions button.primary.shimmering {
+    animation: nav-shimmer 1500ms ease-out;
+  }
+  @keyframes nav-shimmer {
+    0%   { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.5); }
+    50%  { box-shadow: 0 0 24px 6px rgba(251, 191, 36, 0.5); }
+    100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
+  }
 </style>
 </head>
 <body>
@@ -887,6 +927,35 @@ function nextPartnerInfo(slot) {
   return null;
 }
 
+function showToast(text) {
+  let stack = document.querySelector(".toast-stack");
+  if (!stack) {
+    stack = el("div", { class: "toast-stack" });
+    document.body.appendChild(stack);
+  }
+  const t = el("div", { class: "toast" }, text);
+  stack.appendChild(t);
+  setTimeout(() => t.remove(), 2700);
+}
+
+function maybeFireRoundComplete(primaryBtn) {
+  if (state.phase !== "playing") return;
+  const idx = state.currentRound - 1;
+  const round = state.rounds[idx];
+  if (!round || !isRoundComplete(round)) return;
+  if (state.notifiedRounds.includes(state.currentRound)) return;
+  state.notifiedRounds.push(state.currentRound);
+  save();
+  showToast("🎉 Round " + state.currentRound + " complete!");
+  if (primaryBtn) {
+    primaryBtn.classList.remove("shimmering");
+    // force reflow so the keyframe restarts
+    void primaryBtn.offsetWidth;
+    primaryBtn.classList.add("shimmering");
+    setTimeout(() => primaryBtn.classList.remove("shimmering"), 1600);
+  }
+}
+
 // ====================== rendering ======================
 function el(tag, props, ...children) {
   const e = document.createElement(tag);
@@ -917,6 +986,10 @@ function render() {
   else if (state.phase === "finals")  app.appendChild(renderFinalsScreen());
   else if (state.phase === "done")    app.appendChild(renderDoneScreen());
   window.scrollTo({ top: 0, behavior: "auto" });
+  if (state.phase === "playing") {
+    const primaryBtn = app.querySelector(".row-actions button.primary");
+    maybeFireRoundComplete(primaryBtn);
+  }
 }
 
 function renderHeader() {
@@ -1130,6 +1203,7 @@ function renderPlaying() {
     const newStandings = renderStandingsCard(state.currentRound, standingsOpts());
     standingsCard.replaceWith(newStandings);
     standingsCard = newStandings;
+    maybeFireRoundComplete(primaryBtn);
   });
 
   return wrap;
