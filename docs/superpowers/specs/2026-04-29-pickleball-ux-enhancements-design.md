@@ -111,7 +111,7 @@ When the round becomes complete (both courts have valid scores):
 - The primary "Round N+1 →" / "Build Finals →" button gets a CSS-keyframe gold shimmer (1.5 s, fires once).
 - A toast `🎉 Round N complete!` slides into a fixed-position container at the top of the page; auto-dismisses after 2500 ms.
 
-**Tracking (refresh-safe)**: a single gate function `maybeFireRoundComplete()` checks: if `isRoundComplete(state.currentRound)` is true *and* `state.notifiedRounds` does not include `state.currentRound`, then:
+**Tracking (refresh-safe)**: a single gate function `maybeFireRoundComplete()` checks: if `isRoundComplete(state.rounds[state.currentRound - 1])` is true (using the existing helper, which takes a round *object*, not a round number — `currentRound` is 1-based, so subtract 1 to index `state.rounds`) *and* `state.notifiedRounds` does not include `state.currentRound`, then:
 
 1. Push the current round number into `state.notifiedRounds`.
 2. `save()`.
@@ -187,7 +187,7 @@ This produces a deterministic 1-through-8 ordering where ranks 1–2 are the cha
 
 **Numeric stats** (PTS, W, +/−) shown on each podium step and each table row come from `computeStats(7, includeFinals=true)` so totals reflect every game played including finals. Only the *order* changes from earlier sections — the *numbers* are total cumulative.
 
-**Tied finals games** (a Championship or Consolation game entered with equal scores): treat both pairs as occupying the same tier, then sort all four players by season rank within that combined tier. (In practice the existing UI surfaces a "Tied — enter a tiebreaker" message, so this is a defensive fallback rather than expected behavior.)
+**Tied finals games are not allowed to advance to the Champions screen.** This removes the contradiction between "ranks 1-2 are championship winners" and a finals game that has no winner. The Finals screen's "Crown Champions" button is disabled while either finals game has equal scores; the existing "Tied — enter a tiebreaker" copy on the affected card prompts the user to adjust. This requirement is independent of the new design but is now load-bearing for the tier-ranking logic, so it is called out here. Acceptance criteria below codify the new gate.
 
 **Helper to add**: `finalRanking()` returns the 8-element tier-ordered list, used by both the podium and the standings table on the Champions screen. Pure function over `state.finals` + `rankPlayers(7)`.
 
@@ -242,6 +242,7 @@ When `state.phase === "finals"` or `"done"`, the modal also appends a "Finals" s
 - The 7-round schedule continues to cover all 28 player pairs exactly once (regression check).
 - Final-standings table and podium order use the tournament-outcome tier ranking (`finalRanking()`), not the raw season ranking. The Championship-winning team's two players occupy ranks 1 and 2; the Championship-losing team occupies 3 and 4; Consolation winners 5–6; Consolation losers 7–8. Within each tier, season ranking (`rankPlayers(7)`) breaks order.
 - Numbers shown (PTS, W, +/−) include finals games via `computeStats(7, includeFinals=true)`.
+- The Finals screen's "Crown Champions" button is disabled until **both** finals games are scored *and* non-tied. (Equal scores on either game keep the button disabled and surface the "Tied — enter a tiebreaker" message on the affected card.)
 
 **Score entry + round screen**
 - Live refresh during score entry preserves input focus (regression check from prior session).
