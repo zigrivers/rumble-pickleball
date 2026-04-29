@@ -1883,6 +1883,52 @@ function renderAwardsStrip() {
   return wrap;
 }
 
+function runConfetti() {
+  const canvas = el("canvas", {
+    style: "position: fixed; inset: 0; z-index: 90; pointer-events: none;"
+  });
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext("2d");
+  const colors = ["#fbbf24", "#fde047", "#cbd5e1", "#d97706", "#38bdf8", "#a78bfa", "#10b981"];
+  const N = 80;
+  const parts = Array.from({ length: N }, () => ({
+    x: Math.random() * canvas.width,
+    y: -Math.random() * 80,
+    vx: (Math.random() - 0.5) * 6,
+    vy: 2 + Math.random() * 4,
+    size: 4 + Math.random() * 6,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - 0.5) * 0.3,
+  }));
+  const start = performance.now();
+  const totalMs = 2000;
+  function frame(now) {
+    const elapsed = now - start;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const p of parts) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.12; // gravity
+      p.rot += p.vr;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.4);
+      ctx.restore();
+    }
+    if (elapsed < totalMs) {
+      requestAnimationFrame(frame);
+    } else {
+      canvas.remove();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
 function renderDoneScreen() {
   const wrap = el("div");
   const f = state.finals;
@@ -1890,6 +1936,14 @@ function renderDoneScreen() {
   const champWin = champ.score1 > champ.score2 ? champ.team1 : (champ.score2 > champ.score1 ? champ.team2 : null);
   const consWin  = cons.score1  > cons.score2  ? cons.team1  : (cons.score2  > cons.score1  ? cons.team2  : null);
   const ranking = finalRanking();
+
+  // First-view confetti, gated on awardsShown
+  if (!state.awardsShown) {
+    state.awardsShown = true;
+    save();
+    // defer so confetti fires after the DOM is mounted
+    queueMicrotask(runConfetti);
+  }
 
   const card = el("div", { class: "card" });
   const champions = el("div", { class: "champions" });
