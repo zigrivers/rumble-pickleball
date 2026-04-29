@@ -909,6 +909,8 @@ Each task that adds verification will use these patterns:
 
     function refreshPill() {
       pillSlot.textContent = "";
+      // Quick-fill is a Round-screen feature only; suppress on Finals matchups.
+      if (state.phase !== "playing") return;
       const bothBlank = !Number.isInteger(game.score1) && !Number.isInteger(game.score2);
       if (!bothBlank) return;
       const pill = el("button", {
@@ -1360,7 +1362,6 @@ Each task that adds verification will use these patterns:
       onclick: () => {
         if (finalsReady()) {
           state.phase = "done";
-          state.awardsShown = false; // ensure confetti gets a fresh chance per tournament
           save();
           render();
         }
@@ -1437,12 +1438,12 @@ Each task that adds verification will use these patterns:
   Inside `runSelfTests()`, append:
   ```js
     // Task 10 — finalRanking
+    // Verify tier ordering (champ-W > champ-L > cons-W > cons-L) holds
+    // and that within each tier players are ordered by season ranking,
+    // by deriving the expected order from rankPlayers(7) instead of
+    // assuming a particular slot-to-season-rank mapping.
     {
       const saved = state;
-      // Build a contrived state where #2 seed wins championship over #1.
-      // Mock rankPlayers by direct slot ordering via existing rounds with simple scores.
-      // Easiest: drive the state through the schedule with deterministic scores
-      // such that ranking 1..8 = slots 1..8.
       const rounds = SCHEDULE.map((rd, i) => ({
         round: i + 1,
         court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 0 },
@@ -1455,17 +1456,23 @@ Each task that adds verification will use these patterns:
         currentRound: 7,
         tiebreakRandom: [0,1,2,3,4,5,6,7],
         finals: {
-          championship: { team1: [1,4], team2: [2,3], score1: 9, score2: 11 }, // #2+#3 win
-          consolation:  { team1: [5,8], team2: [6,7], score1: 11, score2: 9 }, // #5+#8 win
+          championship: { team1: [1,4], team2: [2,3], score1: 9, score2: 11 }, // team2 wins
+          consolation:  { team1: [5,8], team2: [6,7], score1: 11, score2: 9 }, // team1 wins
         },
         awardsShown: false, winScore: 11, notifiedRounds: [],
       };
-      const fr = finalRanking();
-      const order = fr.map(s => s.slot);
-      // Champ winners: #2,#3 (in that season-rank order). Champ losers: #1,#4.
-      // Cons winners: #5,#8. Cons losers: #6,#7.
-      console.assert(JSON.stringify(order) === JSON.stringify([2,3,1,4,5,8,6,7]),
-        "finalRanking tier order", order);
+      const seasonOrder = rankPlayers(7).map(s => s.slot);
+      const seasonRankOf = slot => seasonOrder.indexOf(slot);
+      const sortBySeason = arr => arr.slice().sort((a,b) => seasonRankOf(a) - seasonRankOf(b));
+      const expected = [
+        ...sortBySeason([2, 3]),  // championship winners
+        ...sortBySeason([1, 4]),  // championship losers
+        ...sortBySeason([5, 8]),  // consolation winners
+        ...sortBySeason([6, 7]),  // consolation losers
+      ];
+      const order = finalRanking().map(s => s.slot);
+      console.assert(JSON.stringify(order) === JSON.stringify(expected),
+        "finalRanking tier order", { order, expected });
       state = saved;
     }
   ```
@@ -1589,12 +1596,39 @@ Each task that adds verification will use these patterns:
   Then find the iteration that builds the standings table:
   ```js
     ranked.forEach((rs, i) => {
+      const s = allStats.find(x => x.slot === rs.slot);
+      tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+        rankCell(i),
+        el("td", { class: "name" }, s.name),
+        el("td", { class: "num" }, "" + s.points),
+        el("td", { class: "num" }, "" + s.wins),
+        el("td", { class: "num", style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : "") },
+          (s.diff > 0 ? "+" : "") + s.diff),
+      ));
+    });
   ```
 
-  Replace with:
+  Replace with — slice off the top 3 (already on the podium) and offset the rank index so rows display 4–8:
   ```js
-    ranking.forEach((rs, i) => {
+    ranking.slice(3).forEach((rs, i) => {
+      const tableRank = i + 3; // 0-indexed → ranks 4..8 via rankCell(i+3) which renders digits
+      const s = allStats.find(x => x.slot === rs.slot);
+      tbody.appendChild(el("tr", { class: "r" + (tableRank + 1) },
+        rankCell(tableRank),
+        el("td", { class: "name" }, s.name),
+        el("td", { class: "num" }, "" + s.points),
+        el("td", { class: "num" }, "" + s.wins),
+        el("td", { class: "num", style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : "") },
+          (s.diff > 0 ? "+" : "") + s.diff),
+      ));
+    });
   ```
+
+  Also update the table header just above this loop. Find:
+  ```js
+    finalCard.appendChild(head);
+  ```
+  (which sits before the table is built). Just after the existing `el("h3", ..., "Final Standings")` line inside the head block, no change needed — the header still says "Final Standings"; the podium handles 1–3 visually and the table handles 4–8 numerically.
 
 - [ ] **Step 5: Insert the podium between champions card and standings**
 
@@ -1634,12 +1668,182 @@ Each task that adds verification will use these patterns:
 
 ---
 
-## Task 12: Champions — Tournament awards (MVP, Biggest Win, Closest Game, Hot Streak)
+## Task 12a: Champions — `computeAwards()` helper + self-tests
 
-**Goal:** Compute and render four small award chips in a 2×2 grid below the podium.
+**Goal:** Add the pure-function helper that computes the four awards. Renderer comes in Task 12b. Tied candidates for Biggest Win and Closest Game are tracked as arrays so all tied teams render comma-separated.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helpers + CSS + render integration)
+- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helper + tests)
+
+- [ ] **Step 1: Add `computeAwards()` pure helper**
+
+  Just before `function renderDoneScreen()`, insert:
+  ```js
+  // Returns { mvp, biggestWin, closestGame, hotStreak }. Each award is
+  // { names: string[], detail: string|null }. names is empty if no qualifying
+  // entry; multiple names indicate ties.
+  function computeAwards() {
+    const stats = computeStats(7, true);
+
+    // MVP — highest total points (all tied players named)
+    const maxPts = stats.reduce((m, s) => Math.max(m, s.points), 0);
+    const mvpNames = stats.filter(s => s.points === maxPts).map(s => nameOf(s.slot));
+    const mvp = { names: mvpNames, detail: maxPts + " pts" };
+
+    // Build chronological game list: rounds 1-7 (each has c1, c2), then champ, cons.
+    const games = [];
+    for (let r = 0; r < state.rounds.length; r++) {
+      const round = state.rounds[r];
+      games.push({ ...round.court1, label: "R" + (r + 1) + " South" });
+      games.push({ ...round.court2, label: "R" + (r + 1) + " North" });
+    }
+    if (state.finals) {
+      games.push({ ...state.finals.championship, label: "Championship" });
+      games.push({ ...state.finals.consolation,  label: "Consolation" });
+    }
+    const completed = games.filter(g => isGameComplete(g) && g.score1 !== g.score2);
+
+    // For each completed game, derive the winner-side summary.
+    const summarized = completed.map(g => {
+      const team1Won = g.score1 > g.score2;
+      const winTeam = team1Won ? g.team1 : g.team2;
+      const winScore = team1Won ? g.score1 : g.score2;
+      const loseScore = team1Won ? g.score2 : g.score1;
+      return {
+        diff: winScore - loseScore,
+        winTeam,
+        winScore,
+        loseScore,
+        label: g.label,
+      };
+    });
+
+    // Biggest Win — largest diff. Tied diffs all win; report all winning teams.
+    let biggestWin = { names: [], detail: null };
+    if (summarized.length) {
+      const maxDiff = Math.max(...summarized.map(s => s.diff));
+      const winners = summarized.filter(s => s.diff === maxDiff);
+      biggestWin = {
+        names: winners.map(w => teamName(w.winTeam) + " +" + w.diff),
+        detail: winners.map(w => w.winScore + "–" + w.loseScore + " · " + w.label).join(" / "),
+      };
+    }
+
+    // Closest Game — smallest diff; tiebreak by descending winning score.
+    // Multiple games matching the best (diff, -winScore) pair are all reported.
+    let closestGame = { names: [], detail: null };
+    if (summarized.length) {
+      const minDiff = Math.min(...summarized.map(s => s.diff));
+      const closestSet = summarized.filter(s => s.diff === minDiff);
+      const maxWinScore = Math.max(...closestSet.map(s => s.winScore));
+      const tied = closestSet.filter(s => s.winScore === maxWinScore);
+      closestGame = {
+        names: tied.map(t => t.winScore + "–" + t.loseScore),
+        detail: tied.map(t => t.label).join(" / "),
+      };
+    }
+
+    // Hot Streak — longest consecutive-wins run for a single player.
+    const streaks = new Map(); // slot -> current run
+    const best = new Map();    // slot -> max run seen
+    for (const g of completed) {
+      const team1Won = g.score1 > g.score2;
+      const winners = team1Won ? g.team1 : g.team2;
+      const losers = team1Won ? g.team2 : g.team1;
+      for (const slot of winners) {
+        streaks.set(slot, (streaks.get(slot) || 0) + 1);
+        best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot)));
+      }
+      for (const slot of losers) {
+        best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot) || 0));
+        streaks.set(slot, 0);
+      }
+    }
+    for (const [slot, cur] of streaks) {
+      best.set(slot, Math.max(best.get(slot) || 0, cur));
+    }
+    const maxStreak = best.size ? Math.max(...best.values()) : 0;
+    const streakSlots = maxStreak > 0
+      ? [...best.entries()].filter(([, v]) => v === maxStreak).map(([k]) => k)
+      : [];
+    const hotStreak = streakSlots.length
+      ? { names: streakSlots.map(nameOf), detail: maxStreak + " in a row" }
+      : { names: [], detail: null };
+
+    return { mvp, biggestWin, closestGame, hotStreak };
+  }
+  ```
+
+- [ ] **Step 2: Add self-tests for `computeAwards`**
+
+  Inside `runSelfTests()`, append:
+  ```js
+    // Task 12a — computeAwards
+    {
+      const saved = state;
+      // Setup: every round-robin game is a 11-vs-1 blowout for team1, except court2
+      // which is 11-vs-9. Championship is 11-vs-9, Consolation 11-vs-9.
+      // Expected: Biggest Win is +10 (lots of ties — all team1 winners on c1).
+      // Closest Game: 11-9 across many games; all tied at diff=2 with winScore=11.
+      const rounds = SCHEDULE.map((rd, i) => ({
+        round: i + 1,
+        court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 1 },
+        court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
+      }));
+      state = {
+        phase: "done",
+        slots: ["A","B","C","D","E","F","G","H"],
+        rounds, currentRound: 7,
+        tiebreakRandom: [0,1,2,3,4,5,6,7],
+        finals: {
+          championship: { team1: [1,4], team2: [2,3], score1: 11, score2: 9 },
+          consolation:  { team1: [5,8], team2: [6,7], score1: 11, score2: 9 },
+        },
+        awardsShown: false, winScore: 11, notifiedRounds: [],
+      };
+      const a = computeAwards();
+      console.assert(a.mvp.names.length >= 1, "MVP has at least one name");
+      console.assert(a.biggestWin.names.every(n => n.includes("+10")),
+        "Biggest Win all +10", a.biggestWin);
+      console.assert(a.closestGame.names.every(n => n === "11–9"),
+        "Closest Game all 11–9", a.closestGame);
+      console.assert(a.hotStreak.detail && /in a row/.test(a.hotStreak.detail),
+        "Hot Streak detail", a.hotStreak);
+      // Single-winner sanity: rebuild with only ONE blowout game
+      const rounds2 = SCHEDULE.map((rd, i) => ({
+        round: i + 1,
+        court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 9 },
+        court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
+      }));
+      // Make round 1 court 1 a +10 blowout (the only one)
+      rounds2[0].court1.score1 = 11; rounds2[0].court1.score2 = 1;
+      state.rounds = rounds2;
+      const b = computeAwards();
+      console.assert(b.biggestWin.names.length === 1 && b.biggestWin.names[0].includes("+10"),
+        "Biggest Win single", b.biggestWin);
+      state = saved;
+    }
+  ```
+
+- [ ] **Step 3: Verify**
+
+  Open `http://127.0.0.1:8765/pickleball.html?test`. Console: `0 failure(s)`.
+
+- [ ] **Step 4: Commit**
+
+  ```bash
+  git add pickleball.html
+  git commit -m "Champions: computeAwards() helper with tied-candidate handling"
+  ```
+
+---
+
+## Task 12b: Champions — Awards strip rendering
+
+**Goal:** Render the four computed awards as 2×2 chips below the podium.
+
+**Files:**
+- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + render integration)
 
 - [ ] **Step 1: Add CSS for the awards strip**
 
@@ -1679,136 +1883,36 @@ Each task that adds verification will use these patterns:
   }
   ```
 
-- [ ] **Step 2: Add `computeAwards()` pure helper**
-
-  Just before `function renderDoneScreen()`, insert:
-  ```js
-  // Returns { mvp, biggestWin, closestGame, hotStreak }, each an object with
-  // { names: string[], detail: string|null }. names empty if no qualifying entry.
-  function computeAwards() {
-    const stats = computeStats(7, true);
-    // MVP — highest total points (tied: all)
-    const maxPts = stats.reduce((m, s) => Math.max(m, s.points), 0);
-    const mvpSlots = stats.filter(s => s.points === maxPts).map(s => s.slot);
-    const mvp = {
-      names: mvpSlots.map(nameOf),
-      detail: maxPts + " pts",
-    };
-
-    // Iterate all 16 games chronologically: rounds 1-7 (each has c1, c2), then champ, cons.
-    const games = [];
-    for (let r = 0; r < state.rounds.length; r++) {
-      const round = state.rounds[r];
-      games.push({ ...round.court1, label: "R" + (r + 1) + " South" });
-      games.push({ ...round.court2, label: "R" + (r + 1) + " North" });
-    }
-    if (state.finals) {
-      games.push({ ...state.finals.championship, label: "Championship" });
-      games.push({ ...state.finals.consolation,  label: "Consolation" });
-    }
-    const completedGames = games.filter(g => isGameComplete(g));
-
-    // Biggest Win — largest winning differential, winner team named
-    let bw = null;
-    for (const g of completedGames) {
-      if (g.score1 === g.score2) continue;
-      const winTeam = g.score1 > g.score2 ? g.team1 : g.team2;
-      const winScore = Math.max(g.score1, g.score2);
-      const loseScore = Math.min(g.score1, g.score2);
-      const diff = winScore - loseScore;
-      if (!bw || diff > bw.diff) {
-        bw = { diff, winTeam, winScore, loseScore, label: g.label };
-      }
-    }
-    const biggestWin = bw
-      ? { names: [teamName(bw.winTeam) + " +" + bw.diff], detail: bw.winScore + "–" + bw.loseScore + " · " + bw.label }
-      : { names: [], detail: null };
-
-    // Closest Game — smallest non-zero diff; tiebreak by descending winning score
-    let cg = null;
-    for (const g of completedGames) {
-      if (g.score1 === g.score2) continue;
-      const winScore = Math.max(g.score1, g.score2);
-      const loseScore = Math.min(g.score1, g.score2);
-      const diff = winScore - loseScore;
-      const cmp = !cg ? -1 : (diff !== cg.diff ? diff - cg.diff : cg.winScore - winScore);
-      if (cmp < 0) cg = { diff, winScore, loseScore, label: g.label };
-    }
-    const closestGame = cg
-      ? { names: [cg.winScore + "–" + cg.loseScore], detail: cg.label }
-      : { names: [], detail: null };
-
-    // Hot Streak — longest consecutive-wins run for a single player
-    const streaks = new Map(); // slot -> current
-    const best = new Map();    // slot -> max
-    for (const g of completedGames) {
-      if (g.score1 === g.score2) {
-        // tie resets streaks for involved players
-        for (const slot of [...g.team1, ...g.team2]) {
-          best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot) || 0));
-          streaks.set(slot, 0);
-        }
-        continue;
-      }
-      const winSet = new Set(g.score1 > g.score2 ? g.team1 : g.team2);
-      const loseSet = new Set(g.score1 > g.score2 ? g.team2 : g.team1);
-      for (const slot of winSet) {
-        streaks.set(slot, (streaks.get(slot) || 0) + 1);
-        best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot)));
-      }
-      for (const slot of loseSet) {
-        best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot) || 0));
-        streaks.set(slot, 0);
-      }
-    }
-    // settle any in-flight streaks
-    for (const [slot, cur] of streaks) {
-      best.set(slot, Math.max(best.get(slot) || 0, cur));
-    }
-    const maxStreak = Math.max(0, ...best.values());
-    const streakSlots = maxStreak > 0
-      ? [...best.entries()].filter(([, v]) => v === maxStreak).map(([k]) => k)
-      : [];
-    const hotStreak = streakSlots.length
-      ? { names: streakSlots.map(nameOf), detail: maxStreak + " in a row" }
-      : { names: [], detail: null };
-
-    return { mvp, biggestWin, closestGame, hotStreak };
-  }
-  ```
-
-- [ ] **Step 3: Add `renderAwardsStrip()` helper**
+- [ ] **Step 2: Add `renderAwardsStrip()` helper**
 
   Just below `computeAwards`, insert:
   ```js
   function renderAwardsStrip() {
     const a = computeAwards();
     const wrap = el("div", { class: "awards-strip" });
-    const chip = (label, item) => {
+    const chip = (label, item, inlineDetail) => {
       const node = el("div", { class: "award-chip" });
       node.appendChild(el("div", { class: "award-label" }, label));
-      node.appendChild(el("div", { class: "award-value" },
-        item.names.length ? item.names.join(", ") + (item.detail && !label.includes("CLOSEST") && !label.includes("BIGGEST") ? "" : "") : "—"));
-      if (item.detail && item.names.length) {
-        // For MVP, append "· {detail}" inline; for the others, show detail beneath.
-        const valueEl = node.lastElementChild;
-        if (label.includes("MVP")) {
-          valueEl.appendChild(document.createTextNode(" · " + item.detail));
-        } else {
-          node.appendChild(el("div", { class: "award-detail" }, item.detail));
-        }
+      const valueText = item.names.length ? item.names.join(", ") : "—";
+      const valueEl = el("div", { class: "award-value" }, valueText);
+      if (item.detail && item.names.length && inlineDetail) {
+        valueEl.appendChild(document.createTextNode(" · " + item.detail));
+      }
+      node.appendChild(valueEl);
+      if (item.detail && item.names.length && !inlineDetail) {
+        node.appendChild(el("div", { class: "award-detail" }, item.detail));
       }
       return node;
     };
-    wrap.appendChild(chip("🎯 MVP", a.mvp));
-    wrap.appendChild(chip("💥 BIGGEST WIN", a.biggestWin));
-    wrap.appendChild(chip("🤏 CLOSEST GAME", a.closestGame));
-    wrap.appendChild(chip("🔥 HOT STREAK", a.hotStreak));
+    wrap.appendChild(chip("🎯 MVP", a.mvp, true));            // inline detail
+    wrap.appendChild(chip("💥 BIGGEST WIN", a.biggestWin, false));
+    wrap.appendChild(chip("🤏 CLOSEST GAME", a.closestGame, false));
+    wrap.appendChild(chip("🔥 HOT STREAK", a.hotStreak, true)); // inline detail
     return wrap;
   }
   ```
 
-- [ ] **Step 4: Insert awards strip into `renderDoneScreen`**
+- [ ] **Step 3: Insert the awards strip into `renderDoneScreen`**
 
   Find:
   ```js
@@ -1825,56 +1929,20 @@ Each task that adds verification will use these patterns:
     // Final standings — uses the same renderStandingsCard, with finals included in totals
   ```
 
-- [ ] **Step 5: Add self-tests for `computeAwards`**
+- [ ] **Step 4: Verify with playwright**
 
-  Inside `runSelfTests()`, append:
-  ```js
-    // Task 12 — computeAwards
-    {
-      const saved = state;
-      // Slot 1 wins all 7 round-robin games + championship. Slot 8 wins 0.
-      // Slot 1's streak across 8 wins = longest.
-      const rounds = SCHEDULE.map((rd, i) => ({
-        round: i + 1,
-        court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 1 },
-        court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
-      }));
-      state = {
-        phase: "done",
-        slots: ["A","B","C","D","E","F","G","H"],
-        rounds,
-        currentRound: 7,
-        tiebreakRandom: [0,1,2,3,4,5,6,7],
-        finals: {
-          championship: { team1: [1,4], team2: [2,3], score1: 11, score2: 9 },
-          consolation:  { team1: [5,8], team2: [6,7], score1: 11, score2: 9 },
-        },
-        awardsShown: false, winScore: 11, notifiedRounds: [],
-      };
-      const a = computeAwards();
-      console.assert(a.mvp.names.length >= 1, "MVP has names");
-      console.assert(a.biggestWin.names.length === 1 && a.biggestWin.names[0].includes("+10"),
-        "Biggest Win = +10", a.biggestWin);
-      // Closest game: 11–9 differential 2; with tiebreak by highest winning score
-      console.assert(a.closestGame.names.length === 1 && a.closestGame.names[0] === "11–9",
-        "Closest Game = 11-9", a.closestGame);
-      console.assert(a.hotStreak.detail && /in a row/.test(a.hotStreak.detail),
-        "Hot Streak detail", a.hotStreak);
-      state = saved;
-    }
-  ```
+  - Seed a done tournament. Screenshot iPad portrait. 4 chips in a 2×2 grid below the podium.
+  - MVP shows "Name · 85 pts" inline.
+  - Biggest Win shows team + diff on first line, score + label below.
+  - Closest Game shows score on first line, label below.
+  - Hot Streak shows name(s) inline with " · 4 in a row".
+  - Tweak seed so two players tie for MVP (give both 85 pts). Verify chip shows both names comma-separated.
 
-- [ ] **Step 6: Verify**
-
-  - Open `?test`. `0 failure(s)`.
-  - Seed a done tournament. Visually inspect: 4 chips in a 2×2 grid below the podium with sensible values. MVP shows "Adrian · 85 pts" style.
-  - Tied awards: tweak seed so two players tie for MVP. Verify chip shows both names comma-separated.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
   ```bash
   git add pickleball.html
-  git commit -m "Champions: tournament awards (MVP, Biggest Win, Closest Game, Hot Streak)"
+  git commit -m "Champions: render awards strip below podium"
   ```
 
 ---
@@ -2311,9 +2379,73 @@ Each task that adds verification will use these patterns:
 
 ---
 
-## Task 17: Settings — Two-tier reset (Reset Tournament + Clear All)
+## Task 17: Extract `generateRounds()` helper
 
-**Goal:** Replace the existing single Reset button with two: Reset Tournament (preserves names + winScore, hidden in setup) and Clear All (full wipe).
+**Goal:** Pull the schedule + court-flip generation out of `startTournament` into a named helper so the upcoming Reset Tournament path doesn't duplicate it. Pure refactor — no behavior change.
+
+**Files:**
+- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helper + `startTournament` body)
+
+- [ ] **Step 1: Add the `generateRounds()` helper**
+
+  Just before `function startTournament()`, insert:
+  ```js
+  // Returns a fresh array of 7 round objects with randomized court 1/2 flip.
+  function generateRounds() {
+    return SCHEDULE.map((roundDef, idx) => {
+      const flip = Math.random() < 0.5;
+      const c1 = flip ? roundDef[0] : roundDef[1];
+      const c2 = flip ? roundDef[1] : roundDef[0];
+      return {
+        round: idx + 1,
+        court1: { team1: c1[0].slice(), team2: c1[1].slice(), score1: null, score2: null },
+        court2: { team1: c2[0].slice(), team2: c2[1].slice(), score1: null, score2: null },
+      };
+    });
+  }
+  ```
+
+- [ ] **Step 2: Use it in `startTournament`**
+
+  Find:
+  ```js
+    state.slots = shuffle(state.rawNames.map(s => s.trim()));
+    state.rounds = SCHEDULE.map((roundDef, idx) => {
+      const flip = Math.random() < 0.5;
+      const c1 = flip ? roundDef[0] : roundDef[1];
+      const c2 = flip ? roundDef[1] : roundDef[0];
+      return {
+        round: idx + 1,
+        court1: { team1: c1[0].slice(), team2: c1[1].slice(), score1: null, score2: null },
+        court2: { team1: c2[0].slice(), team2: c2[1].slice(), score1: null, score2: null },
+      };
+    });
+  ```
+
+  Replace with:
+  ```js
+    state.slots = shuffle(state.rawNames.map(s => s.trim()));
+    state.rounds = generateRounds();
+  ```
+
+- [ ] **Step 3: Verify**
+
+  - Reload the app. Confirm Setup screen renders with no errors.
+  - Run a fresh tournament from the setup screen. Confirm the 7 rounds populate correctly and South/North court labels are present (i.e. the flip still happens).
+  - Open Settings → View Full Schedule (if Task 16 already shipped) and verify all 7 rounds show.
+
+- [ ] **Step 4: Commit**
+
+  ```bash
+  git add pickleball.html
+  git commit -m "Extract generateRounds() helper to avoid duplication"
+  ```
+
+---
+
+## Task 18: Settings — Two-tier reset (Reset Tournament + Clear All)
+
+**Goal:** Replace the existing single Reset button with two: Reset Tournament (preserves names + winScore, hidden in setup) and Clear All (full wipe). Uses the `generateRounds()` helper from Task 17.
 
 **Files:**
 - Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (handler in `openSettings`)
@@ -2355,16 +2487,7 @@ Each task that adds verification will use these patterns:
           state = newState();
           state.rawNames = keptNames.slice();
           state.slots = shuffle(keptNames);
-          state.rounds = SCHEDULE.map((roundDef, idx) => {
-            const flip = Math.random() < 0.5;
-            const c1 = flip ? roundDef[0] : roundDef[1];
-            const c2 = flip ? roundDef[1] : roundDef[0];
-            return {
-              round: idx + 1,
-              court1: { team1: c1[0].slice(), team2: c1[1].slice(), score1: null, score2: null },
-              court2: { team1: c2[0].slice(), team2: c2[1].slice(), score1: null, score2: null },
-            };
-          });
+          state.rounds = generateRounds();
           state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
           state.winScore = keptWinScore;
           state.phase = "playing";
@@ -2394,7 +2517,7 @@ Each task that adds verification will use these patterns:
 
   - Setup phase → Settings → only "Clear All" (red) visible at bottom; no Reset Tournament.
   - Mid-tournament with scores → Settings → both buttons visible; "Reset Tournament" yellow, "Clear All" red.
-  - Tap Reset Tournament → confirm → scores cleared, schedule re-shuffled (different court flips with high probability), names preserved, winScore preserved (set 21 in dropdown first to verify).
+  - Set Win score to 21 in the dropdown. Tap Reset Tournament → confirm → scores cleared, schedule re-shuffled (different court flips with high probability), names preserved, winScore still 21 (verify by re-opening Settings or by reading the round-screen pill — should read "× 21").
   - Tap Clear All → confirm → back to empty Setup screen, all names blank.
 
 - [ ] **Step 3: Commit**
@@ -2406,7 +2529,7 @@ Each task that adds verification will use these patterns:
 
 ---
 
-## Task 18: End-to-end smoke verification
+## Task 19: End-to-end smoke verification
 
 **Goal:** Walk through a complete tournament in playwright, exercising all the new UX in sequence. No new code; this is a verification gate before declaring the plan complete.
 
@@ -2507,15 +2630,16 @@ Spec coverage check (each spec section → task that implements it):
 - **§4.4 Champions screen**
   - finalRanking() helper — Task 10
   - Top-3 podium — Task 11
-  - Tournament awards — Task 12
+  - Tournament awards — Tasks 12a (helper) + 12b (render)
   - Confetti — Task 13
 - **§4.5 Settings**
   - How this works modal — Task 14
   - Edit Names — preserved (untouched)
   - Win-score dropdown — Task 15
   - View Full Schedule — Task 16
-  - Reset Tournament + Clear All — Task 17
-- **§5 Acceptance criteria** — Task 18 covers schedule integrity, score-entry/refresh-safety, confetti gating, paste validation, name preservation, View Full Schedule visibility, layout. Self-tests cover the pure-function math.
+  - generateRounds() refactor — Task 17
+  - Reset Tournament + Clear All — Task 18
+- **§5 Acceptance criteria** — Task 19 (end-to-end smoke) covers schedule integrity, score-entry/refresh-safety, confetti gating, paste validation, name preservation, View Full Schedule visibility, layout. Self-tests cover the pure-function math.
 - **§6 Risks** — addressed by skip-overlay + visibility rules + cleanup-on-end
 - **§7 File structure** — all helpers added with the prescribed names
 
