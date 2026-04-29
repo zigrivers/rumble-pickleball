@@ -1,0 +1,7 @@
+{
+  "targets": [
+    "claude",
+    "codex",
+    "gemini"
+  ]
+}

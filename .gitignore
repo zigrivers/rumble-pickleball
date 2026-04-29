@@ -6,3 +6,6 @@
 
 # Test screenshots
 *.png
+
+# Verification screenshots from subagent runs
+verify-screenshots/
