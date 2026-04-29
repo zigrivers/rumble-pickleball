@@ -2227,18 +2227,46 @@ function openSettings() {
   const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { close(); render(); } }, "Done");
   modal.appendChild(closeBtn);
 
+  // Divider before destructive actions
+  modal.appendChild(el("div", {
+    style: "border-top: 1px solid var(--border); margin: 16px 0 8px;"
+  }));
+
+  // Reset Tournament — visible only outside the setup phase
+  if (state.phase !== "setup") {
+    modal.appendChild(el("button", {
+      style: "width: 100%; margin-top: 8px; background: var(--accent); color: #1a1207; border-color: var(--accent);",
+      onclick: () => {
+        if (!confirm("Reset scores and re-shuffle the schedule? Your 8 names will be kept.")) return;
+        const keptNames = state.slots.slice();
+        const keptWinScore = state.winScore;
+        state = newState();
+        state.rawNames = keptNames.slice();
+        state.slots = shuffle(keptNames);
+        state.rounds = generateRounds();
+        state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
+        state.winScore = keptWinScore;
+        state.phase = "playing";
+        state.currentRound = 1;
+        save();
+        close();
+        render();
+      }
+    }, "Reset Tournament"));
+  }
+
+  // Clear All — always visible
   modal.appendChild(el("button", {
     class: "danger",
     style: "width: 100%; margin-top: 8px;",
     onclick: () => {
-      if (confirm("Reset the tournament? All scores and the random schedule will be cleared. Names entered on the setup screen will be kept.")) {
-        const keptRaw = state.rawNames.slice();
-        state = newState();
-        state.rawNames = keptRaw;
-        save(); close(); render();
-      }
+      if (!confirm("Clear all data including names? This can't be undone.")) return;
+      state = newState();
+      save();
+      close();
+      render();
     }
-  }, "Reset Tournament"));
+  }, "Clear All"));
 
   bg.appendChild(modal);
   document.body.appendChild(bg);
