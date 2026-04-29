@@ -555,6 +555,19 @@
     color: var(--muted);
     font-size: 13px;
   }
+  /* Partner-preview chip in standings */
+  .partner-chip {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .partner-chip.c1 { color: var(--court1); background: rgba(56, 189, 248, 0.15); }
+  .partner-chip.c2 { color: var(--court2); background: rgba(167, 139, 250, 0.15); }
 </style>
 </head>
 <body>
@@ -604,6 +617,22 @@ function runSelfTests() {
     console.assert(!d.ok, "parsePastedNames case-insensitive duplicate");
     const e = parsePastedNames("  Adrian  \n\n,Alex,John,Joe,Ken,Kris,Sam,Todd");
     console.assert(e.ok && e.names[0] === "Adrian", "parsePastedNames trims & strips empties");
+  }
+  // Task 5 — nextPartnerInfo
+  {
+    const saved = state;
+    const fakeRounds = [
+      { round:1, court1:{team1:[1,2],team2:[3,4],score1:null,score2:null}, court2:{team1:[5,6],team2:[7,8],score1:null,score2:null} },
+      { round:2, court1:{team1:[1,3],team2:[2,4],score1:null,score2:null}, court2:{team1:[5,7],team2:[6,8],score1:null,score2:null} },
+    ];
+    state = { phase:"playing", slots:["A","B","C","D","E","F","G","H"], currentRound:1, rounds:fakeRounds };
+    const r = nextPartnerInfo(1); // round 2 partners 1 with 3 on court 1
+    console.assert(r && r.partner === 3 && r.courtKey === 1, "nextPartnerInfo slot 1 round 2", r);
+    const r2 = nextPartnerInfo(8); // round 2: 8 with 6 on court 2
+    console.assert(r2 && r2.partner === 6 && r2.courtKey === 2, "nextPartnerInfo slot 8 round 2", r2);
+    state.currentRound = 7;
+    console.assert(nextPartnerInfo(1) === null, "nextPartnerInfo no chip at round 7");
+    state = saved;
   }
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
@@ -820,6 +849,23 @@ function buildFinals() {
   };
   state.phase = "finals";
   save();
+}
+
+// Returns { partner: number, courtKey: 1|2 } for the given player's next round,
+// or null if there's no next round (currentRound >= 7) or no rounds yet.
+function nextPartnerInfo(slot) {
+  if (state.phase !== "playing") return null;
+  if (state.currentRound >= 7) return null;
+  const next = state.rounds[state.currentRound]; // currentRound is 1-based; this is round N+1
+  if (!next) return null;
+  for (const courtKey of [1, 2]) {
+    const game = courtKey === 1 ? next.court1 : next.court2;
+    for (const team of [game.team1, game.team2]) {
+      const idx = team.indexOf(slot);
+      if (idx !== -1) return { partner: team[1 - idx], courtKey };
+    }
+  }
+  return null;
 }
 
 // ====================== rendering ======================
@@ -1199,9 +1245,15 @@ function renderStandingsCard(throughRound, opts) {
       class: "partner-badge" + (remaining === 0 ? " done" : ""),
       title: "Partners remaining"
     }, remaining + " left");
+    // Next-round partner chip (only when applicable)
+    const npi = nextPartnerInfo(s.slot);
+    const partnerChip = npi ? el("span", {
+      class: "partner-chip c" + npi.courtKey,
+      title: "Next round partner",
+    }, "→ " + nameOf(npi.partner)) : null;
     tbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankCell(i),
-      el("td", { class: "name" }, s.name, partnerBadge),
+      el("td", { class: "name" }, s.name, partnerChip, partnerBadge),
       el("td", { class: "num" }, "" + s.points),
       el("td", { class: "num" }, "" + s.wins),
       el("td", {
