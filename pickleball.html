@@ -120,6 +120,13 @@
   .court-card.c2 { border-top-color: var(--court2); }
   .court-card.gold { border-top-color: var(--gold); }
   .court-card.silver { border-top-color: var(--silver); }
+  /* Stack format: top court gets a subtle gold treatment to read as "the top court" */
+  .court-card.c1.stack-top {
+    border-top-color: var(--gold);
+    border-top-width: 6px;
+    box-shadow: 0 0 18px rgba(251, 191, 36, 0.10);
+  }
+  .court-card.c1.stack-top .court-label { color: var(--gold); }
   .court-label {
     font-size: 13px;
     font-weight: 800;
@@ -214,6 +221,18 @@
   table.standings col.c-pts,
   table.standings col.c-w,
   table.standings col.c-diff { width: 72px; }
+  table.standings col.c-stack-extra { width: 50px; }
+  .rank-trajectory {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    vertical-align: middle;
+    line-height: 1;
+  }
+  .rank-trajectory.up   { color: var(--good); }
+  .rank-trajectory.down { color: var(--bad); }
+  .rank-trajectory.same { color: var(--muted); }
   table.standings th, table.standings td {
     text-align: left;
     padding: 10px 6px;
@@ -322,6 +341,53 @@
   .winning-team { color: var(--good); font-weight: 700; }
 
   .setup-list { display: grid; gap: 10px; margin-bottom: 14px; }
+  .format-chooser {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .format-chooser-label {
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .format-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .format-option {
+    text-align: left;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+    cursor: pointer;
+    color: inherit;
+    min-height: 84px;
+  }
+  .format-option.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+  }
+  .format-option-title {
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+  .format-option.active .format-option-title { color: var(--accent); }
+  .format-option-blurb {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  @media (max-width: 480px) {
+    .format-options { grid-template-columns: 1fr; }
+  }
 
   .row-actions {
     display: flex;
@@ -559,6 +625,21 @@
     color: var(--muted);
     font-size: 13px;
   }
+  .shuffle-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    max-width: 520px;
+  }
+  .shuffle-group-label {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: center;
+  }
   /* Partner-preview chip in standings */
   .partner-chip {
     display: inline-block;
@@ -709,6 +790,12 @@
     max-width: 600px;
     margin: 0 auto 20px;
   }
+  @media (min-width: 720px) {
+    .awards-strip {
+      grid-template-columns: 1fr 1fr 1fr;
+      max-width: 900px;
+    }
+  }
   .award-chip {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -799,7 +886,8 @@
 <script>
 "use strict";
 
-const STORAGE_KEY = "pb_tourney_v1";
+const STORAGE_KEY = "pb_tourney_v2";
+const STORAGE_KEY_V1 = "pb_tourney_v1";
 
 // Round-robin partner schedule (1-factorization of K8) — every pair appears exactly once across 7 rounds.
 const SCHEDULE = [
@@ -941,6 +1029,205 @@ function runSelfTests() {
       "Biggest Win single", b.biggestWin);
     state = saved;
   }
+  // Stack — stackScoreGain formula
+  {
+    // Court 2 win: 11 + 0 (not c1) + 3 (won) + 2 (climbed) = 16
+    console.assert(stackScoreGain(11, false, true) === 16, "stackScoreGain c2 win");
+    // Court 1 win: 11 + 5.5 (c1 bonus) + 3 (won) + 0 (no climb) = 19.5
+    console.assert(stackScoreGain(11, true, true) === 19.5, "stackScoreGain c1 win");
+    // Court 1 loss: 8 + 4 + 0 + 0 = 12
+    console.assert(stackScoreGain(8, true, false) === 12, "stackScoreGain c1 loss");
+    // Court 2 loss: 7 + 0 + 0 + 0 = 7
+    console.assert(stackScoreGain(7, false, false) === 7, "stackScoreGain c2 loss");
+    // Non-integer points: 0
+    console.assert(stackScoreGain(null, true, true) === 0, "stackScoreGain null pts");
+  }
+
+  // Stack — buildNextStackRound movement
+  {
+    const saved = state;
+    state = {
+      phase: "playing", format: "stack", stackRounds: 4,
+      slots: ["A","B","C","D","E","F","G","H"],
+      currentRound: 1,
+      // Court 1: (1,2) beat (3,4) 11-3.  Court 2: (5,6) beat (7,8) 11-9.
+      rounds: [{
+        round: 1,
+        court1: { team1: [1,2], team2: [3,4], score1: 11, score2: 3 },
+        court2: { team1: [5,6], team2: [7,8], score1: 11, score2: 9 },
+      }],
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+      previousRanks: [], notifiedRounds: [], awardsShown: false,
+      winScore: 11, finals: null,
+    };
+    const next = buildNextStackRound(state.rounds[0]);
+    const newC1 = new Set([...next.court1.team1, ...next.court1.team2]);
+    const newC2 = new Set([...next.court2.team1, ...next.court2.team2]);
+    // c1 winners (1,2) stay; c2 winners (5,6) climb → new c1 = {1,2,5,6}
+    console.assert(newC1.has(1) && newC1.has(2) && newC1.has(5) && newC1.has(6),
+      "stack movement: c1 winners stay, c2 winners climb", [...newC1]);
+    // c1 losers (3,4) drop; c2 losers (7,8) stay → new c2 = {3,4,7,8}
+    console.assert(newC2.has(3) && newC2.has(4) && newC2.has(7) && newC2.has(8),
+      "stack movement: c1 losers drop, c2 losers stay", [...newC2]);
+    state = saved;
+  }
+
+  // Stack — pairForStackCourt repair when default pair repeats prior court pair
+  {
+    const saved = state;
+    state = { tiebreakRandom: [0,1,2,3,4,5,6,7] };
+    // Stack scores construct so ranking on this court is [1, 5, 6, 2] (rank 1..4).
+    // Default pair: r1+r4 vs r2+r3 => (1,2) vs (5,6).
+    // If prevSameCourt had teams (1,2) and (3,4), pair (1,2) was a team last
+    // round → repair triggers, should swap r3,r4: (1,6) vs (5,2).
+    const stackBySlot = new Map([[1, 100], [5, 80], [6, 60], [2, 40]]);
+    const prev = { team1: [1, 2], team2: [3, 4] };
+    const [tA, tB] = pairForStackCourt([1, 5, 6, 2], prev, stackBySlot);
+    const sortedA = tA.slice().sort((a,b)=>a-b);
+    const sortedB = tB.slice().sort((a,b)=>a-b);
+    // After swap: teams should be (1,6) and (5,2), neither matching prev pair (1,2).
+    console.assert(
+      (sortedA[0] === 1 && sortedA[1] === 6 && sortedB[0] === 2 && sortedB[1] === 5) ||
+      (sortedA[0] === 2 && sortedA[1] === 5 && sortedB[0] === 1 && sortedB[1] === 6),
+      "pairForStackCourt repair", { tA, tB });
+    // No-repair sanity: if prev had no overlap with current, default pairing stands.
+    const [tC, tD] = pairForStackCourt([1, 5, 6, 2], { team1: [3, 4], team2: [7, 8] }, stackBySlot);
+    const flat = [...tC, ...tD].sort((a,b)=>a-b);
+    console.assert(flat.join(",") === "1,2,5,6", "pairForStackCourt no-repair players", flat);
+    // Default pair should be (1,2) and (5,6).
+    const tCs = tC.slice().sort((a,b)=>a-b);
+    console.assert(tCs[0] === 1 && tCs[1] === 2, "pairForStackCourt no-repair default", tC);
+    state = saved;
+  }
+
+  // Stack — rankPlayersStack sort order
+  {
+    const saved = state;
+    // After 1 round on a stack tournament: c1 (1,2) beat (3,4) 11-1; c2 (5,6) beat (7,8) 11-9.
+    // Slot 1: stackScore = stackScoreGain(11, true, true) = 19.5
+    // Slot 3: stackScore = stackScoreGain(1, true, false)  = 1.5
+    // Slot 5: stackScore = stackScoreGain(11, false, true) = 16
+    // Slot 7: stackScore = stackScoreGain(9, false, false) = 9
+    state = {
+      format: "stack", stackRounds: 4,
+      slots: ["A","B","C","D","E","F","G","H"],
+      rounds: [{
+        round: 1,
+        court1: { team1: [1,2], team2: [3,4], score1: 11, score2: 1 },
+        court2: { team1: [5,6], team2: [7,8], score1: 11, score2: 9 },
+      }],
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+    };
+    const ranked = rankPlayersStack(1).map(s => s.slot);
+    // Expected order: 1,2 (top), 5,6 (next), 7,8 (then), 3,4 (bottom).
+    // Within ties, tiebreakRandom ordering [0..7] → ascending slot, so:
+    console.assert(JSON.stringify(ranked) === JSON.stringify([1,2,5,6,7,8,3,4]),
+      "rankPlayersStack order", ranked);
+    state = saved;
+  }
+
+  // Stack — v1 → v2 migration
+  {
+    const v1key = "pb_tourney_v1";
+    const v2key = "pb_tourney_v2";
+    // Snapshot any current v2 data so we don't trash a real tournament.
+    const savedV2 = localStorage.getItem(v2key);
+    localStorage.removeItem(v2key);
+    const v1state = {
+      phase: "playing",
+      rawNames: ["A","B","C","D","E","F","G","H"],
+      slots:    ["A","B","C","D","E","F","G","H"],
+      currentRound: 2,
+      rounds: SCHEDULE.map((rd, i) => ({
+        round: i + 1,
+        court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: null, score2: null },
+        court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: null, score2: null },
+      })),
+      finals: null,
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+      awardsShown: false,
+      winScore: 11,
+      notifiedRounds: [],
+    };
+    localStorage.setItem(v1key, JSON.stringify(v1state));
+    const migrated = load();
+    console.assert(migrated && migrated.format === "rr", "v1 migration → format rr", migrated && migrated.format);
+    console.assert(migrated && migrated.stackRounds === 8, "v1 migration → stackRounds 8");
+    console.assert(migrated && Array.isArray(migrated.previousRanks), "v1 migration → previousRanks []");
+    console.assert(migrated && migrated.currentRound === 2, "v1 migration preserves state");
+    console.assert(localStorage.getItem(v1key) === null, "v1 key cleared after migration");
+    console.assert(localStorage.getItem(v2key) !== null, "v2 key written after migration");
+    // Restore any prior v2 state (or clear if there was none).
+    localStorage.removeItem(v2key);
+    if (savedV2 !== null) localStorage.setItem(v2key, savedV2);
+  }
+
+  // Stack — computeAwards: Climber, Anchor, Closer, Best Duo
+  {
+    const saved = state;
+    // 4-round Stack tournament. Court 1 winners stay, c2 climb. Construct
+    // outcomes so slot 5 climbs once (R1 c2 win → R2 c1) and stays. Slot 1
+    // anchors c1 throughout. Several 1-pt games to surface The Closer. A
+    // duo (1,2) wins multiple times together.
+    const r1 = {
+      round: 1,
+      court1: { team1: [1,2], team2: [3,4], score1: 11, score2: 9 }, // (1,2) win, 1-pt margin? No, margin=2
+      court2: { team1: [5,6], team2: [7,8], score1: 11, score2: 10 }, // (5,6) win, 1-pt margin → climb
+    };
+    // Build round 2 from r1: new c1 = {1,2,5,6}, new c2 = {3,4,7,8}
+    state = {
+      format: "stack", stackRounds: 2,
+      slots: ["A","B","C","D","E","F","G","H"],
+      rounds: [r1],
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+      finals: null, previousRanks: [], notifiedRounds: [], awardsShown: false,
+      winScore: 11,
+    };
+    const r2 = buildNextStackRound(r1);
+    // Decide r2: pretend the higher-stackscore team wins. Pick scores that
+    // create another 1-pt game so The Closer surfaces.
+    r2.court1.score1 = 11; r2.court1.score2 = 10;  // 1-pt margin
+    r2.court2.score1 = 11; r2.court2.score2 = 5;
+    state.rounds.push(r2);
+    state.phase = "done";
+    const a = computeAwards();
+    console.assert(a.climber.names.length >= 1, "Climber populated", a.climber);
+    console.assert(/climb/.test(a.climber.detail || ""), "Climber detail", a.climber);
+    console.assert(a.anchor.names.length >= 1, "Anchor populated", a.anchor);
+    console.assert(/Court 1/.test(a.anchor.detail || ""), "Anchor detail", a.anchor);
+    console.assert(a.closer.names.length >= 1, "Closer populated (1-pt games existed)", a.closer);
+    console.assert(/1-pt games/.test(a.closer.detail || ""), "Closer detail format", a.closer);
+    console.assert(a.bestDuo.names.length >= 1, "Best Duo populated", a.bestDuo);
+    console.assert(/%/.test(a.bestDuo.detail || ""), "Best Duo win-rate detail", a.bestDuo);
+    state = saved;
+  }
+
+  // Stack — RR mode hides Climber/Anchor; Closer hidden when no 1-pt games
+  {
+    const saved = state;
+    const rounds = SCHEDULE.map((rd, i) => ({
+      round: i + 1,
+      court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 9 },
+      court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
+    }));
+    state = {
+      format: "rr", stackRounds: 8, phase: "done",
+      slots: ["A","B","C","D","E","F","G","H"],
+      rounds, currentRound: 7,
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+      finals: {
+        championship: { team1: [1,4], team2: [2,3], score1: 11, score2: 9 },
+        consolation:  { team1: [5,8], team2: [6,7], score1: 11, score2: 9 },
+      },
+      awardsShown: false, winScore: 11, notifiedRounds: [], previousRanks: [],
+    };
+    const a = computeAwards();
+    console.assert(a.climber.names.length === 0, "RR hides Climber", a.climber);
+    console.assert(a.anchor.names.length === 0,  "RR hides Anchor",  a.anchor);
+    console.assert(a.closer.names.length === 0,  "Closer empty when no 1-pt games", a.closer);
+    state = saved;
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -953,6 +1240,8 @@ let state = load() || newState();
 function newState() {
   return {
     phase: "setup",                                  // setup | playing | finals | done
+    format: "rr",                                    // "rr" | "stack"
+    stackRounds: 8,                                  // only used when format === "stack"
     rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle, used on setup screen
     slots:    ["", "", "", "", "", "", "", ""],      // post-shuffle, slot index 0..7 = slot 1..8
     currentRound: 1,
@@ -962,19 +1251,40 @@ function newState() {
     awardsShown: false,
     winScore: 11,
     notifiedRounds: [],
+    previousRanks: [],                               // stack: prior-round rank order (slots), drives trajectory arrows
   };
+}
+// Apply field defaults to any persisted state (used by both v2 load and v1 migration).
+function backfillStateDefaults(obj) {
+  if (typeof obj.awardsShown !== "boolean") obj.awardsShown = false;
+  if (typeof obj.winScore !== "number") obj.winScore = 11;
+  if (!Array.isArray(obj.notifiedRounds)) obj.notifiedRounds = [];
+  if (obj.format !== "stack") obj.format = "rr";
+  if (typeof obj.stackRounds !== "number") obj.stackRounds = 8;
+  if (!Array.isArray(obj.previousRanks)) obj.previousRanks = [];
+  return obj;
 }
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    if (!obj || !obj.phase) return null;
-    // Backfill defaults for fields added after the initial release.
-    if (typeof obj.awardsShown !== "boolean") obj.awardsShown = false;
-    if (typeof obj.winScore !== "number") obj.winScore = 11;
-    if (!Array.isArray(obj.notifiedRounds)) obj.notifiedRounds = [];
-    return obj;
+    if (raw) {
+      const obj = JSON.parse(raw);
+      if (obj && obj.phase) return backfillStateDefaults(obj);
+    }
+    // v1 migration: any v1 state loads as a Round Robin in-progress tournament.
+    const v1raw = localStorage.getItem(STORAGE_KEY_V1);
+    if (v1raw) {
+      const v1 = JSON.parse(v1raw);
+      if (v1 && v1.phase) {
+        const migrated = backfillStateDefaults(v1);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          localStorage.removeItem(STORAGE_KEY_V1);
+        } catch (e) { /* non-fatal */ }
+        return migrated;
+      }
+    }
+    return null;
   } catch (e) { return null; }
 }
 function save() {
@@ -991,17 +1301,36 @@ function shuffle(arr) {
   return a;
 }
 
-function runShuffleReveal(finalSlots, onDone) {
+function runShuffleReveal(finalSlots, onDone, opts) {
+  opts = opts || {};
   const overlay = el("div", { class: "shuffle-overlay" });
-  overlay.appendChild(el("div", { class: "shuffle-title" }, "Drawing slots…"));
-  const grid = el("div", { class: "shuffle-grid" });
+  overlay.appendChild(el("div", { class: "shuffle-title" }, opts.title || "Drawing slots…"));
   const cells = [];
-  for (let i = 0; i < 8; i++) {
-    const c = el("div", { class: "shuffle-slot" }, finalSlots[i]);
-    grid.appendChild(c);
-    cells.push(c);
+  if (opts.groups) {
+    // Two labeled groups (Stack format: Court 1 / Court 2).
+    const groupsWrap = el("div", { class: "shuffle-groups" });
+    let cellIdx = 0;
+    for (const group of opts.groups) {
+      groupsWrap.appendChild(el("div", { class: "shuffle-group-label" }, group.label));
+      const grid = el("div", { class: "shuffle-grid" });
+      for (let k = 0; k < group.count; k++) {
+        const c = el("div", { class: "shuffle-slot" }, finalSlots[cellIdx]);
+        grid.appendChild(c);
+        cells.push(c);
+        cellIdx++;
+      }
+      groupsWrap.appendChild(grid);
+    }
+    overlay.appendChild(groupsWrap);
+  } else {
+    const grid = el("div", { class: "shuffle-grid" });
+    for (let i = 0; i < 8; i++) {
+      const c = el("div", { class: "shuffle-slot" }, finalSlots[i]);
+      grid.appendChild(c);
+      cells.push(c);
+    }
+    overlay.appendChild(grid);
   }
-  overlay.appendChild(grid);
   overlay.appendChild(el("div", { class: "shuffle-skip" }, "Tap anywhere to skip"));
   document.body.appendChild(overlay);
 
@@ -1064,19 +1393,205 @@ function generateRounds() {
   });
 }
 
+// ============== Stack Format engine ==============
+// Stack rounds use the same court1/court2 game shape as RR, but the schedule
+// is built incrementally: each round's pairings depend on the prior round's
+// scores. state.rounds.length grows as the tournament progresses.
+
+function assignInitialStackCourts() {
+  const slots = shuffle([1,2,3,4,5,6,7,8]);
+  const c1 = shuffle(slots.slice(0, 4));
+  const c2 = shuffle(slots.slice(4));
+  return {
+    round: 1,
+    court1: { team1: [c1[0], c1[1]], team2: [c1[2], c1[3]], score1: null, score2: null },
+    court2: { team1: [c2[0], c2[1]], team2: [c2[2], c2[3]], score1: null, score2: null },
+  };
+}
+
+// Stack score gain for one player on one completed game.
+//   pts:      points their team scored
+//   isCourt1: was this game on Court 1?
+//   won:      did their team win?
+function stackScoreGain(pts, isCourt1, won) {
+  if (!Number.isInteger(pts)) return 0;
+  let gain = pts;
+  if (isCourt1) gain += pts * 0.5;
+  if (won) gain += 3;
+  if (won && !isCourt1) gain += 2; // climbing bonus: a win on Court 2 earns a climb
+  return gain;
+}
+
+// Per-player stack stats through the given round (1-based, inclusive).
+function computeStackStats(throughRound) {
+  const stats = [];
+  for (let s = 1; s <= 8; s++) {
+    stats.push({
+      slot: s, name: nameOf(s),
+      stackScore: 0,
+      pointsScored: 0, pointsAgainst: 0,
+      wins: 0, losses: 0,
+      gamesOnCourt1: 0, gamesOnCourt2: 0,
+      courtClimbs: 0, courtDrops: 0,
+      partnersUsed: new Set(),
+      onePointGames: { wins: 0, losses: 0 },
+    });
+  }
+  const upTo = Math.min(throughRound || 0, state.rounds.length);
+  for (let i = 0; i < upTo; i++) {
+    const r = state.rounds[i];
+    for (const courtKey of [1, 2]) {
+      const game = courtKey === 1 ? r.court1 : r.court2;
+      const teams = [game.team1, game.team2];
+      teams.forEach(t => {
+        stats[t[0]-1].partnersUsed.add(t[1]);
+        stats[t[1]-1].partnersUsed.add(t[0]);
+        if (courtKey === 1) { stats[t[0]-1].gamesOnCourt1++; stats[t[1]-1].gamesOnCourt1++; }
+        else                { stats[t[0]-1].gamesOnCourt2++; stats[t[1]-1].gamesOnCourt2++; }
+      });
+      if (!isGameComplete(game)) continue;
+      const t1Won = game.score1 > game.score2;
+      const t2Won = game.score2 > game.score1;
+      const margin = Math.abs(game.score1 - game.score2);
+      for (const teamKey of ["team1", "team2"]) {
+        const team = game[teamKey];
+        const pts = teamKey === "team1" ? game.score1 : game.score2;
+        const ag  = teamKey === "team1" ? game.score2 : game.score1;
+        const won = (teamKey === "team1" && t1Won) || (teamKey === "team2" && t2Won);
+        const lost = (teamKey === "team1" && t2Won) || (teamKey === "team2" && t1Won);
+        const gain = stackScoreGain(pts, courtKey === 1, won);
+        for (const slot of team) {
+          const st = stats[slot-1];
+          st.stackScore += gain;
+          st.pointsScored += pts;
+          st.pointsAgainst += ag;
+          if (won) st.wins++;
+          if (lost) st.losses++;
+          if (margin === 1) {
+            if (won) st.onePointGames.wins++;
+            else if (lost) st.onePointGames.losses++;
+          }
+        }
+      }
+    }
+    // Climbs / drops: derived from the i → i+1 court transition (only after the
+    // next round has actually been built).
+    if (i + 1 < state.rounds.length) {
+      const nextR = state.rounds[i + 1];
+      const onC1Now  = new Set([...r.court1.team1,     ...r.court1.team2]);
+      const onC1Next = new Set([...nextR.court1.team1, ...nextR.court1.team2]);
+      for (let s = 1; s <= 8; s++) {
+        const wasC1 = onC1Now.has(s);
+        const willC1 = onC1Next.has(s);
+        if (!wasC1 && willC1) stats[s-1].courtClimbs++;
+        if (wasC1 && !willC1) stats[s-1].courtDrops++;
+      }
+    }
+  }
+  return stats;
+}
+
+// Sort by stack score descending, tiebreak by tiebreakRandom ordering of slots.
+function rankPlayersStack(throughRound) {
+  const stats = computeStackStats(throughRound);
+  const tieRand = (state.tiebreakRandom && state.tiebreakRandom.length === 8) ? state.tiebreakRandom : [0,1,2,3,4,5,6,7];
+  stats.sort((a, b) => {
+    if (b.stackScore !== a.stackScore) return b.stackScore - a.stackScore;
+    return tieRand.indexOf(a.slot - 1) - tieRand.indexOf(b.slot - 1);
+  });
+  return stats;
+}
+
+// Re-pair the four players assigned to a court for the next round.
+//   slotsOnCourt:    the 4 slots that will play this court next round
+//   prevSameCourt:   the prior round's game on THIS court (or null for round 1)
+//   stackBySlot:     Map<slot, stackScore> at the time of pairing
+// Returns [team1, team2], each a length-2 array of slots.
+function pairForStackCourt(slotsOnCourt, prevSameCourt, stackBySlot) {
+  const tieRand = (state.tiebreakRandom && state.tiebreakRandom.length === 8) ? state.tiebreakRandom : [0,1,2,3,4,5,6,7];
+  const ranked = slotsOnCourt.slice().sort((a, b) => {
+    const sa = stackBySlot.get(a) || 0;
+    const sb = stackBySlot.get(b) || 0;
+    if (sb !== sa) return sb - sa;
+    return tieRand.indexOf(a - 1) - tieRand.indexOf(b - 1);
+  });
+  // Default: rank1 + rank4 vs rank2 + rank3
+  let teamA = [ranked[0], ranked[3]];
+  let teamB = [ranked[1], ranked[2]];
+  if (prevSameCourt) {
+    const wasPair = (a, b) => {
+      for (const t of [prevSameCourt.team1, prevSameCourt.team2]) {
+        if (t.includes(a) && t.includes(b)) return true;
+      }
+      return false;
+    };
+    if (wasPair(teamA[0], teamA[1]) || wasPair(teamB[0], teamB[1])) {
+      // Swap rank-3 and rank-4 to break the repeat. Movement guarantees at most
+      // one prior-round pair carries over, so this swap always breaks any
+      // single repeat.
+      teamA = [ranked[0], ranked[2]];
+      teamB = [ranked[1], ranked[3]];
+    }
+  }
+  return [teamA, teamB];
+}
+
+// Build the next stack round from the previous (which must be complete and
+// non-tied — both score1 !== score2).
+function buildNextStackRound(prevRound) {
+  const c1 = prevRound.court1, c2 = prevRound.court2;
+  const c1Win  = c1.score1 > c1.score2 ? c1.team1 : c1.team2;
+  const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
+  const c2Win  = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
+  const c2Lose = c2.score1 > c2.score2 ? c2.team2 : c2.team1;
+  const newC1Slots = [...c1Win, ...c2Win];
+  const newC2Slots = [...c1Lose, ...c2Lose];
+
+  const stackStats = computeStackStats(prevRound.round);
+  const stackBySlot = new Map(stackStats.map(s => [s.slot, s.stackScore]));
+
+  const [c1A, c1B] = pairForStackCourt(newC1Slots, c1, stackBySlot);
+  const [c2A, c2B] = pairForStackCourt(newC2Slots, c2, stackBySlot);
+
+  return {
+    round: prevRound.round + 1,
+    court1: { team1: c1A, team2: c1B, score1: null, score2: null },
+    court2: { team1: c2A, team2: c2B, score1: null, score2: null },
+  };
+}
+
 function startTournament() {
   // Compute the assignment up-front (real source of truth).
   state.slots = shuffle(state.rawNames.map(s => s.trim()));
-  state.rounds = generateRounds();
   state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
   state.currentRound = 1;
   state.notifiedRounds = [];
   state.awardsShown = false;
-  state.phase = "playing";
+  state.previousRanks = [];
   state.finals = null;
+  if (state.format === "stack") {
+    state.rounds = [assignInitialStackCourts()];
+  } else {
+    state.rounds = generateRounds();
+  }
+  state.phase = "playing";
   save();
   // Cosmetic reveal animation, then render the playing screen.
-  runShuffleReveal(state.slots.slice(), () => render());
+  if (state.format === "stack") {
+    const r1 = state.rounds[0];
+    const c1Slots = [...r1.court1.team1, ...r1.court1.team2];
+    const c2Slots = [...r1.court2.team1, ...r1.court2.team2];
+    const display = [...c1Slots.map(nameOf), ...c2Slots.map(nameOf)];
+    runShuffleReveal(display, () => render(), {
+      title: "Drawing courts…",
+      groups: [
+        { label: "🏆 Court 1", count: 4 },
+        { label: "Court 2",    count: 4 },
+      ],
+    });
+  } else {
+    runShuffleReveal(state.slots.slice(), () => render());
+  }
 }
 
 function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
@@ -1153,8 +1668,14 @@ function rankPlayers(throughRound) {
   return stats;
 }
 
+// Format-aware overall ranking through `throughRound` (1-based, inclusive).
+function rankPlayersForFormat(throughRound) {
+  return state.format === "stack" ? rankPlayersStack(throughRound) : rankPlayers(throughRound);
+}
+
 function buildFinals() {
-  const ranked = rankPlayers(7).map(s => s.slot);
+  const total = totalRegularRounds();
+  const ranked = rankPlayersForFormat(total).map(s => s.slot);
   state.finals = {
     championship: { team1: [ranked[0], ranked[3]], team2: [ranked[1], ranked[2]], score1: null, score2: null },
     consolation:  { team1: [ranked[4], ranked[7]], team2: [ranked[5], ranked[6]], score1: null, score2: null },
@@ -1164,9 +1685,12 @@ function buildFinals() {
 }
 
 // Returns { partner: number, courtKey: 1|2 } for the given player's next round,
-// or null if there's no next round (currentRound >= 7) or no rounds yet.
+// or null if there's no next round or no rounds yet. Partner chips are an RR
+// affordance — Stack rounds are built incrementally so the next pairing isn't
+// known until after advancing.
 function nextPartnerInfo(slot) {
   if (state.phase !== "playing") return null;
+  if (state.format === "stack") return null;
   if (state.currentRound >= 7) return null;
   const next = state.rounds[state.currentRound]; // currentRound is 1-based; this is round N+1
   if (!next) return null;
@@ -1195,7 +1719,10 @@ function maybeFireRoundComplete(primaryBtn) {
   if (state.phase !== "playing") return;
   const idx = state.currentRound - 1;
   const round = state.rounds[idx];
-  if (!round || !isRoundComplete(round)) return;
+  if (!round) return;
+  // In Stack format, a tied round can't advance the tournament — don't celebrate it yet.
+  const advanceable = state.format === "stack" ? isRoundDecided(round) : isRoundComplete(round);
+  if (!advanceable) return;
   if (state.notifiedRounds.includes(state.currentRound)) return;
   state.notifiedRounds.push(state.currentRound);
   save();
@@ -1214,11 +1741,12 @@ function seedPill(rank, kind) {
   return el("span", { class: "seed-pill " + kind }, "#" + rank);
 }
 
-// Returns an array of 8 stat objects (same shape as rankPlayers items) in
-// tournament-outcome tier order. Falls back to rankPlayers(7) order if finals
-// are missing or undecided.
+// Returns an array of 8 stat objects in tournament-outcome tier order
+// (champ-W > champ-L > cons-W > cons-L). Falls back to season order if finals
+// are missing or undecided. The within-tier sort is by season rank (which is
+// format-aware: rankPlayers for RR, rankPlayersStack for Stack).
 function finalRanking() {
-  const seasonOrder = rankPlayers(7);
+  const seasonOrder = rankPlayersForFormat(totalRegularRounds());
   const seasonRank = new Map();
   seasonOrder.forEach((s, i) => seasonRank.set(s.slot, i));
   const bySlot = new Map();
@@ -1281,9 +1809,13 @@ function render() {
   }
 }
 
+function totalRegularRounds() {
+  return state.format === "stack" ? state.stackRounds : 7;
+}
+
 function renderHeader() {
   let progressText = "Setup";
-  if (state.phase === "playing")     progressText = "Round " + state.currentRound + " of 7";
+  if (state.phase === "playing")     progressText = "Round " + state.currentRound + " of " + totalRegularRounds();
   else if (state.phase === "finals") progressText = "Finals";
   else if (state.phase === "done")   progressText = "🏆 Champions";
   return el("header", { class: "top" },
@@ -1299,7 +1831,7 @@ function canStart() {
   return new Set(trimmed.map(n => n.toLowerCase())).size === 8;
 }
 
-const RULES_BULLETS = [
+const RULES_RR = [
   "8 players, 2 courts, doubles. Every round, all 8 play.",
   "7 rounds, one per partner — by the end, you'll have partnered with every other player exactly once.",
   "Score games however you normally would (typically first to 11, win by 2). Type any final score.",
@@ -1307,9 +1839,20 @@ const RULES_BULLETS = [
   "Championship is #1 + #4 vs #2 + #3 — a balanced pairing so the top players don't stomp.",
   "Final ranking: total points → wins → point differential.",
 ];
-function renderRulesUl() {
+const RULES_STACK = [
+  "8 players, 2 courts, doubles. Court 1 is the top court (🏆); Court 2 is the climbing court.",
+  "Games to 11, win by 1 — quick games. Ties not allowed; play it out.",
+  "After every round: Court 1 winners stay, Court 1 losers drop to Court 2, Court 2 winners climb to Court 1, Court 2 losers stay.",
+  "Partners rotate every round. On each court, the highest + lowest Stack Score pair up vs. the middle two — and never the same partner twice in a row on the same court.",
+  "Stack Score per game: points scored + 0.5× points if on Court 1 + 3 for a win + 2 if you climbed by winning on Court 2. Highest Stack Score after the regular rounds = #1 seed.",
+  "After the regular rounds, top 4 by Stack Score play the 🏆 Championship (#1 + #4 vs #2 + #3); bottom 4 play the 🥈 Consolation.",
+];
+function rulesForActiveFormat() {
+  return state.format === "stack" ? RULES_STACK : RULES_RR;
+}
+function renderRulesUl(bullets) {
   const ul = el("ul");
-  RULES_BULLETS.forEach(text => ul.appendChild(el("li", null, text)));
+  (bullets || rulesForActiveFormat()).forEach(text => ul.appendChild(el("li", null, text)));
   return ul;
 }
 function renderRulesBlock() {
@@ -1388,13 +1931,59 @@ function openPasteModal() {
   setTimeout(() => textarea.focus(), 0);
 }
 
+function renderFormatChooser() {
+  const wrap = el("div", { class: "format-chooser" });
+  wrap.appendChild(el("div", { class: "format-chooser-label" }, "Format"));
+  const row = el("div", { class: "format-options" });
+  const opts = [
+    { id: "rr",    title: "Round Robin",  blurb: "7 rounds, every pair partners once. Top 4 → Championship." },
+    { id: "stack", title: "Stack Format", blurb: "Court 1 (top) vs Court 2 (climbing). Win to climb, lose to drop." },
+  ];
+  opts.forEach(opt => {
+    const isActive = state.format === opt.id;
+    const btn = el("button", {
+      class: "format-option" + (isActive ? " active" : ""),
+      onclick: () => {
+        if (state.format === opt.id) return;
+        state.format = opt.id;
+        save();
+        render();
+      },
+    });
+    btn.appendChild(el("div", { class: "format-option-title" }, opt.title));
+    btn.appendChild(el("div", { class: "format-option-blurb" }, opt.blurb));
+    row.appendChild(btn);
+  });
+  wrap.appendChild(row);
+  if (state.format === "stack") {
+    const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
+    sub.appendChild(el("label", null, "Rounds"));
+    const sel = el("select");
+    [4, 6, 8, 10, 12].forEach(v => {
+      const opt = el("option", { value: String(v) }, String(v));
+      if (state.stackRounds === v) opt.setAttribute("selected", "selected");
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", () => {
+      state.stackRounds = parseInt(sel.value, 10);
+      save();
+    });
+    sub.appendChild(sel);
+    wrap.appendChild(sub);
+  }
+  return wrap;
+}
+
 function renderSetup() {
   const wrap = el("div");
   wrap.appendChild(renderRulesBlock());
+  wrap.appendChild(renderFormatChooser());
   const card = el("div", { class: "card" },
     el("h2", null, "Enter 8 Players"),
     el("p", { class: "muted", style: "margin: 0 0 14px;" },
-      "Names are randomly assigned to slots 1–8 when the tournament starts.")
+      state.format === "stack"
+        ? "Names are randomly assigned to Court 1 and Court 2 when the tournament starts."
+        : "Names are randomly assigned to slots 1–8 when the tournament starts.")
   );
   const pasteLink = el("button", {
     class: "paste-link",
@@ -1437,9 +2026,21 @@ function renderSetup() {
 }
 
 // ---------- playing screens ----------
+function isGameDecided(g) { return isGameComplete(g) && g.score1 !== g.score2; }
+function isRoundDecided(r) { return isGameDecided(r.court1) && isGameDecided(r.court2); }
+
+function movementToastText(prevRound, newRound) {
+  // climbers = c2 winners (now on new c1)
+  const c2Win = prevRound.court2.score1 > prevRound.court2.score2 ? prevRound.court2.team1 : prevRound.court2.team2;
+  const c1Lose = prevRound.court1.score1 > prevRound.court1.score2 ? prevRound.court1.team2 : prevRound.court1.team1;
+  return teamName(c2Win) + " climb to Court 1 · " + teamName(c1Lose) + " drop to Court 2";
+}
+
 function renderPlaying() {
   const wrap = el("div");
   const round = state.rounds[state.currentRound - 1];
+  const isStack = state.format === "stack";
+  const total = totalRegularRounds();
 
   // Refresh hooks injected by score inputs
   const refreshes = [];
@@ -1448,8 +2049,12 @@ function renderPlaying() {
   wrap.appendChild(renderRoundCourts(round, false, refreshes));
 
   // navigation row
-  const allDone = state.rounds.every(isRoundComplete);
-  const thisDone = isRoundComplete(round);
+  // RR: round is "advanceable" when both scores are present (ties allowed).
+  // Stack: round is "advanceable" only when both courts are decided (no ties).
+  const advanceReady = isStack ? isRoundDecided(round) : isRoundComplete(round);
+  const allRoundsAdvanceable = isStack
+    ? (state.rounds.length === total && state.rounds.every(isRoundDecided))
+    : state.rounds.every(isRoundComplete);
   const actions = el("div", { class: "row-actions" });
   if (state.currentRound > 1) {
     actions.appendChild(el("button", {
@@ -1458,18 +2063,49 @@ function renderPlaying() {
     }, "← Round " + (state.currentRound - 1)));
   }
   let primaryBtn;
-  if (state.currentRound < 7) {
+  if (state.currentRound < total) {
     primaryBtn = el("button", {
       class: "primary",
-      onclick: () => { if (isRoundComplete(round)) { state.currentRound++; save(); render(); } }
+      onclick: () => {
+        if (isStack) {
+          if (!isRoundDecided(round)) return;
+          // Build the next round if it doesn't already exist (e.g. user went
+          // back, then advanced again — keep the existing pairing). previousRanks
+          // is snapshotted only on first-time advance so backward navigation
+          // doesn't clobber the baseline used for trajectory arrows.
+          let toastMsg = null;
+          if (state.rounds.length === state.currentRound) {
+            state.previousRanks = rankPlayersStack(state.currentRound).map(s => s.slot);
+            const next = buildNextStackRound(round);
+            state.rounds.push(next);
+            toastMsg = movementToastText(round, next);
+          }
+          state.currentRound++;
+          save();
+          render();
+          if (toastMsg) showToast(toastMsg);
+        } else {
+          if (!isRoundComplete(round)) return;
+          state.currentRound++;
+          save();
+          render();
+        }
+      }
     }, "Round " + (state.currentRound + 1) + " →");
-    primaryBtn.disabled = !thisDone;
+    primaryBtn.disabled = !advanceReady;
   } else {
     primaryBtn = el("button", {
       class: "primary",
-      onclick: () => { if (state.rounds.every(isRoundComplete)) { buildFinals(); render(); } }
+      onclick: () => {
+        // Re-evaluate at click time — score inputs may have completed the
+        // round since this button was rendered.
+        const ready = isStack
+          ? (state.rounds.length === total && state.rounds.every(isRoundDecided))
+          : state.rounds.every(isRoundComplete);
+        if (ready) { buildFinals(); render(); }
+      }
     }, "Build Finals →");
-    primaryBtn.disabled = !allDone;
+    primaryBtn.disabled = !allRoundsAdvanceable;
   }
   actions.appendChild(primaryBtn);
   wrap.appendChild(actions);
@@ -1491,8 +2127,13 @@ function renderPlaying() {
 
   // Wire refresh: update primary button state + replace standings live
   refreshes.push(() => {
-    if (state.currentRound < 7) primaryBtn.disabled = !isRoundComplete(round);
-    else primaryBtn.disabled = !state.rounds.every(isRoundComplete);
+    if (state.currentRound < total) {
+      primaryBtn.disabled = isStack ? !isRoundDecided(round) : !isRoundComplete(round);
+    } else {
+      primaryBtn.disabled = isStack
+        ? !(state.rounds.length === total && state.rounds.every(isRoundDecided))
+        : !state.rounds.every(isRoundComplete);
+    }
     const newStandings = renderStandingsCard(state.currentRound, standingsOpts());
     standingsCard.replaceWith(newStandings);
     standingsCard = newStandings;
@@ -1518,10 +2159,16 @@ function renderRoundCourts(round, isFinals, refreshes) {
 function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   let className = "court-card";
   let labelText = "";
+  const isStack = state.format === "stack";
   if (courtKey === "champ")     { className += " gold";   labelText = "🏆 CHAMPIONSHIP"; }
   else if (courtKey === "cons") { className += " silver"; labelText = "🥈 CONSOLATION"; }
-  else if (courtKey === 1)      { className += " c1";     labelText = "SOUTH COURT"; }
-  else                          { className += " c2";     labelText = "NORTH COURT"; }
+  else if (courtKey === 1) {
+    className += " c1" + (isStack ? " stack-top" : "");
+    labelText = isStack ? "🏆 COURT 1" : "SOUTH COURT";
+  } else {
+    className += " c2" + (isStack ? " stack-bot" : "");
+    labelText = isStack ? "COURT 2" : "NORTH COURT";
+  }
 
   const card = el("div", { class: className });
   card.appendChild(el("div", { class: "court-label" }, labelText));
@@ -1645,7 +2292,19 @@ function rankCell(i) {
   return el("td", { class: "rank" }, el("span", { class: "rank-badge" }, "" + (i + 1)));
 }
 
+function trajectorySpan(slot, currentIdx) {
+  const prev = state.previousRanks || [];
+  if (prev.length !== 8) return null;
+  const prevIdx = prev.indexOf(slot);
+  if (prevIdx < 0) return null;
+  const diff = prevIdx - currentIdx;
+  if (diff > 0)  return el("span", { class: "rank-trajectory up",   title: "Up " + diff }, "▲" + diff);
+  if (diff < 0)  return el("span", { class: "rank-trajectory down", title: "Down " + (-diff) }, "▼" + (-diff));
+  return el("span", { class: "rank-trajectory same", title: "No change" }, "—");
+}
+
 function renderStandingsCard(throughRound, opts) {
+  if (state.format === "stack") return renderStackStandingsCard(throughRound, opts);
   opts = opts || {};
   const stats = rankPlayers(throughRound);
   const card = el("div", { class: "card" });
@@ -1699,6 +2358,54 @@ function renderStandingsCard(throughRound, opts) {
   return card;
 }
 
+function renderStackStandingsCard(throughRound, opts) {
+  opts = opts || {};
+  const stats = rankPlayersStack(throughRound);
+  const card = el("div", { class: "card" });
+  const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
+    el("h3", { style: "margin: 0;" }, opts.title || "Live Standings"),
+    opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+  );
+  card.appendChild(head);
+  const table = el("table", { class: "standings" });
+  const colgroup = el("colgroup", null,
+    el("col", { class: "c-rank" }),
+    el("col", { class: "c-name" }),
+    el("col", { class: "c-pts" }),
+    el("col", { class: "c-w" }),
+    el("col", { class: "c-stack-extra" }),
+    el("col", { class: "c-stack-extra" }),
+  );
+  table.appendChild(colgroup);
+  table.appendChild(el("thead", null, el("tr", null,
+    el("th", { style: "text-align: center;" }, "#"),
+    el("th", null, "Player"),
+    el("th", { class: "num", title: "Stack Score" }, "SS"),
+    el("th", { class: "num", title: "Wins–Losses" }, "W–L"),
+    el("th", { class: "num", title: "Court climbs (C2 → C1)" }, "🔼"),
+    el("th", { class: "num", title: "Games on Court 1" }, "⏱"),
+  )));
+  const tbody = el("tbody");
+  stats.forEach((s, i) => {
+    const traj = trajectorySpan(s.slot, i);
+    const rankTd = el("td", { class: "rank" });
+    if (i < 3) rankTd.appendChild(el("span", { class: "rank-badge medal" }, MEDALS[i]));
+    else       rankTd.appendChild(el("span", { class: "rank-badge" }, "" + (i + 1)));
+    if (traj) rankTd.appendChild(traj);
+    tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+      rankTd,
+      el("td", { class: "name" }, s.name),
+      el("td", { class: "num" }, s.stackScore.toFixed(1)),
+      el("td", { class: "num" }, s.wins + "–" + s.losses),
+      el("td", { class: "num" }, "" + s.courtClimbs),
+      el("td", { class: "num" }, "" + s.gamesOnCourt1),
+    ));
+  });
+  table.appendChild(tbody);
+  card.appendChild(table);
+  return card;
+}
+
 function renderHistory(currentRound) {
   const past = state.rounds.slice(0, currentRound - 1);
   if (past.length === 0) return null;
@@ -1710,7 +2417,10 @@ function renderHistory(currentRound) {
   past.forEach(r => {
     const block = el("div", { class: "history-round" });
     block.appendChild(el("div", { class: "history-round-title" }, "Round " + r.round));
-    [{ g: r.court1, num: 1, label: "South" }, { g: r.court2, num: 2, label: "North" }].forEach(({ g, num, label }) => {
+    const isStack = state.format === "stack";
+    const c1Label = isStack ? "Court 1" : "South";
+    const c2Label = isStack ? "Court 2" : "North";
+    [{ g: r.court1, num: 1, label: c1Label }, { g: r.court2, num: 2, label: c2Label }].forEach(({ g, num, label }) => {
       const t1Win = isGameComplete(g) && g.score1 > g.score2;
       const t2Win = isGameComplete(g) && g.score2 > g.score1;
       const scoreText = (Number.isInteger(g.score1) ? g.score1 : "–") + "–" + (Number.isInteger(g.score2) ? g.score2 : "–");
@@ -1731,9 +2441,9 @@ function renderHistory(currentRound) {
   return details;
 }
 
-// For the current finals, returns a Map<slot, rank> using rankPlayers(7) order.
+// For the current finals, returns a Map<slot, rank> using the format's season order.
 function seedRankBySlot() {
-  const ranked = rankPlayers(7);
+  const ranked = rankPlayersForFormat(totalRegularRounds());
   const m = new Map();
   ranked.forEach((s, i) => m.set(s.slot, i + 1));
   return m;
@@ -1742,17 +2452,22 @@ function seedRankBySlot() {
 // ---------- finals screen ----------
 function renderFinalsScreen() {
   const wrap = el("div");
-  const ranked = rankPlayers(7);
+  const isStack = state.format === "stack";
+  const total = totalRegularRounds();
+  const ranked = rankPlayersForFormat(total);
 
   // Seeds card
   const seedsCard = el("div", { class: "card" });
-  seedsCard.appendChild(el("h3", null, "Seeds (after 7 rounds)"));
+  seedsCard.appendChild(el("h3", null, "Seeds (after " + total + " rounds)"));
   const grid = el("div", { class: "seeds-grid" });
   ranked.forEach((s, i) => {
+    const meta = isStack
+      ? s.stackScore.toFixed(1) + " SS · " + s.wins + "W"
+      : s.points + " pts · " + s.wins + "W";
     grid.appendChild(el("div", { class: "seed-row" },
       el("span", { class: "seed-rank" }, "#" + (i + 1)),
       el("span", null, s.name),
-      el("span", { class: "seed-meta" }, s.points + " pts · " + s.wins + "W"),
+      el("span", { class: "seed-meta" }, meta),
     ));
   });
   seedsCard.appendChild(grid);
@@ -1787,18 +2502,25 @@ function renderFinalsScreen() {
     style: "width: 100%;",
     onclick: () => {
       state.phase = "playing";
-      state.currentRound = 7;
+      state.currentRound = total;
       state.finals = null;
       save(); render();
     }
-  }, "← Back to Round 7"));
+  }, "← Back to Round " + total));
   return wrap;
 }
 
 // ---------- done screen ----------
 function renderPodium(ranking) {
-  const stats = computeStats(7, true); // for points
-  const pointsBySlot = new Map(stats.map(s => [s.slot, s.points]));
+  const isStack = state.format === "stack";
+  let labelBySlot;
+  if (isStack) {
+    const stackStats = computeStackStats(state.rounds.length);
+    labelBySlot = new Map(stackStats.map(s => [s.slot, s.stackScore.toFixed(1) + " SS"]));
+  } else {
+    const stats = computeStats(7, true);
+    labelBySlot = new Map(stats.map(s => [s.slot, s.points + " pts"]));
+  }
   const order = ["silver", "gold", "bronze"]; // visual left/center/right
   const ranks = [ranking[1], ranking[0], ranking[2]]; // map to visual order
   const emojis = { silver: "🥈", gold: "🥇", bronze: "🥉" };
@@ -1807,7 +2529,7 @@ function renderPodium(ranking) {
     const r = ranks[i];
     const step = el("div", { class: "podium-step " + kind });
     step.appendChild(el("div", { class: "podium-name" }, r.name));
-    step.appendChild(el("div", { class: "podium-points" }, pointsBySlot.get(r.slot) + " pts"));
+    step.appendChild(el("div", { class: "podium-points" }, labelBySlot.get(r.slot)));
     step.appendChild(el("div", { class: "podium-bar" }, emojis[kind]));
     podium.appendChild(step);
   });
@@ -1824,23 +2546,37 @@ function renderScorecard(game) {
   );
 }
 
-// Returns { mvp, biggestWin, closestGame, hotStreak }. Each award is
-// { names: string[], detail: string|null }. names is empty if no qualifying
-// entry; multiple names indicate ties.
+// Returns { mvp, biggestWin, closestGame, hotStreak, climber, anchor, closer, bestDuo }.
+// Each award is { names: string[], detail: string|null }. names is empty if no
+// qualifying entry; multiple names indicate ties. climber/anchor are only
+// populated for Stack format; closer/bestDuo apply to both formats.
 function computeAwards() {
-  const stats = computeStats(7, true);
+  const isStack = state.format === "stack";
 
-  // MVP — highest total points (all tied players named)
-  const maxPts = stats.reduce((m, s) => Math.max(m, s.points), 0);
-  const mvpNames = stats.filter(s => s.points === maxPts).map(s => nameOf(s.slot));
-  const mvp = { names: mvpNames, detail: maxPts + " pts" };
+  // MVP — format-aware: Stack uses Stack Score, RR uses raw points.
+  let mvp;
+  if (isStack) {
+    const ss = computeStackStats(state.rounds.length);
+    const maxSS = ss.reduce((m, s) => Math.max(m, s.stackScore), 0);
+    const winners = ss.filter(s => s.stackScore === maxSS && maxSS > 0);
+    mvp = winners.length
+      ? { names: winners.map(s => nameOf(s.slot)), detail: maxSS.toFixed(1) + " SS" }
+      : { names: [], detail: null };
+  } else {
+    const stats = computeStats(7, true);
+    const maxPts = stats.reduce((m, s) => Math.max(m, s.points), 0);
+    const mvpNames = stats.filter(s => s.points === maxPts).map(s => nameOf(s.slot));
+    mvp = { names: mvpNames, detail: maxPts + " pts" };
+  }
 
-  // Build chronological game list: rounds 1-7 (each has c1, c2), then champ, cons.
+  // Build chronological game list: regular rounds (each has c1, c2), then champ, cons.
   const games = [];
+  const c1Tag = isStack ? "Court 1" : "South";
+  const c2Tag = isStack ? "Court 2" : "North";
   for (let r = 0; r < state.rounds.length; r++) {
     const round = state.rounds[r];
-    games.push({ ...round.court1, label: "R" + (r + 1) + " South" });
-    games.push({ ...round.court2, label: "R" + (r + 1) + " North" });
+    games.push({ ...round.court1, label: "R" + (r + 1) + " " + c1Tag });
+    games.push({ ...round.court2, label: "R" + (r + 1) + " " + c2Tag });
   }
   if (state.finals) {
     games.push({ ...state.finals.championship, label: "Championship" });
@@ -1928,7 +2664,101 @@ function computeAwards() {
     ? { names: streakSlots.map(nameOf), detail: maxStreak + " in a row" }
     : { names: [], detail: null };
 
-  return { mvp, biggestWin, closestGame, hotStreak };
+  // Climber — most courtClimbs (Stack only).
+  // Anchor  — most gamesOnCourt1 (Stack only).
+  let climber = { names: [], detail: null };
+  let anchor  = { names: [], detail: null };
+  if (isStack) {
+    const ss = computeStackStats(state.rounds.length);
+    const maxClimbs = ss.reduce((m, s) => Math.max(m, s.courtClimbs), 0);
+    if (maxClimbs > 0) {
+      const c = ss.filter(s => s.courtClimbs === maxClimbs);
+      climber = { names: c.map(s => nameOf(s.slot)), detail: maxClimbs + " climb" + (maxClimbs > 1 ? "s" : "") };
+    }
+    const maxC1 = ss.reduce((m, s) => Math.max(m, s.gamesOnCourt1), 0);
+    if (maxC1 > 0) {
+      const a = ss.filter(s => s.gamesOnCourt1 === maxC1);
+      anchor = { names: a.map(s => nameOf(s.slot)), detail: maxC1 + " on Court 1" };
+    }
+  }
+
+  // Closer — best W-L in 1-point games (both formats). Hidden if no 1-pt games.
+  // "Best" = most wins, tiebreak fewest losses; ties listed.
+  const opg = new Map();
+  for (let s = 1; s <= 8; s++) opg.set(s, { wins: 0, losses: 0 });
+  let anyOPG = false;
+  for (const g of decided) {
+    if (Math.abs(g.score1 - g.score2) !== 1) continue;
+    anyOPG = true;
+    const t1Won = g.score1 > g.score2;
+    for (const slot of g.team1) {
+      if (t1Won) opg.get(slot).wins++; else opg.get(slot).losses++;
+    }
+    for (const slot of g.team2) {
+      if (!t1Won) opg.get(slot).wins++; else opg.get(slot).losses++;
+    }
+  }
+  let closer = { names: [], detail: null };
+  if (anyOPG) {
+    const candidates = [...opg.entries()]
+      .map(([slot, v]) => ({ slot, ...v }))
+      .filter(c => c.wins > 0);
+    if (candidates.length) {
+      candidates.sort((a, b) => {
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        return a.losses - b.losses;
+      });
+      const top = candidates[0];
+      const tied = candidates.filter(c => c.wins === top.wins && c.losses === top.losses);
+      closer = {
+        names: tied.map(c => nameOf(c.slot)),
+        detail: top.wins + "–" + top.losses + " in 1-pt games",
+      };
+    }
+  }
+
+  // Best Duo — partner pair with highest win rate together (min 1 win).
+  // Win-rate ties broken by aggregate point differential across their games together.
+  const pairKey = (a, b) => a < b ? a + "-" + b : b + "-" + a;
+  const duos = new Map();
+  for (const g of decided) {
+    for (const teamKey of ["team1", "team2"]) {
+      const team = g[teamKey];
+      const pts = teamKey === "team1" ? g.score1 : g.score2;
+      const ag  = teamKey === "team1" ? g.score2 : g.score1;
+      const won = pts > ag;
+      const k = pairKey(team[0], team[1]);
+      if (!duos.has(k)) duos.set(k, {
+        slots: [team[0], team[1]].sort((a,b)=>a-b),
+        games: 0, wins: 0, losses: 0, diff: 0,
+      });
+      const e = duos.get(k);
+      e.games++;
+      if (won) e.wins++; else e.losses++;
+      e.diff += (pts - ag);
+    }
+  }
+  let bestDuo = { names: [], detail: null };
+  const eligibleDuos = [...duos.values()].filter(e => e.wins >= 1);
+  if (eligibleDuos.length) {
+    eligibleDuos.sort((a, b) => {
+      const wrA = a.wins / a.games;
+      const wrB = b.wins / b.games;
+      if (wrB !== wrA) return wrB - wrA;
+      return b.diff - a.diff;
+    });
+    const top = eligibleDuos[0];
+    const topRate = top.wins / top.games;
+    const tied = eligibleDuos.filter(e =>
+      (e.wins / e.games) === topRate && e.diff === top.diff
+    );
+    bestDuo = {
+      names: tied.map(e => teamName(e.slots)),
+      detail: top.wins + "–" + top.losses + " (" + Math.round(topRate * 100) + "%)",
+    };
+  }
+
+  return { mvp, biggestWin, closestGame, hotStreak, climber, anchor, closer, bestDuo };
 }
 
 function renderAwardsStrip() {
@@ -1952,6 +2782,16 @@ function renderAwardsStrip() {
   wrap.appendChild(chip("💥 BIGGEST WIN", a.biggestWin, false));
   wrap.appendChild(chip("🤏 CLOSEST GAME", a.closestGame, false));
   wrap.appendChild(chip("🔥 HOT STREAK", a.hotStreak, true)); // inline detail
+  if (state.format === "stack") {
+    wrap.appendChild(chip("🧗 CLIMBER", a.climber, true));
+    wrap.appendChild(chip("⚓ ANCHOR", a.anchor, true));
+  }
+  if (a.closer.names.length) {
+    wrap.appendChild(chip("🎯 CLOSER", a.closer, true));
+  }
+  if (a.bestDuo.names.length) {
+    wrap.appendChild(chip("🤝 BEST DUO", a.bestDuo, true));
+  }
   return wrap;
 }
 
@@ -2048,37 +2888,74 @@ function renderDoneScreen() {
   );
   finalCard.appendChild(head);
 
-  const allStats = computeStats(7, true);
+  const isStack = state.format === "stack";
   const table = el("table", { class: "standings", style: "margin-top: 10px;" });
-  const colgroup = el("colgroup", null,
-    el("col", { class: "c-rank" }),
-    el("col", { class: "c-name" }),
-    el("col", { class: "c-pts" }),
-    el("col", { class: "c-w" }),
-    el("col", { class: "c-diff" }),
-  );
-  table.appendChild(colgroup);
-  table.appendChild(el("thead", null, el("tr", null,
-    el("th", { style: "text-align: center;" }, "#"),
-    el("th", null, "Player"),
-    el("th", { class: "num" }, "PTS"),
-    el("th", { class: "num" }, "W"),
-    el("th", { class: "num" }, "+/–"),
-  )));
-  const tbody = el("tbody");
-  ranking.slice(3).forEach((rs, i) => {
-    const tableRank = i + 3; // 0-indexed → ranks 4..8 via rankCell(i+3) which renders digits
-    const s = allStats.find(x => x.slot === rs.slot);
-    tbody.appendChild(el("tr", { class: "r" + (tableRank + 1) },
-      rankCell(tableRank),
-      el("td", { class: "name" }, s.name),
-      el("td", { class: "num" }, "" + s.points),
-      el("td", { class: "num" }, "" + s.wins),
-      el("td", { class: "num", style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : "") },
-        (s.diff > 0 ? "+" : "") + s.diff),
-    ));
-  });
-  table.appendChild(tbody);
+  if (isStack) {
+    const stackStats = computeStackStats(state.rounds.length);
+    const bySlot = new Map(stackStats.map(s => [s.slot, s]));
+    const colgroup = el("colgroup", null,
+      el("col", { class: "c-rank" }),
+      el("col", { class: "c-name" }),
+      el("col", { class: "c-pts" }),
+      el("col", { class: "c-w" }),
+      el("col", { class: "c-stack-extra" }),
+      el("col", { class: "c-stack-extra" }),
+    );
+    table.appendChild(colgroup);
+    table.appendChild(el("thead", null, el("tr", null,
+      el("th", { style: "text-align: center;" }, "#"),
+      el("th", null, "Player"),
+      el("th", { class: "num", title: "Stack Score" }, "SS"),
+      el("th", { class: "num", title: "Wins–Losses" }, "W–L"),
+      el("th", { class: "num", title: "Court climbs" }, "🔼"),
+      el("th", { class: "num", title: "Games on Court 1" }, "⏱"),
+    )));
+    const tbody = el("tbody");
+    ranking.slice(3).forEach((rs, i) => {
+      const tableRank = i + 3;
+      const s = bySlot.get(rs.slot);
+      tbody.appendChild(el("tr", { class: "r" + (tableRank + 1) },
+        rankCell(tableRank),
+        el("td", { class: "name" }, s.name),
+        el("td", { class: "num" }, s.stackScore.toFixed(1)),
+        el("td", { class: "num" }, s.wins + "–" + s.losses),
+        el("td", { class: "num" }, "" + s.courtClimbs),
+        el("td", { class: "num" }, "" + s.gamesOnCourt1),
+      ));
+    });
+    table.appendChild(tbody);
+  } else {
+    const allStats = computeStats(7, true);
+    const colgroup = el("colgroup", null,
+      el("col", { class: "c-rank" }),
+      el("col", { class: "c-name" }),
+      el("col", { class: "c-pts" }),
+      el("col", { class: "c-w" }),
+      el("col", { class: "c-diff" }),
+    );
+    table.appendChild(colgroup);
+    table.appendChild(el("thead", null, el("tr", null,
+      el("th", { style: "text-align: center;" }, "#"),
+      el("th", null, "Player"),
+      el("th", { class: "num" }, "PTS"),
+      el("th", { class: "num" }, "W"),
+      el("th", { class: "num" }, "+/–"),
+    )));
+    const tbody = el("tbody");
+    ranking.slice(3).forEach((rs, i) => {
+      const tableRank = i + 3;
+      const s = allStats.find(x => x.slot === rs.slot);
+      tbody.appendChild(el("tr", { class: "r" + (tableRank + 1) },
+        rankCell(tableRank),
+        el("td", { class: "name" }, s.name),
+        el("td", { class: "num" }, "" + s.points),
+        el("td", { class: "num" }, "" + s.wins),
+        el("td", { class: "num", style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : "") },
+          (s.diff > 0 ? "+" : "") + s.diff),
+      ));
+    });
+    table.appendChild(tbody);
+  }
   finalCard.appendChild(table);
   wrap.appendChild(finalCard);
 
@@ -2124,11 +3001,14 @@ function openScheduleModal() {
     return row;
   }
 
+  const isStack = state.format === "stack";
+  const c1Tag = isStack ? "Court 1" : "South";
+  const c2Tag = isStack ? "Court 2" : "North";
   state.rounds.forEach(r => {
     const block = el("div", { class: "schedule-round" });
     block.appendChild(el("div", { class: "schedule-round-title" }, "Round " + r.round));
-    block.appendChild(gameRow(r.court1, "South", "c1"));
-    block.appendChild(gameRow(r.court2, "North", "c2"));
+    block.appendChild(gameRow(r.court1, c1Tag, "c1"));
+    block.appendChild(gameRow(r.court2, c2Tag, "c2"));
     list.appendChild(block);
   });
 
@@ -2156,11 +3036,25 @@ function openHowItWorksModal() {
 
   const modal = el("div", { class: "modal" });
   modal.appendChild(el("h2", null, "How this works"));
-  const body = el("div", { class: "rules-body", style: "padding: 0; margin-bottom: 16px;" });
-  body.appendChild(renderRulesUl());
-  modal.appendChild(body);
+
+  // Show both formats. The active format is expanded; the other is collapsed.
+  const sections = [
+    { id: "rr",    label: "Round Robin", bullets: RULES_RR },
+    { id: "stack", label: "Stack Format", bullets: RULES_STACK },
+  ];
+  for (const s of sections) {
+    const isActive = state.format === s.id;
+    const det = el("details", { class: "rules", style: "margin-bottom: 10px;" });
+    if (isActive) det.setAttribute("open", "");
+    det.appendChild(el("summary", null, s.label));
+    const body = el("div", { class: "rules-body" });
+    body.appendChild(renderRulesUl(s.bullets));
+    det.appendChild(body);
+    modal.appendChild(det);
+  }
+
   modal.appendChild(el("button", {
-    style: "width: 100%;",
+    style: "width: 100%; margin-top: 12px;",
     onclick: close,
   }, "Close"));
   bg.appendChild(modal);
@@ -2226,6 +3120,31 @@ function openSettings() {
     });
     winScoreRow.appendChild(winSelect);
     modal.appendChild(winScoreRow);
+
+    if (state.format === "stack") {
+      const noGamesPlayed = !state.rounds.some(r =>
+        isGameComplete(r.court1) || isGameComplete(r.court2)
+      );
+      const roundsRow = el("div", { class: "settings-row" });
+      roundsRow.appendChild(el("label", null, "Stack rounds"));
+      const sel = el("select");
+      [4, 6, 8, 10, 12].forEach(v => {
+        const opt = el("option", { value: String(v) }, String(v));
+        if (state.stackRounds === v) opt.setAttribute("selected", "selected");
+        sel.appendChild(opt);
+      });
+      if (!noGamesPlayed) sel.disabled = true;
+      sel.addEventListener("change", () => {
+        state.stackRounds = parseInt(sel.value, 10);
+        save();
+      });
+      roundsRow.appendChild(sel);
+      modal.appendChild(roundsRow);
+      if (!noGamesPlayed) {
+        modal.appendChild(el("p", { class: "muted", style: "font-size: 11px; margin: 0 0 6px;" },
+          "Locked once games begin."));
+      }
+    }
   }
 
   const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { close(); render(); } }, "Done");
@@ -2236,6 +3155,35 @@ function openSettings() {
     style: "border-top: 1px solid var(--border); margin: 16px 0 8px;"
   }));
 
+  // Switch format — confirms-and-wipes if a tournament is in progress.
+  const otherFormatLabel = state.format === "stack" ? "Round Robin" : "Stack Format";
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-top: 8px;",
+    onclick: () => {
+      const newFormat = state.format === "stack" ? "rr" : "stack";
+      const inSetup = state.phase === "setup";
+      const msg = inSetup
+        ? "Switch to " + otherFormatLabel + "?"
+        : "Switch to " + otherFormatLabel + "? This wipes the current tournament (names are kept).";
+      if (!confirm(msg)) return;
+      if (inSetup) {
+        state.format = newFormat;
+      } else {
+        const keptNames = state.rawNames.slice();
+        const keptWinScore = state.winScore;
+        const keptStackRounds = state.stackRounds;
+        state = newState();
+        state.rawNames = keptNames;
+        state.winScore = keptWinScore;
+        state.format = newFormat;
+        state.stackRounds = keptStackRounds;
+      }
+      save();
+      close();
+      render();
+    },
+  }, "Switch to " + otherFormatLabel));
+
   // Reset Tournament — visible only outside the setup phase
   if (state.phase !== "setup") {
     modal.appendChild(el("button", {
@@ -2244,11 +3192,15 @@ function openSettings() {
         if (!confirm("Reset scores and re-shuffle the schedule? Your 8 names will be kept.")) return;
         const keptNames = state.slots.slice();
         const keptWinScore = state.winScore;
+        const keptFormat = state.format;
+        const keptStackRounds = state.stackRounds;
         state = newState();
+        state.format = keptFormat;
+        state.stackRounds = keptStackRounds;
         state.rawNames = keptNames.slice();
         state.slots = shuffle(keptNames);
-        state.rounds = generateRounds();
         state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
+        state.rounds = keptFormat === "stack" ? [assignInitialStackCourts()] : generateRounds();
         state.winScore = keptWinScore;
         state.phase = "playing";
         state.currentRound = 1;
