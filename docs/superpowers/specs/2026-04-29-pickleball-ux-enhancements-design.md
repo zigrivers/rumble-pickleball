@@ -111,16 +111,18 @@ When the round becomes complete (both courts have valid scores):
 - The primary "Round N+1 →" / "Build Finals →" button gets a CSS-keyframe gold shimmer (1.5 s, fires once).
 - A toast `🎉 Round N complete!` slides into a fixed-position container at the top of the page; auto-dismisses after 2500 ms.
 
-**Tracking (refresh-safe)**: triggered from the playing-screen refresh callback (the same callback that updates the next-round button and standings). On each refresh, if `isRoundComplete(currentRound)` is true *and* `state.notifiedRounds` does not include `state.currentRound`, then:
+**Tracking (refresh-safe)**: a single gate function `maybeFireRoundComplete()` checks: if `isRoundComplete(state.currentRound)` is true *and* `state.notifiedRounds` does not include `state.currentRound`, then:
 
 1. Push the current round number into `state.notifiedRounds`.
 2. `save()`.
 3. Fire toast + shimmer.
 
-Because the gate is persisted, this works correctly across refreshes:
-- If the user enters the final score and immediately refreshes, the next render after reload sees a complete round whose number is not yet in `notifiedRounds`, fires the moment, then persists. Refreshing *again* sees the round already notified and does not refire.
-- Re-editing scores in an already-complete round does not refire.
-- Reset Tournament and Clear All clear `notifiedRounds` so a re-shuffled tournament gets a fresh round-complete moment per round.
+This gate is invoked from **two places**:
+
+1. **At the end of `renderPlaying()`**, after the DOM is built. This catches the refresh case: if the user enters the final score and immediately reloads, the next render after reload sees a complete round whose number is not yet in `notifiedRounds`, fires the moment, then persists.
+2. **Inside the score-input refresh callback**, after each input. This catches the live-entry case: when the score that completes the round is typed, the moment fires immediately without waiting for a re-render of the whole screen.
+
+Because both paths consult the same persisted `notifiedRounds` gate, the moment is guaranteed to fire exactly once per round per tournament regardless of refresh timing or how the round got completed. Reset Tournament and Clear All clear `notifiedRounds` so a re-shuffled tournament gets a fresh round-complete moment per round.
 
 ### 4.3 Finals screen
 
@@ -174,9 +176,20 @@ Each step has the player's name above it (gold colored for rank 1) and total poi
 
 The standings table remains for ranks 4–8, rendered below the podium.
 
-**Ranking source (podium + ranks 4–8 table)**: order is the canonical 7-round ranking, i.e. `rankPlayers(7)` — the same ordering used to seed the finals matchups. This keeps the medal awards consistent with the "champion is the team that won the championship game; the season ranking is what got you there" narrative. The numeric stats displayed on each podium step and on each table row (PTS, W, +/−) **include** finals-game contributions (`computeStats(7, includeFinals=true)`) so the totals match what the user sees building during the finals. The order does not change based on the finals; the numbers grow.
+**Ranking source (podium + ranks 4–8 table) — tournament-outcome order, not season order**: the player whose team won the championship game must appear on top of a screen titled "Champions." The Final Standings ordering therefore uses *tiers based on tournament outcome*, with the season ranking (`rankPlayers(7)`) breaking ordering inside each tier:
 
-**Tie handling**: `rankPlayers` already produces a deterministic total ordering — total points → wins → point differential → head-to-head → per-tournament random tiebreak (`state.tiebreakRandom`). The random tiebreak ensures every tournament has a unique ranking, so the podium always has three distinct players. No ambiguous-podium fallback is needed.
+- **Tier 1 — Championship winners** (the 2 players of the team that won the Championship game). Ordered within the tier by season rank.
+- **Tier 2 — Championship losers** (the other 2 players in the Championship game).
+- **Tier 3 — Consolation winners** (the 2 players of the team that won the Consolation game).
+- **Tier 4 — Consolation losers** (the other 2 players in the Consolation game).
+
+This produces a deterministic 1-through-8 ordering where ranks 1–2 are the champions, 3–4 the runners-up, 5–6 the consolation winners, 7–8 the consolation losers. The podium shows ranks 1, 2, 3 from this list (gold = champion #1 by season rank, silver = champion #2, bronze = better runner-up by season rank).
+
+**Numeric stats** (PTS, W, +/−) shown on each podium step and each table row come from `computeStats(7, includeFinals=true)` so totals reflect every game played including finals. Only the *order* changes from earlier sections — the *numbers* are total cumulative.
+
+**Tied finals games** (a Championship or Consolation game entered with equal scores): treat both pairs as occupying the same tier, then sort all four players by season rank within that combined tier. (In practice the existing UI surfaces a "Tied — enter a tiebreaker" message, so this is a defensive fallback rather than expected behavior.)
+
+**Helper to add**: `finalRanking()` returns the 8-element tier-ordered list, used by both the podium and the standings table on the Champions screen. Pure function over `state.finals` + `rankPlayers(7)`.
 
 #### Tournament-awards strip
 
@@ -212,20 +225,23 @@ Reorganized for clarity. Top-to-bottom:
 2. **Edit Names** (existing functionality, unchanged).
 3. **Win score** dropdown — `<select>` with 11 / 15 / 21. Bound to `state.winScore`. Drives the tap-winner pill.
 4. **View Full Schedule** button — visible only when `state.phase !== "setup"`. (During setup there is no `state.rounds`, no slot assignment, and no court flips — there is nothing meaningful to show.) When visible, opens a sub-modal listing all 7 rounds. Each round row shows both court matchups labeled South/North and, if scored, the score. Read-only.
+
+When `state.phase === "finals"` or `"done"`, the modal also appends a "Finals" section below the rounds with the Championship matchup and (if scored) score, plus the Consolation matchup and score. Same read-only style.
 5. *(Divider)*
-6. **Reset Tournament** *(yellow secondary)* — confirm dialog: "Reset scores and re-shuffle the schedule? Your 8 names will be kept." On confirm:
-   - Source the names to preserve from `state.slots` if `state.phase !== "setup"` (covers any in-tournament name edits the user made via Edit Names), otherwise from `state.rawNames`.
-   - Replace state with `newState()`, then write the preserved names back into both `rawNames` and `slots`.
-   - Re-shuffle slot assignment via the same path used by Start Tournament (so a fresh `state.rounds` with a new court-flip is produced).
-   - Reset `awardsShown` to `false` and `notifiedRounds` to `[]` (these are part of `newState()` and so are reset automatically).
-   - Returns to round 1.
-7. **Clear All** *(red danger)* — confirm dialog: "Clear all data including names? This can't be undone." On confirm: replaces state with `newState()` (which has `awardsShown = false` and `notifiedRounds = []`), returns to Setup screen.
+6. **Reset Tournament** *(yellow secondary)* — visible only when `state.phase !== "setup"` (there is no tournament to reset during setup; users can simply edit name fields directly). Confirm dialog: "Reset scores and re-shuffle the schedule? Your 8 names will be kept." On confirm:
+   - Capture the user-set values to preserve: the player names from `state.slots` (covers any in-tournament name edits via Edit Names) and `state.winScore` (a configuration preference, not tournament data).
+   - Replace state with `newState()`, then write the preserved names back into both `rawNames` and `slots`, and write `winScore` back.
+   - Re-shuffle slot assignment via the same path used by Start Tournament (fresh `state.rounds` with a new court-flip and a new `tiebreakRandom`).
+   - `awardsShown` and `notifiedRounds` are reset to their defaults via `newState()` so the new tournament gets fresh confetti and per-round notifications.
+   - Returns to round 1 (`phase = "playing"`).
+7. **Clear All** *(red danger)* — visible in all phases. Confirm dialog: "Clear all data including names? This can't be undone." On confirm: replaces state with `newState()` (defaults across the board, including `awardsShown = false`, `notifiedRounds = []`, `winScore = 11`), returns to Setup screen.
 
 ## 5. Acceptance criteria
 
 **Schedule + ranking integrity**
 - The 7-round schedule continues to cover all 28 player pairs exactly once (regression check).
-- Final-standings table and podium order both come from `rankPlayers(7)`; numbers shown include finals games.
+- Final-standings table and podium order use the tournament-outcome tier ranking (`finalRanking()`), not the raw season ranking. The Championship-winning team's two players occupy ranks 1 and 2; the Championship-losing team occupies 3 and 4; Consolation winners 5–6; Consolation losers 7–8. Within each tier, season ranking (`rankPlayers(7)`) breaks order.
+- Numbers shown (PTS, W, +/−) include finals games via `computeStats(7, includeFinals=true)`.
 
 **Score entry + round screen**
 - Live refresh during score entry preserves input focus (regression check from prior session).
@@ -234,7 +250,7 @@ Reorganized for clarity. Top-to-bottom:
 - Partner-preview chip color matches the court the partnership will play on **as resolved in `state.rounds[currentRound]`** (post court-flip), not the static `SCHEDULE` array.
 
 **Round-complete + confetti gating**
-- Round-complete toast/shimmer fires exactly once per round per tournament. Refreshing the page immediately after entering the final score does not lose the moment; refreshing after it has fired does not refire it.
+- Round-complete toast/shimmer fires exactly once per round per tournament. Refreshing the page immediately after entering the final score does not lose the moment (gate runs on initial render of the playing screen as well as during score-input refreshes); refreshing after it has fired does not refire it.
 - Confetti fires exactly once per tournament's first arrival at the Champions screen, gated by `state.awardsShown`.
 - Reset Tournament and Clear All both reset `awardsShown` and `notifiedRounds` so a re-shuffled tournament gets fresh confetti and fresh per-round notifications.
 
@@ -243,9 +259,10 @@ Reorganized for clarity. Top-to-bottom:
 - Paste-8-names rejects any input that doesn't yield exactly 8 unique trimmed names (case-insensitive uniqueness, matching the existing setup gate).
 
 **Settings**
-- "Reset Tournament" preserves the *currently displayed* player names: from `state.slots` post-start, from `state.rawNames` during setup. In-tournament name edits via "Edit Names" are not lost.
-- "Clear All" wipes everything, returns to Setup.
-- "View Full Schedule" is hidden during the setup phase.
+- "Reset Tournament" is hidden during the setup phase. When visible, it preserves player names from `state.slots` and the current `state.winScore` configuration; in-tournament name edits via "Edit Names" are not lost; the schedule is freshly re-shuffled with a new `tiebreakRandom`.
+- "Clear All" wipes everything (including names and `winScore`), returns to Setup, and is visible in all phases.
+- "View Full Schedule" is hidden during the setup phase. During finals/done phases, it also appends the Championship and Consolation matchups (with scores when available) below the round-robin schedule.
+- The Win-score dropdown (11/15/21) updates `state.winScore` immediately and is reflected in the round-screen pill within one render.
 
 **Safety**
 - All player-name rendering uses `textContent` / `createTextNode` (verified by grep for `innerHTML` against name-bearing renderers — none should match for player-name interpolation).
@@ -277,12 +294,15 @@ All additions live in `pickleball.html`. New named helpers, roughly ordered:
 - `quickFillPill(game, scoreKey)` — renderer for the round-screen pill.
 - `runRoundCompleteMoment(round)` — toast + shimmer trigger.
 - `seedPill(rank)` — finals matchup pill renderer.
-- `renderPodium(top3)` — Champions podium.
+- `finalRanking()` — tournament-outcome tier-ordered list of all 8 players, used by both the podium and the ranks 4–8 standings table on the Champions screen.
+- `renderPodium(ranking)` — Champions podium.
 - `computeAwards()` — returns the four award objects.
 - `renderAwardsStrip(awards)` — Champions awards.
 - `runConfetti()` — Champions confetti animation.
-- `openScheduleModal()` — Settings full-schedule view.
+- `openScheduleModal()` — Settings full-schedule view (includes finals when applicable).
 - `openHowItWorksModal()` — Settings rules view.
+- `maybeFireRoundComplete()` — round-complete moment gate (called from render and from the score-input refresh).
+- `resetTournament()` — preserves names + winScore, re-shuffles.
 - `clearAll()` — full reset action.
 
 CSS additions are appended to the existing `<style>` block, organized by feature with section comments.
