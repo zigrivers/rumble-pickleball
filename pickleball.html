@@ -801,6 +801,51 @@ function runSelfTests() {
       "finalRanking tier order", { order, expected });
     state = saved;
   }
+  // Task 12a — computeAwards
+  {
+    const saved = state;
+    // Setup: every round-robin game is a 11-vs-1 blowout for team1, except court2
+    // which is 11-vs-9. Championship is 11-vs-9, Consolation 11-vs-9.
+    // Expected: Biggest Win is +10 (lots of ties — all team1 winners on c1).
+    // Closest Game: 11-9 across many games; all tied at diff=2 with winScore=11.
+    const rounds = SCHEDULE.map((rd, i) => ({
+      round: i + 1,
+      court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 1 },
+      court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
+    }));
+    state = {
+      phase: "done",
+      slots: ["A","B","C","D","E","F","G","H"],
+      rounds, currentRound: 7,
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+      finals: {
+        championship: { team1: [1,4], team2: [2,3], score1: 11, score2: 9 },
+        consolation:  { team1: [5,8], team2: [6,7], score1: 11, score2: 9 },
+      },
+      awardsShown: false, winScore: 11, notifiedRounds: [],
+    };
+    const a = computeAwards();
+    console.assert(a.mvp.names.length >= 1, "MVP has at least one name");
+    console.assert(a.biggestWin.names.every(n => n.includes("+10")),
+      "Biggest Win all +10", a.biggestWin);
+    console.assert(a.closestGame.names.every(n => n === "11–9"),
+      "Closest Game all 11–9", a.closestGame);
+    console.assert(a.hotStreak.detail && /in a row/.test(a.hotStreak.detail),
+      "Hot Streak detail", a.hotStreak);
+    // Single-winner sanity: rebuild with only ONE blowout game
+    const rounds2 = SCHEDULE.map((rd, i) => ({
+      round: i + 1,
+      court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 9 },
+      court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
+    }));
+    // Make round 1 court 1 a +10 blowout (the only one)
+    rounds2[0].court1.score1 = 11; rounds2[0].court1.score2 = 1;
+    state.rounds = rounds2;
+    const b = computeAwards();
+    console.assert(b.biggestWin.names.length === 1 && b.biggestWin.names[0].includes("+10"),
+      "Biggest Win single", b.biggestWin);
+    state = saved;
+  }
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -1673,6 +1718,113 @@ function renderScorecard(game) {
     el("div", { class: "sc-score" }, game.score1 + " – " + game.score2),
     el("div", { class: "sc-team right" + (win2 ? " win" : "") }, teamName(game.team2)),
   );
+}
+
+// Returns { mvp, biggestWin, closestGame, hotStreak }. Each award is
+// { names: string[], detail: string|null }. names is empty if no qualifying
+// entry; multiple names indicate ties.
+function computeAwards() {
+  const stats = computeStats(7, true);
+
+  // MVP — highest total points (all tied players named)
+  const maxPts = stats.reduce((m, s) => Math.max(m, s.points), 0);
+  const mvpNames = stats.filter(s => s.points === maxPts).map(s => nameOf(s.slot));
+  const mvp = { names: mvpNames, detail: maxPts + " pts" };
+
+  // Build chronological game list: rounds 1-7 (each has c1, c2), then champ, cons.
+  const games = [];
+  for (let r = 0; r < state.rounds.length; r++) {
+    const round = state.rounds[r];
+    games.push({ ...round.court1, label: "R" + (r + 1) + " South" });
+    games.push({ ...round.court2, label: "R" + (r + 1) + " North" });
+  }
+  if (state.finals) {
+    games.push({ ...state.finals.championship, label: "Championship" });
+    games.push({ ...state.finals.consolation,  label: "Consolation" });
+  }
+  // Two views of the game list:
+  //   completed  — every game that has both scores (ties included). Used for Hot Streak so a tied game properly resets streaks.
+  //   decided    — completed AND non-tied. Used for Biggest Win / Closest Game.
+  const completed = games.filter(g => isGameComplete(g));
+  const decided = completed.filter(g => g.score1 !== g.score2);
+
+  // For each decided game, derive the winner-side summary.
+  const summarized = decided.map(g => {
+    const team1Won = g.score1 > g.score2;
+    const winTeam = team1Won ? g.team1 : g.team2;
+    const winScore = team1Won ? g.score1 : g.score2;
+    const loseScore = team1Won ? g.score2 : g.score1;
+    return {
+      diff: winScore - loseScore,
+      winTeam,
+      winScore,
+      loseScore,
+      label: g.label,
+    };
+  });
+
+  // Biggest Win — largest diff. Tied diffs all win; report all winning teams.
+  let biggestWin = { names: [], detail: null };
+  if (summarized.length) {
+    const maxDiff = Math.max(...summarized.map(s => s.diff));
+    const winners = summarized.filter(s => s.diff === maxDiff);
+    biggestWin = {
+      names: winners.map(w => teamName(w.winTeam) + " +" + w.diff),
+      detail: winners.map(w => w.winScore + "–" + w.loseScore + " · " + w.label).join(" / "),
+    };
+  }
+
+  // Closest Game — smallest diff; tiebreak by descending winning score.
+  // Multiple games matching the best (diff, -winScore) pair are all reported.
+  let closestGame = { names: [], detail: null };
+  if (summarized.length) {
+    const minDiff = Math.min(...summarized.map(s => s.diff));
+    const closestSet = summarized.filter(s => s.diff === minDiff);
+    const maxWinScore = Math.max(...closestSet.map(s => s.winScore));
+    const tied = closestSet.filter(s => s.winScore === maxWinScore);
+    closestGame = {
+      names: tied.map(t => t.winScore + "–" + t.loseScore),
+      detail: tied.map(t => t.label).join(" / "),
+    };
+  }
+
+  // Hot Streak — longest consecutive-wins run for a single player.
+  // Iterates every completed game (including ties) so a tied game resets
+  // streaks for all four involved players.
+  const streaks = new Map(); // slot -> current run
+  const best = new Map();    // slot -> max run seen
+  for (const g of completed) {
+    if (g.score1 === g.score2) {
+      for (const slot of [...g.team1, ...g.team2]) {
+        best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot) || 0));
+        streaks.set(slot, 0);
+      }
+      continue;
+    }
+    const team1Won = g.score1 > g.score2;
+    const winners = team1Won ? g.team1 : g.team2;
+    const losers = team1Won ? g.team2 : g.team1;
+    for (const slot of winners) {
+      streaks.set(slot, (streaks.get(slot) || 0) + 1);
+      best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot)));
+    }
+    for (const slot of losers) {
+      best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot) || 0));
+      streaks.set(slot, 0);
+    }
+  }
+  for (const [slot, cur] of streaks) {
+    best.set(slot, Math.max(best.get(slot) || 0, cur));
+  }
+  const maxStreak = best.size ? Math.max(...best.values()) : 0;
+  const streakSlots = maxStreak > 0
+    ? [...best.entries()].filter(([, v]) => v === maxStreak).map(([k]) => k)
+    : [];
+  const hotStreak = streakSlots.length
+    ? { names: streakSlots.map(nameOf), detail: maxStreak + " in a row" }
+    : { names: [], detail: null };
+
+  return { mvp, biggestWin, closestGame, hotStreak };
 }
 
 function renderDoneScreen() {
