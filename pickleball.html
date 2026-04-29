@@ -627,6 +627,19 @@
     50%  { box-shadow: 0 0 24px 6px rgba(251, 191, 36, 0.5); }
     100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
   }
+  /* Finals seed pills */
+  .seed-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-right: 4px;
+    vertical-align: middle;
+    line-height: 1.4;
+  }
+  .seed-pill.gold { background: rgba(251, 191, 36, 0.18); color: var(--gold); }
+  .seed-pill.silver { background: rgba(203, 213, 225, 0.15); color: var(--silver); }
 </style>
 </head>
 <body>
@@ -956,6 +969,11 @@ function maybeFireRoundComplete(primaryBtn) {
   }
 }
 
+// rank: 1-based seed number; kind: "gold" (championship) or "silver" (consolation)
+function seedPill(rank, kind) {
+  return el("span", { class: "seed-pill " + kind }, "#" + rank);
+}
+
 // ====================== rendering ======================
 function el(tag, props, ...children) {
   const e = document.createElement(tag);
@@ -1212,8 +1230,9 @@ function renderPlaying() {
 function renderRoundCourts(round, isFinals, refreshes) {
   const wrap = el("div", { class: "court-row" });
   if (isFinals) {
-    wrap.appendChild(renderCourtCard(round.championship, "champ", refreshes));
-    wrap.appendChild(renderCourtCard(round.consolation,  "cons",  refreshes));
+    const seeds = seedRankBySlot();
+    wrap.appendChild(renderCourtCard(round.championship, "champ", refreshes, { kind: "gold", seeds }));
+    wrap.appendChild(renderCourtCard(round.consolation,  "cons",  refreshes, { kind: "silver", seeds }));
   } else {
     wrap.appendChild(renderCourtCard(round.court1, 1, refreshes));
     wrap.appendChild(renderCourtCard(round.court2, 2, refreshes));
@@ -1221,7 +1240,7 @@ function renderRoundCourts(round, isFinals, refreshes) {
   return wrap;
 }
 
-function renderCourtCard(game, courtKey, refreshes) {
+function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   let className = "court-card";
   let labelText = "";
   if (courtKey === "champ")     { className += " gold";   labelText = "🏆 CHAMPIONSHIP"; }
@@ -1233,8 +1252,8 @@ function renderCourtCard(game, courtKey, refreshes) {
   card.appendChild(el("div", { class: "court-label" }, labelText));
 
   const matchup = el("div", { class: "matchup" });
-  const team1Wrap = renderTeamRow(game, "team1", "score1", "score2", refreshes);
-  const team2Wrap = renderTeamRow(game, "team2", "score2", "score1", refreshes);
+  const team1Wrap = renderTeamRow(game, "team1", "score1", "score2", refreshes, seedInfo);
+  const team2Wrap = renderTeamRow(game, "team2", "score2", "score1", refreshes, seedInfo);
   matchup.appendChild(team1Wrap.node);
   matchup.appendChild(team2Wrap.node);
   card.appendChild(matchup);
@@ -1261,10 +1280,22 @@ function renderCourtCard(game, courtKey, refreshes) {
   return card;
 }
 
-function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes) {
+function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, seedInfo) {
   const team = game[teamKey];
   const node = el("div", { class: "team-row" });
-  node.appendChild(el("div", { class: "team-name" }, nameOf(team[0]) + " & " + nameOf(team[1])));
+  if (seedInfo) {
+    const kind = seedInfo.kind; // "gold" or "silver"
+    const seeds = seedInfo.seeds; // Map<slot, rank>
+    const nameNode = el("div", { class: "team-name" });
+    nameNode.appendChild(seedPill(seeds.get(team[0]), kind));
+    nameNode.appendChild(document.createTextNode(nameOf(team[0])));
+    nameNode.appendChild(document.createTextNode(" & "));
+    nameNode.appendChild(seedPill(seeds.get(team[1]), kind));
+    nameNode.appendChild(document.createTextNode(nameOf(team[1])));
+    node.appendChild(nameNode);
+  } else {
+    node.appendChild(el("div", { class: "team-name" }, nameOf(team[0]) + " & " + nameOf(team[1])));
+  }
 
   // Quick-fill pill: shown only when both scores are null.
   const pillSlot = el("div");  // takes the auto column even when empty
@@ -1419,6 +1450,14 @@ function renderHistory(currentRound) {
   });
   details.appendChild(body);
   return details;
+}
+
+// For the current finals, returns a Map<slot, rank> using rankPlayers(7) order.
+function seedRankBySlot() {
+  const ranked = rankPlayers(7);
+  const m = new Map();
+  ranked.forEach((s, i) => m.set(s.slot, i + 1));
+  return m;
 }
 
 // ---------- finals screen ----------
