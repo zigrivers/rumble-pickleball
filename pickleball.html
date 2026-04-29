@@ -1,0 +1,1145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f1419">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%F0%9F%8F%93%3C/text%3E%3C/svg%3E">
+<title>Pickleball Tourney</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1a2028;
+    --panel-2: #232b36;
+    --border: #2e3946;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #fbbf24;
+    --good: #10b981;
+    --bad: #ef4444;
+    --court1: #38bdf8;
+    --court2: #a78bfa;
+    --gold: #fbbf24;
+    --silver: #cbd5e1;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 18px;
+    line-height: 1.4;
+    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+  }
+  .app {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 14px max(14px, env(safe-area-inset-left)) 80px max(14px, env(safe-area-inset-right));
+  }
+  header.top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 4px 0 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .title { font-size: 22px; font-weight: 700; }
+  .progress {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(251, 191, 36, 0.12);
+    padding: 8px 14px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  button {
+    font-family: inherit;
+    font-size: 18px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    min-height: 60px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary {
+    background: var(--accent);
+    color: #1a1207;
+    border-color: var(--accent);
+    font-size: 22px;
+    padding: 18px 26px;
+  }
+  button.primary:disabled {
+    background: var(--panel);
+    color: var(--muted);
+    border-color: var(--border);
+  }
+  button.danger { background: var(--bad); color: white; border-color: var(--bad); }
+  button.ghost { background: transparent; }
+  .icon-btn {
+    width: 60px; min-width: 60px; height: 60px; min-height: 60px;
+    padding: 0; font-size: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .court-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  @media (max-width: 720px) {
+    .court-row { grid-template-columns: 1fr; }
+  }
+  .court-card {
+    border-radius: 18px;
+    padding: 16px;
+    background: var(--panel);
+    border: 2px solid var(--border);
+    border-top-width: 6px;
+  }
+  .court-card.c1 { border-top-color: var(--court1); }
+  .court-card.c2 { border-top-color: var(--court2); }
+  .court-card.gold { border-top-color: var(--gold); }
+  .court-card.silver { border-top-color: var(--silver); }
+  .court-label {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .court-card.c1 .court-label { color: var(--court1); }
+  .court-card.c2 .court-label { color: var(--court2); }
+  .court-card.gold .court-label { color: var(--gold); }
+  .court-card.silver .court-label { color: var(--silver); }
+  .matchup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .team-row {
+    display: grid;
+    grid-template-columns: 1fr 110px;
+    gap: 12px;
+    align-items: center;
+    background: var(--panel-2);
+    border-radius: 12px;
+    padding: 10px 12px;
+    border-left: 4px solid transparent;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .team-row.winner {
+    border-left-color: var(--good);
+    background: rgba(16, 185, 129, 0.08);
+  }
+  .team-name {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .team-row.winner .team-name { color: var(--good); }
+  .score-input {
+    width: 100%;
+    font-size: 44px;
+    font-weight: 800;
+    text-align: center;
+    border: 2px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 4px;
+    height: 70px;
+    -moz-appearance: textfield;
+    appearance: textfield;
+    font-variant-numeric: tabular-nums;
+    font-family: inherit;
+  }
+  .score-input::-webkit-outer-spin-button,
+  .score-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .score-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .score-input.winner {
+    border-color: var(--good);
+    color: var(--good);
+    background: rgba(16, 185, 129, 0.08);
+  }
+  .name-input {
+    width: 100%;
+    font-size: 22px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    border-radius: 12px;
+    min-height: 60px;
+    font-family: inherit;
+  }
+  .name-input:focus { outline: none; border-color: var(--accent); }
+  .court-summary {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .court-summary.winmsg { color: var(--good); font-weight: 700; }
+  .court-summary.tiemsg { color: var(--accent); font-weight: 700; }
+
+  table.standings { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.standings col.c-rank { width: 56px; }
+  table.standings col.c-pts,
+  table.standings col.c-w,
+  table.standings col.c-diff { width: 72px; }
+  table.standings th, table.standings td {
+    text-align: left;
+    padding: 10px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.standings th {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  table.standings td.num,
+  table.standings th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.standings td.num { font-size: 20px; font-weight: 700; }
+  table.standings td.name { font-size: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.standings tr.r1 td.name { color: var(--gold); }
+  table.standings .rank {
+    text-align: center;
+    padding: 6px;
+  }
+  .rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 18px;
+    background: var(--panel-2);
+    color: var(--muted);
+  }
+  .rank-badge.medal {
+    font-size: 24px;
+    background: transparent;
+  }
+  .partner-badge {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 12px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .partner-badge.done { color: var(--good); background: rgba(16, 185, 129, 0.15); }
+
+  details.history {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    margin-bottom: 14px;
+  }
+  details.history summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 16px 18px;
+    font-size: 18px;
+    font-weight: 700;
+    user-select: none;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  details.history summary::-webkit-details-marker { display: none; }
+  details.history summary::after { content: "▾"; color: var(--muted); }
+  details.history[open] summary::after { content: "▴"; }
+  details.history .body { padding: 0 16px 14px; }
+  .history-round { padding: 12px 0; border-top: 1px solid var(--border); }
+  .history-round:first-child { border-top: none; }
+  .history-round-title {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .history-game {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 16px;
+  }
+  .history-game .court-tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .history-game .court-tag.c1 { background: rgba(56, 189, 248, 0.15); color: var(--court1); }
+  .history-game .court-tag.c2 { background: rgba(167, 139, 250, 0.15); color: var(--court2); }
+  .history-game .game-text { flex: 1; }
+  .history-game .game-score {
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .winning-team { color: var(--good); font-weight: 700; }
+
+  .setup-list { display: grid; gap: 10px; margin-bottom: 14px; }
+
+  .row-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .row-actions button.primary { flex: 3; min-width: 200px; }
+  .row-actions button.secondary { flex: 1; min-width: 140px; }
+
+  .modal-bg {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+    overflow-y: auto;
+  }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+    max-width: 560px;
+    width: 100%;
+    margin: auto;
+  }
+  .modal h2 { margin-top: 0; }
+
+  .seeds-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .seed-row {
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border-radius: 10px;
+    font-size: 18px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .seed-rank {
+    font-weight: 800;
+    color: var(--accent);
+    font-size: 20px;
+    min-width: 32px;
+  }
+  .seed-meta { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+  .champions { text-align: center; padding: 24px 12px 8px; }
+  .champions .crown { font-size: 80px; line-height: 1; }
+  .champions h1 {
+    font-size: 42px;
+    margin: 8px 0 4px;
+    color: var(--gold);
+    letter-spacing: 0.04em;
+  }
+  .champions .winners {
+    font-size: 36px;
+    font-weight: 800;
+    margin: 18px 0;
+    line-height: 1.15;
+  }
+  .scorecard {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 10px 16px;
+    align-items: center;
+    max-width: 480px;
+    margin: 18px auto 0;
+    padding: 14px 16px;
+    background: var(--panel-2);
+    border-radius: 12px;
+  }
+  .scorecard .sc-team {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .scorecard .sc-team.left { text-align: right; }
+  .scorecard .sc-team.right { text-align: left; }
+  .scorecard .sc-team.win { color: var(--good); font-weight: 800; }
+  .scorecard .sc-score {
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+  .champions .consolation-block {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .consolation-title {
+    color: var(--silver);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .consolation-winners {
+    font-size: 26px;
+    font-weight: 800;
+    margin: 8px 0;
+  }
+  .consolation-block .scorecard {
+    margin-top: 12px;
+    padding: 10px 14px;
+    max-width: 420px;
+  }
+  .consolation-block .scorecard .sc-team { font-size: 16px; }
+  .consolation-block .scorecard .sc-score { font-size: 28px; }
+
+  h2, h3 { margin: 0 0 12px; }
+  .muted { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script>
+"use strict";
+
+const STORAGE_KEY = "pb_tourney_v1";
+
+// Round-robin partner schedule (1-factorization of K8) — every pair appears exactly once across 7 rounds.
+const SCHEDULE = [
+  [[[1,2],[3,4]], [[5,6],[7,8]]],
+  [[[1,3],[2,4]], [[5,7],[6,8]]],
+  [[[1,4],[2,3]], [[5,8],[6,7]]],
+  [[[1,5],[2,6]], [[3,7],[4,8]]],
+  [[[1,6],[2,5]], [[3,8],[4,7]]],
+  [[[1,7],[2,8]], [[3,5],[4,6]]],
+  [[[1,8],[2,7]], [[3,6],[4,5]]],
+];
+
+let state = load() || newState();
+
+function newState() {
+  return {
+    phase: "setup",                                  // setup | playing | finals | done
+    rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle, used on setup screen
+    slots:    ["", "", "", "", "", "", "", ""],      // post-shuffle, slot index 0..7 = slot 1..8
+    currentRound: 1,
+    rounds: [],                                      // populated on Start
+    finals: null,                                    // {championship, consolation}
+    tiebreakRandom: [],                              // stable per-tournament random for final tiebreak
+  };
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || !obj.phase) return null;
+    return obj;
+  } catch (e) { return null; }
+}
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch (e) { console.warn("save failed", e); }
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function startTournament() {
+  state.slots = shuffle(state.rawNames.map(s => s.trim()));
+  state.rounds = SCHEDULE.map((roundDef, idx) => {
+    // randomly decide which pair of teams gets Court 1 vs Court 2
+    const flip = Math.random() < 0.5;
+    const c1 = flip ? roundDef[0] : roundDef[1];
+    const c2 = flip ? roundDef[1] : roundDef[0];
+    return {
+      round: idx + 1,
+      court1: { team1: c1[0].slice(), team2: c1[1].slice(), score1: null, score2: null },
+      court2: { team1: c2[0].slice(), team2: c2[1].slice(), score1: null, score2: null },
+    };
+  });
+  state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
+  state.currentRound = 1;
+  state.phase = "playing";
+  state.finals = null;
+  save();
+  render();
+}
+
+function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
+function teamName(team) { return nameOf(team[0]) + " & " + nameOf(team[1]); }
+function isGameComplete(g) { return Number.isInteger(g.score1) && Number.isInteger(g.score2); }
+function isRoundComplete(r) { return isGameComplete(r.court1) && isGameComplete(r.court2); }
+
+function computeStats(throughRound, includeFinals) {
+  const stats = [];
+  for (let s = 1; s <= 8; s++) {
+    stats.push({ slot: s, name: nameOf(s), points: 0, wins: 0, losses: 0, diff: 0, played: 0, partnersUsed: new Set() });
+  }
+  const games = [];
+  for (let i = 0; i < (throughRound || 0) && i < state.rounds.length; i++) {
+    games.push({ ...state.rounds[i].court1, isFinal: false });
+    games.push({ ...state.rounds[i].court2, isFinal: false });
+  }
+  if (includeFinals && state.finals) {
+    games.push({ ...state.finals.championship, isFinal: true });
+    games.push({ ...state.finals.consolation, isFinal: true });
+  }
+  for (const g of games) {
+    if (!g.isFinal) {
+      stats[g.team1[0]-1].partnersUsed.add(g.team1[1]);
+      stats[g.team1[1]-1].partnersUsed.add(g.team1[0]);
+      stats[g.team2[0]-1].partnersUsed.add(g.team2[1]);
+      stats[g.team2[1]-1].partnersUsed.add(g.team2[0]);
+    }
+    if (!isGameComplete(g)) continue;
+    const t1Win = g.score1 > g.score2;
+    const t2Win = g.score2 > g.score1;
+    for (const slot of g.team1) {
+      const st = stats[slot-1];
+      st.points += g.score1; st.diff += (g.score1 - g.score2); st.played++;
+      if (t1Win) st.wins++; else if (t2Win) st.losses++;
+    }
+    for (const slot of g.team2) {
+      const st = stats[slot-1];
+      st.points += g.score2; st.diff += (g.score2 - g.score1); st.played++;
+      if (t2Win) st.wins++; else if (t1Win) st.losses++;
+    }
+  }
+  return stats;
+}
+
+function headToHead(slotA, slotB, throughRound) {
+  let diff = 0;
+  for (let i = 0; i < throughRound && i < state.rounds.length; i++) {
+    const r = state.rounds[i];
+    for (const g of [r.court1, r.court2]) {
+      if (!isGameComplete(g)) continue;
+      const aOn1 = g.team1.includes(slotA);
+      const aOn2 = g.team2.includes(slotA);
+      const bOn1 = g.team1.includes(slotB);
+      const bOn2 = g.team2.includes(slotB);
+      if (aOn1 && bOn2)      diff += (g.score1 - g.score2);
+      else if (aOn2 && bOn1) diff += (g.score2 - g.score1);
+    }
+  }
+  return diff;
+}
+
+function rankPlayers(throughRound) {
+  const stats = computeStats(throughRound, false);
+  const tieRand = (state.tiebreakRandom && state.tiebreakRandom.length === 8) ? state.tiebreakRandom : [0,1,2,3,4,5,6,7];
+  stats.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.wins   !== a.wins)   return b.wins   - a.wins;
+    if (b.diff   !== a.diff)   return b.diff   - a.diff;
+    const h2h = headToHead(a.slot, b.slot, throughRound);
+    if (h2h !== 0) return -h2h;
+    return tieRand.indexOf(a.slot - 1) - tieRand.indexOf(b.slot - 1);
+  });
+  return stats;
+}
+
+function buildFinals() {
+  const ranked = rankPlayers(7).map(s => s.slot);
+  state.finals = {
+    championship: { team1: [ranked[0], ranked[3]], team2: [ranked[1], ranked[2]], score1: null, score2: null },
+    consolation:  { team1: [ranked[4], ranked[7]], team2: [ranked[5], ranked[6]], score1: null, score2: null },
+  };
+  state.phase = "finals";
+  save();
+}
+
+// ====================== rendering ======================
+function el(tag, props, ...children) {
+  const e = document.createElement(tag);
+  if (props) {
+    for (const k in props) {
+      const v = props[k];
+      if (v == null || v === false) continue;
+      if (k === "class") e.className = v;
+      else if (k === "style") e.setAttribute("style", v);
+      else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
+      else e.setAttribute(k, v);
+    }
+  }
+  for (const c of children.flat()) {
+    if (c == null || c === false) continue;
+    if (typeof c === "string" || typeof c === "number") e.appendChild(document.createTextNode(c));
+    else e.appendChild(c);
+  }
+  return e;
+}
+
+function render() {
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+  app.appendChild(renderHeader());
+  if (state.phase === "setup")        app.appendChild(renderSetup());
+  else if (state.phase === "playing") app.appendChild(renderPlaying());
+  else if (state.phase === "finals")  app.appendChild(renderFinalsScreen());
+  else if (state.phase === "done")    app.appendChild(renderDoneScreen());
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function renderHeader() {
+  let progressText = "Setup";
+  if (state.phase === "playing")     progressText = "Round " + state.currentRound + " of 7";
+  else if (state.phase === "finals") progressText = "Finals";
+  else if (state.phase === "done")   progressText = "🏆 Champions";
+  return el("header", { class: "top" },
+    el("div", { class: "title" }, "🏓 Pickleball"),
+    el("div", { class: "progress" }, progressText),
+    el("button", { class: "icon-btn", onclick: openSettings, "aria-label": "Settings" }, "⚙")
+  );
+}
+
+function canStart() {
+  const trimmed = state.rawNames.map(n => (n || "").trim());
+  if (trimmed.some(n => !n)) return false;
+  return new Set(trimmed.map(n => n.toLowerCase())).size === 8;
+}
+
+function renderSetup() {
+  const wrap = el("div");
+  const card = el("div", { class: "card" },
+    el("h2", null, "Enter 8 Players"),
+    el("p", { class: "muted", style: "margin: 0 0 14px;" },
+      "Names are randomly assigned to slots 1–8 when the tournament starts.")
+  );
+  const list = el("div", { class: "setup-list" });
+  for (let i = 0; i < 8; i++) {
+    const input = el("input", {
+      class: "name-input",
+      type: "text",
+      placeholder: "Player " + (i + 1),
+      value: state.rawNames[i] || "",
+      autocomplete: "off",
+      autocapitalize: "words",
+      autocorrect: "off",
+      spellcheck: "false",
+    });
+    input.addEventListener("input", () => {
+      state.rawNames[i] = input.value;
+      save();
+      const btn = document.getElementById("start-btn");
+      if (btn) btn.disabled = !canStart();
+    });
+    list.appendChild(input);
+  }
+  card.appendChild(list);
+
+  const startBtn = el("button", {
+    id: "start-btn",
+    class: "primary",
+    style: "width: 100%;",
+    onclick: () => { if (canStart()) startTournament(); }
+  }, "Start Tournament");
+  startBtn.disabled = !canStart();
+
+  wrap.appendChild(card);
+  wrap.appendChild(startBtn);
+  return wrap;
+}
+
+// ---------- playing screens ----------
+function renderPlaying() {
+  const wrap = el("div");
+  const round = state.rounds[state.currentRound - 1];
+
+  // Refresh hooks injected by score inputs
+  const refreshes = [];
+  const refresh = () => refreshes.forEach(fn => fn());
+
+  wrap.appendChild(renderRoundCourts(round, false, refreshes));
+
+  // navigation row
+  const allDone = state.rounds.every(isRoundComplete);
+  const thisDone = isRoundComplete(round);
+  const actions = el("div", { class: "row-actions" });
+  if (state.currentRound > 1) {
+    actions.appendChild(el("button", {
+      class: "secondary",
+      onclick: () => { state.currentRound--; save(); render(); }
+    }, "← Round " + (state.currentRound - 1)));
+  }
+  let primaryBtn;
+  if (state.currentRound < 7) {
+    primaryBtn = el("button", {
+      class: "primary",
+      onclick: () => { if (isRoundComplete(round)) { state.currentRound++; save(); render(); } }
+    }, "Round " + (state.currentRound + 1) + " →");
+    primaryBtn.disabled = !thisDone;
+  } else {
+    primaryBtn = el("button", {
+      class: "primary",
+      onclick: () => { if (state.rounds.every(isRoundComplete)) { buildFinals(); render(); } }
+    }, "Build Finals →");
+    primaryBtn.disabled = !allDone;
+  }
+  actions.appendChild(primaryBtn);
+  wrap.appendChild(actions);
+
+  // standings
+  const standingsOpts = () => {
+    const completedRounds = state.rounds.slice(0, state.currentRound).filter(isRoundComplete).length;
+    const sub = completedRounds > 0
+      ? "Through " + completedRounds + " round" + (completedRounds > 1 ? "s" : "")
+      : "Awaiting first scores";
+    return { subtitle: sub };
+  };
+  let standingsCard = renderStandingsCard(state.currentRound, standingsOpts());
+  wrap.appendChild(standingsCard);
+
+  // history
+  const history = renderHistory(state.currentRound);
+  if (history) wrap.appendChild(history);
+
+  // Wire refresh: update primary button state + replace standings live
+  refreshes.push(() => {
+    if (state.currentRound < 7) primaryBtn.disabled = !isRoundComplete(round);
+    else primaryBtn.disabled = !state.rounds.every(isRoundComplete);
+    const newStandings = renderStandingsCard(state.currentRound, standingsOpts());
+    standingsCard.replaceWith(newStandings);
+    standingsCard = newStandings;
+  });
+
+  return wrap;
+}
+
+function renderRoundCourts(round, isFinals, refreshes) {
+  const wrap = el("div", { class: "court-row" });
+  if (isFinals) {
+    wrap.appendChild(renderCourtCard(round.championship, "champ", refreshes));
+    wrap.appendChild(renderCourtCard(round.consolation,  "cons",  refreshes));
+  } else {
+    wrap.appendChild(renderCourtCard(round.court1, 1, refreshes));
+    wrap.appendChild(renderCourtCard(round.court2, 2, refreshes));
+  }
+  return wrap;
+}
+
+function renderCourtCard(game, courtKey, refreshes) {
+  let className = "court-card";
+  let labelText = "";
+  if (courtKey === "champ")     { className += " gold";   labelText = "🏆 CHAMPIONSHIP"; }
+  else if (courtKey === "cons") { className += " silver"; labelText = "🥈 CONSOLATION"; }
+  else if (courtKey === 1)      { className += " c1";     labelText = "SOUTH COURT"; }
+  else                          { className += " c2";     labelText = "NORTH COURT"; }
+
+  const card = el("div", { class: className });
+  card.appendChild(el("div", { class: "court-label" }, labelText));
+
+  const matchup = el("div", { class: "matchup" });
+  const team1Wrap = renderTeamRow(game, "team1", "score1", "score2", refreshes);
+  const team2Wrap = renderTeamRow(game, "team2", "score2", "score1", refreshes);
+  matchup.appendChild(team1Wrap.node);
+  matchup.appendChild(team2Wrap.node);
+  card.appendChild(matchup);
+
+  const summary = el("div", { class: "court-summary" });
+  card.appendChild(summary);
+
+  const updateSummary = () => {
+    const s1 = game.score1, s2 = game.score2;
+    if (Number.isInteger(s1) && Number.isInteger(s2)) {
+      if (s1 > s2)      { summary.className = "court-summary winmsg"; summary.textContent = "🎉 " + teamName(game.team1) + " win by " + (s1 - s2); }
+      else if (s2 > s1) { summary.className = "court-summary winmsg"; summary.textContent = "🎉 " + teamName(game.team2) + " win by " + (s2 - s1); }
+      else              { summary.className = "court-summary tiemsg"; summary.textContent = "Tied — enter a tiebreaker"; }
+    } else {
+      summary.className = "court-summary";
+      summary.textContent = "Awaiting scores";
+    }
+    team1Wrap.applyWinnerStyle();
+    team2Wrap.applyWinnerStyle();
+  };
+  updateSummary();
+  refreshes.push(updateSummary);
+
+  return card;
+}
+
+function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes) {
+  const team = game[teamKey];
+  const node = el("div", { class: "team-row" });
+  node.appendChild(el("div", { class: "team-name" }, nameOf(team[0]) + " & " + nameOf(team[1])));
+
+  const input = el("input", {
+    class: "score-input",
+    type: "number",
+    inputmode: "numeric",
+    pattern: "[0-9]*",
+    min: "0",
+    placeholder: "–",
+    value: Number.isInteger(game[scoreKey]) ? String(game[scoreKey]) : "",
+    "aria-label": "Score for " + nameOf(team[0]) + " and " + nameOf(team[1]),
+  });
+  input.addEventListener("input", () => {
+    const v = input.value.trim();
+    if (v === "") {
+      game[scoreKey] = null;
+    } else {
+      const n = parseInt(v, 10);
+      if (!Number.isNaN(n) && n >= 0) game[scoreKey] = n;
+    }
+    save();
+    refreshes.forEach(fn => fn());
+  });
+  node.appendChild(input);
+
+  function applyWinnerStyle() {
+    const a = game[scoreKey], b = game[otherScoreKey];
+    const isWinner = Number.isInteger(a) && Number.isInteger(b) && a > b;
+    node.classList.toggle("winner", isWinner);
+    input.classList.toggle("winner", isWinner);
+  }
+
+  return { node, applyWinnerStyle };
+}
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+function rankCell(i) {
+  if (i < 3) return el("td", { class: "rank" }, el("span", { class: "rank-badge medal" }, MEDALS[i]));
+  return el("td", { class: "rank" }, el("span", { class: "rank-badge" }, "" + (i + 1)));
+}
+
+function renderStandingsCard(throughRound, opts) {
+  opts = opts || {};
+  const stats = rankPlayers(throughRound);
+  const card = el("div", { class: "card" });
+  const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
+    el("h3", { style: "margin: 0;" }, opts.title || "Live Standings"),
+    opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+  );
+  card.appendChild(head);
+  const table = el("table", { class: "standings" });
+  const colgroup = el("colgroup", null,
+    el("col", { class: "c-rank" }),
+    el("col", { class: "c-name" }),
+    el("col", { class: "c-pts" }),
+    el("col", { class: "c-w" }),
+    el("col", { class: "c-diff" }),
+  );
+  table.appendChild(colgroup);
+  table.appendChild(el("thead", null, el("tr", null,
+    el("th", { style: "text-align: center;" }, "#"),
+    el("th", null, "Player"),
+    el("th", { class: "num" }, "PTS"),
+    el("th", { class: "num" }, "W"),
+    el("th", { class: "num" }, "+/–"),
+  )));
+  const tbody = el("tbody");
+  stats.forEach((s, i) => {
+    const remaining = 7 - s.partnersUsed.size;
+    const partnerBadge = opts.hidePartners ? null : el("span", {
+      class: "partner-badge" + (remaining === 0 ? " done" : ""),
+      title: "Partners remaining"
+    }, remaining + " left");
+    tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+      rankCell(i),
+      el("td", { class: "name" }, s.name, partnerBadge),
+      el("td", { class: "num" }, "" + s.points),
+      el("td", { class: "num" }, "" + s.wins),
+      el("td", {
+        class: "num",
+        style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : ""),
+      }, (s.diff > 0 ? "+" : "") + s.diff),
+    ));
+  });
+  table.appendChild(tbody);
+  card.appendChild(table);
+  return card;
+}
+
+function renderHistory(currentRound) {
+  const past = state.rounds.slice(0, currentRound - 1);
+  if (past.length === 0) return null;
+  const details = el("details", { class: "history" });
+  details.appendChild(el("summary", null,
+    el("span", null, "History (" + past.length + " round" + (past.length > 1 ? "s" : "") + ")")
+  ));
+  const body = el("div", { class: "body" });
+  past.forEach(r => {
+    const block = el("div", { class: "history-round" });
+    block.appendChild(el("div", { class: "history-round-title" }, "Round " + r.round));
+    [{ g: r.court1, num: 1, label: "South" }, { g: r.court2, num: 2, label: "North" }].forEach(({ g, num, label }) => {
+      const t1Win = isGameComplete(g) && g.score1 > g.score2;
+      const t2Win = isGameComplete(g) && g.score2 > g.score1;
+      const scoreText = (Number.isInteger(g.score1) ? g.score1 : "–") + "–" + (Number.isInteger(g.score2) ? g.score2 : "–");
+      const row = el("div", { class: "history-game" },
+        el("span", { class: "court-tag c" + num }, label),
+        el("span", { class: "game-text" },
+          el("span", { class: t1Win ? "winning-team" : "" }, teamName(g.team1)),
+          " vs ",
+          el("span", { class: t2Win ? "winning-team" : "" }, teamName(g.team2)),
+        ),
+        el("span", { class: "game-score" }, scoreText),
+      );
+      block.appendChild(row);
+    });
+    body.appendChild(block);
+  });
+  details.appendChild(body);
+  return details;
+}
+
+// ---------- finals screen ----------
+function renderFinalsScreen() {
+  const wrap = el("div");
+  const ranked = rankPlayers(7);
+
+  // Seeds card
+  const seedsCard = el("div", { class: "card" });
+  seedsCard.appendChild(el("h3", null, "Seeds (after 7 rounds)"));
+  const grid = el("div", { class: "seeds-grid" });
+  ranked.forEach((s, i) => {
+    grid.appendChild(el("div", { class: "seed-row" },
+      el("span", { class: "seed-rank" }, "#" + (i + 1)),
+      el("span", null, s.name),
+      el("span", { class: "seed-meta" }, s.points + " pts · " + s.wins + "W"),
+    ));
+  });
+  seedsCard.appendChild(grid);
+  wrap.appendChild(seedsCard);
+
+  const refreshes = [];
+  wrap.appendChild(renderRoundCourts(state.finals, true, refreshes));
+
+  const champDone = isGameComplete(state.finals.championship);
+  const consDone  = isGameComplete(state.finals.consolation);
+
+  const finishBtn = el("button", {
+    class: "primary",
+    style: "width: 100%; margin-bottom: 8px;",
+    onclick: () => {
+      if (isGameComplete(state.finals.championship) && isGameComplete(state.finals.consolation)) {
+        state.phase = "done"; save(); render();
+      }
+    }
+  }, "👑 Crown Champions");
+  finishBtn.disabled = !(champDone && consDone);
+  refreshes.push(() => {
+    finishBtn.disabled = !(isGameComplete(state.finals.championship) && isGameComplete(state.finals.consolation));
+  });
+  wrap.appendChild(finishBtn);
+
+  wrap.appendChild(el("button", {
+    class: "ghost",
+    style: "width: 100%;",
+    onclick: () => {
+      state.phase = "playing";
+      state.currentRound = 7;
+      state.finals = null;
+      save(); render();
+    }
+  }, "← Back to Round 7"));
+  return wrap;
+}
+
+// ---------- done screen ----------
+function renderScorecard(game) {
+  const win1 = game.score1 > game.score2;
+  const win2 = game.score2 > game.score1;
+  return el("div", { class: "scorecard" },
+    el("div", { class: "sc-team left" + (win1 ? " win" : "") }, teamName(game.team1)),
+    el("div", { class: "sc-score" }, game.score1 + " – " + game.score2),
+    el("div", { class: "sc-team right" + (win2 ? " win" : "") }, teamName(game.team2)),
+  );
+}
+
+function renderDoneScreen() {
+  const wrap = el("div");
+  const f = state.finals;
+  const champ = f.championship, cons = f.consolation;
+  const champWin = champ.score1 > champ.score2 ? champ.team1 : (champ.score2 > champ.score1 ? champ.team2 : null);
+  const consWin  = cons.score1  > cons.score2  ? cons.team1  : (cons.score2  > cons.score1  ? cons.team2  : null);
+
+  const card = el("div", { class: "card" });
+  const champions = el("div", { class: "champions" });
+  champions.appendChild(el("div", { class: "crown" }, "👑"));
+  champions.appendChild(el("h1", null, "CHAMPIONS"));
+  champions.appendChild(el("div", { class: "winners" }, champWin ? teamName(champWin) : "Tied!"));
+  champions.appendChild(renderScorecard(champ));
+
+  const consBlock = el("div", { class: "consolation-block" });
+  consBlock.appendChild(el("div", { class: "consolation-title" }, "🥈 Runner-Up Bracket"));
+  consBlock.appendChild(el("div", { class: "consolation-winners" }, consWin ? teamName(consWin) : "Tied!"));
+  consBlock.appendChild(renderScorecard(cons));
+  champions.appendChild(consBlock);
+
+  card.appendChild(champions);
+  wrap.appendChild(card);
+
+  // Final standings — uses the same renderStandingsCard, with finals included in totals
+  const finalCard = el("div", { class: "card" });
+  const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; gap: 10px; flex-wrap: wrap;" },
+    el("h3", { style: "margin: 0;" }, "Final Standings"),
+    el("span", { class: "muted" }, "Includes finals games"),
+  );
+  finalCard.appendChild(head);
+
+  const ranked = rankPlayers(7);
+  const allStats = computeStats(7, true);
+  const table = el("table", { class: "standings", style: "margin-top: 10px;" });
+  const colgroup = el("colgroup", null,
+    el("col", { class: "c-rank" }),
+    el("col", { class: "c-name" }),
+    el("col", { class: "c-pts" }),
+    el("col", { class: "c-w" }),
+    el("col", { class: "c-diff" }),
+  );
+  table.appendChild(colgroup);
+  table.appendChild(el("thead", null, el("tr", null,
+    el("th", { style: "text-align: center;" }, "#"),
+    el("th", null, "Player"),
+    el("th", { class: "num" }, "PTS"),
+    el("th", { class: "num" }, "W"),
+    el("th", { class: "num" }, "+/–"),
+  )));
+  const tbody = el("tbody");
+  ranked.forEach((rs, i) => {
+    const s = allStats.find(x => x.slot === rs.slot);
+    tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+      rankCell(i),
+      el("td", { class: "name" }, s.name),
+      el("td", { class: "num" }, "" + s.points),
+      el("td", { class: "num" }, "" + s.wins),
+      el("td", { class: "num", style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : "") },
+        (s.diff > 0 ? "+" : "") + s.diff),
+    ));
+  });
+  table.appendChild(tbody);
+  finalCard.appendChild(table);
+  wrap.appendChild(finalCard);
+
+  wrap.appendChild(el("button", {
+    class: "ghost",
+    style: "width: 100%; margin-bottom: 10px;",
+    onclick: () => { state.phase = "finals"; save(); render(); }
+  }, "← Edit Final Scores"));
+
+  wrap.appendChild(el("button", {
+    class: "primary",
+    style: "width: 100%;",
+    onclick: () => {
+      if (confirm("Start a new tournament? This clears all scores and names.")) {
+        state = newState(); save(); render();
+      }
+    }
+  }, "Start New Tournament"));
+
+  return wrap;
+}
+
+// ---------- settings modal ----------
+function openSettings() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Settings"));
+
+  if (state.phase === "setup") {
+    modal.appendChild(el("p", { class: "muted" },
+      "Tournament hasn't started yet. Edit names directly on the setup screen."));
+  } else {
+    modal.appendChild(el("h3", null, "Edit Names"));
+    modal.appendChild(el("p", { class: "muted", style: "margin: 0 0 10px;" },
+      "Slots are fixed. Renaming updates the player everywhere."));
+    for (let i = 0; i < 8; i++) {
+      const input = el("input", {
+        class: "name-input",
+        style: "margin-bottom: 8px;",
+        type: "text",
+        value: state.slots[i] || "",
+        autocomplete: "off",
+        autocapitalize: "words",
+        autocorrect: "off",
+        spellcheck: "false",
+      });
+      input.addEventListener("input", () => {
+        state.slots[i] = input.value;
+        save();
+      });
+      modal.appendChild(input);
+    }
+  }
+
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-top: 12px;",
+    onclick: () => { close(); render(); }
+  }, "Done"));
+
+  modal.appendChild(el("button", {
+    class: "danger",
+    style: "width: 100%; margin-top: 8px;",
+    onclick: () => {
+      if (confirm("Reset the tournament? All scores and the random schedule will be cleared. Names entered on the setup screen will be kept.")) {
+        const keptRaw = state.rawNames.slice();
+        state = newState();
+        state.rawNames = keptRaw;
+        save(); close(); render();
+      }
+    }
+  }, "Reset Tournament"));
+
+  document.body.appendChild(bg);
+}
+
+// ---------- boot ----------
+render();
+</script>
+</body>
+</html>
