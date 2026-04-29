@@ -459,6 +459,22 @@ const SCHEDULE = [
   [[[1,8],[2,7]], [[3,6],[4,5]]],
 ];
 
+// -------- self-tests (gated by ?test URL param) --------
+function runSelfTests() {
+  let failures = 0;
+  const _origAssert = console.assert.bind(console);
+  console.assert = (cond, ...rest) => {
+    if (!cond) failures++;
+    _origAssert(cond, ...rest);
+  };
+  // Tests are appended by feature tasks below.
+  console.log(`[self-tests] complete — ${failures} failure(s)`);
+  console.assert = _origAssert;
+}
+if (typeof location !== "undefined" && location.search.includes("test")) {
+  queueMicrotask(runSelfTests);
+}
+
 let state = load() || newState();
 
 function newState() {
