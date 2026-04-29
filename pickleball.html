@@ -2124,10 +2124,10 @@ function openSettings() {
     });
     winScoreRow.appendChild(winSelect);
     modal.appendChild(winScoreRow);
-
-    const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { close(); render(); } }, "Done");
-    modal.appendChild(closeBtn);
   }
+
+  const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { close(); render(); } }, "Done");
+  modal.appendChild(closeBtn);
 
   modal.appendChild(el("button", {
     class: "danger",
