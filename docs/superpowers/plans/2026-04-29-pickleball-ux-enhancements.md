@@ -1655,9 +1655,9 @@ Each task that adds verification will use these patterns:
 - [ ] **Step 6: Verify with playwright**
 
   - Seed a done state where #2+#3 won the championship (e.g. championship: 11–9 with #2+#3 as winners). Screenshot iPad portrait.
-  - Podium shows the champions team #2's higher-season-rank player on gold step, the other on silver step, and the higher-season-rank championship-loser on bronze.
-  - Standings table below has ranks 4–8 in `finalRanking()` order.
-  - Hand-verify: row #1 in the table is the gold-step player; row #2 is silver-step player; row #3 is bronze.
+  - Podium maps to `finalRanking()[0..2]`: the higher-season-rank champion on the gold step, the other champion on silver, the higher-season-rank championship-loser on bronze.
+  - Standings table below contains exactly 5 rows for ranks 4–8, in `finalRanking()` order. The first row's rank cell renders "4", not a medal.
+  - The standings table does NOT duplicate the podium players — rows 1–3 of `finalRanking()` appear only on the podium.
 
 - [ ] **Step 7: Commit**
 
@@ -1701,10 +1701,14 @@ Each task that adds verification will use these patterns:
       games.push({ ...state.finals.championship, label: "Championship" });
       games.push({ ...state.finals.consolation,  label: "Consolation" });
     }
-    const completed = games.filter(g => isGameComplete(g) && g.score1 !== g.score2);
+    // Two views of the game list:
+    //   completed  — every game that has both scores (ties included). Used for Hot Streak so a tied game properly resets streaks.
+    //   decided    — completed AND non-tied. Used for Biggest Win / Closest Game.
+    const completed = games.filter(g => isGameComplete(g));
+    const decided = completed.filter(g => g.score1 !== g.score2);
 
-    // For each completed game, derive the winner-side summary.
-    const summarized = completed.map(g => {
+    // For each decided game, derive the winner-side summary.
+    const summarized = decided.map(g => {
       const team1Won = g.score1 > g.score2;
       const winTeam = team1Won ? g.team1 : g.team2;
       const winScore = team1Won ? g.score1 : g.score2;
@@ -1744,9 +1748,18 @@ Each task that adds verification will use these patterns:
     }
 
     // Hot Streak — longest consecutive-wins run for a single player.
+    // Iterates every completed game (including ties) so a tied game resets
+    // streaks for all four involved players.
     const streaks = new Map(); // slot -> current run
     const best = new Map();    // slot -> max run seen
     for (const g of completed) {
+      if (g.score1 === g.score2) {
+        for (const slot of [...g.team1, ...g.team2]) {
+          best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot) || 0));
+          streaks.set(slot, 0);
+        }
+        continue;
+      }
       const team1Won = g.score1 > g.score2;
       const winners = team1Won ? g.team1 : g.team2;
       const losers = team1Won ? g.team2 : g.team1;
