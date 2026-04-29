@@ -1887,10 +1887,14 @@ function runConfetti() {
   const canvas = el("canvas", {
     style: "position: fixed; inset: 0; z-index: 90; pointer-events: none;"
   });
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = window.innerWidth  * dpr;
+  canvas.height = window.innerHeight * dpr;
+  canvas.style.width  = window.innerWidth  + "px";
+  canvas.style.height = window.innerHeight + "px";
   document.body.appendChild(canvas);
   const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
   const colors = ["#fbbf24", "#fde047", "#cbd5e1", "#d97706", "#38bdf8", "#a78bfa", "#10b981"];
   const N = 80;
   const parts = Array.from({ length: N }, () => ({
@@ -1907,7 +1911,7 @@ function runConfetti() {
   const totalMs = 2000;
   function frame(now) {
     const elapsed = now - start;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     for (const p of parts) {
       p.x += p.vx;
       p.y += p.vy;
