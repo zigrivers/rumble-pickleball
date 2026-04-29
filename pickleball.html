@@ -640,6 +640,28 @@
   }
   .seed-pill.gold { background: rgba(251, 191, 36, 0.18); color: var(--gold); }
   .seed-pill.silver { background: rgba(203, 213, 225, 0.15); color: var(--silver); }
+  /* Amplified championship card */
+  .court-card.gold {
+    border-top-width: 8px;
+    box-shadow: 0 0 32px rgba(251, 191, 36, 0.18);
+    padding: 20px;
+  }
+  .court-card.gold .court-label { font-size: 14px; }
+  .court-card.gold .team-name { font-size: 22px; }
+  .court-card.gold .score-input { font-size: 44px; height: 80px; }
+  .pairing-caption {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0 0 12px;
+    line-height: 1.4;
+  }
+  /* Compact consolation card */
+  .court-card.silver {
+    padding: 14px;
+  }
+  .court-card.silver .court-label { font-size: 12px; }
+  .court-card.silver .team-name { font-size: 16px; }
+  .court-card.silver .score-input { font-size: 28px; height: 60px; }
 </style>
 </head>
 <body>
@@ -1250,6 +1272,10 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
 
   const card = el("div", { class: className });
   card.appendChild(el("div", { class: "court-label" }, labelText));
+  if (courtKey === "champ") {
+    card.appendChild(el("div", { class: "pairing-caption" },
+      "Balanced pairing — top seed + 4th vs 2nd + 3rd"));
+  }
 
   const matchup = el("div", { class: "matchup" });
   const team1Wrap = renderTeamRow(game, "team1", "score1", "score2", refreshes, seedInfo);
@@ -1482,21 +1508,24 @@ function renderFinalsScreen() {
   const refreshes = [];
   wrap.appendChild(renderRoundCourts(state.finals, true, refreshes));
 
-  const champDone = isGameComplete(state.finals.championship);
-  const consDone  = isGameComplete(state.finals.consolation);
+  const finalsDecided = (g) => isGameComplete(g) && g.score1 !== g.score2;
+  const finalsReady = () =>
+    finalsDecided(state.finals.championship) && finalsDecided(state.finals.consolation);
 
   const finishBtn = el("button", {
     class: "primary",
     style: "width: 100%; margin-bottom: 8px;",
     onclick: () => {
-      if (isGameComplete(state.finals.championship) && isGameComplete(state.finals.consolation)) {
-        state.phase = "done"; save(); render();
+      if (finalsReady()) {
+        state.phase = "done";
+        save();
+        render();
       }
     }
   }, "👑 Crown Champions");
-  finishBtn.disabled = !(champDone && consDone);
+  finishBtn.disabled = !finalsReady();
   refreshes.push(() => {
-    finishBtn.disabled = !(isGameComplete(state.finals.championship) && isGameComplete(state.finals.consolation));
+    finishBtn.disabled = !finalsReady();
   });
   wrap.appendChild(finishBtn);
 
