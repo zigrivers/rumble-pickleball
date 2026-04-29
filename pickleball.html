@@ -473,6 +473,41 @@
   details.rules .rules-body ul { margin: 0; padding-left: 20px; }
   details.rules .rules-body li { margin: 6px 0; }
   details.rules .rules-body strong { color: var(--text); }
+
+  /* Paste-names link and modal */
+  .paste-link {
+    display: inline-block;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
+    background: none;
+    border: none;
+    padding: 8px 0;
+    margin-bottom: 4px;
+    cursor: pointer;
+    text-decoration: underline;
+    min-height: 36px;
+  }
+  .paste-textarea {
+    width: 100%;
+    min-height: 200px;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+  .paste-error {
+    color: var(--bad);
+    font-size: 14px;
+    font-weight: 600;
+    margin: 8px 0 0;
+    min-height: 20px;
+  }
 </style>
 </head>
 <body>
@@ -509,6 +544,19 @@ function runSelfTests() {
     console.assert(s.winScore === 11, "newState.winScore=11");
     console.assert(Array.isArray(s.notifiedRounds) && s.notifiedRounds.length === 0,
       "newState.notifiedRounds=[]");
+  }
+  // Task 3 — parsePastedNames
+  {
+    const a = parsePastedNames("Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd");
+    console.assert(a.ok && a.names.length === 8 && a.names[0] === "Adrian", "parsePastedNames newline");
+    const b = parsePastedNames("Adrian, Alex, John, Joe, Ken, Kris, Sam, Todd");
+    console.assert(b.ok && b.names[7] === "Todd", "parsePastedNames comma");
+    const c = parsePastedNames("Adrian\nAlex");
+    console.assert(!c.ok && c.count === 2, "parsePastedNames too few");
+    const d = parsePastedNames("a\nb\nc\nd\ne\nf\ng\nA"); // case dup
+    console.assert(!d.ok, "parsePastedNames case-insensitive duplicate");
+    const e = parsePastedNames("  Adrian  \n\n,Alex,John,Joe,Ken,Kris,Sam,Todd");
+    console.assert(e.ok && e.names[0] === "Adrian", "parsePastedNames trims & strips empties");
   }
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
@@ -733,6 +781,73 @@ function renderRulesBlock() {
   return details;
 }
 
+// Returns { ok: true, names: string[8] } or { ok: false, count: number, error: string }.
+// Splits on newlines or commas, trims, drops empties. Validates exactly 8 unique
+// (case-insensitive, matching canStart()'s gate).
+function parsePastedNames(text) {
+  const parts = String(text || "")
+    .split(/[\n,]/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  const lower = parts.map(s => s.toLowerCase());
+  const uniqueCount = new Set(lower).size;
+  if (parts.length !== 8 || uniqueCount !== 8) {
+    return { ok: false, count: parts.length, error:
+      `found ${parts.length}${parts.length === uniqueCount ? "" : ` (${parts.length - uniqueCount} duplicate)`} — need 8 unique names` };
+  }
+  return { ok: true, names: parts };
+}
+
+function openPasteModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Paste 8 names"));
+  modal.appendChild(el("p", { class: "muted", style: "margin: 0 0 12px;" },
+    "One name per line, or comma-separated. Whitespace is trimmed."));
+
+  const textarea = el("textarea", {
+    class: "paste-textarea",
+    placeholder: "Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd",
+    autocomplete: "off",
+    autocapitalize: "words",
+    autocorrect: "off",
+    spellcheck: "false",
+  });
+  modal.appendChild(textarea);
+
+  const errorLine = el("div", { class: "paste-error" });
+  modal.appendChild(errorLine);
+
+  const fillBtn = el("button", {
+    class: "primary",
+    style: "width: 100%; margin-top: 12px;",
+    onclick: () => {
+      const result = parsePastedNames(textarea.value);
+      if (!result.ok) {
+        errorLine.textContent = result.error;
+        return;
+      }
+      for (let i = 0; i < 8; i++) state.rawNames[i] = result.names[i];
+      save();
+      close();
+      render();
+    }
+  }, "Fill names");
+  modal.appendChild(fillBtn);
+
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-top: 8px;",
+    onclick: close,
+  }, "Cancel"));
+
+  bg.appendChild(modal);
+  document.body.appendChild(bg);
+  setTimeout(() => textarea.focus(), 0);
+}
+
 function renderSetup() {
   const wrap = el("div");
   wrap.appendChild(renderRulesBlock());
@@ -741,6 +856,11 @@ function renderSetup() {
     el("p", { class: "muted", style: "margin: 0 0 14px;" },
       "Names are randomly assigned to slots 1–8 when the tournament starts.")
   );
+  const pasteLink = el("button", {
+    class: "paste-link",
+    onclick: openPasteModal,
+  }, "Paste 8 names");
+  card.appendChild(pasteLink);
   const list = el("div", { class: "setup-list" });
   for (let i = 0; i < 8; i++) {
     const input = el("input", {
