@@ -468,6 +468,14 @@ function runSelfTests() {
     _origAssert(cond, ...rest);
   };
   // Tests are appended by feature tasks below.
+  // Task 1 — newState defaults
+  {
+    const s = newState();
+    console.assert(s.awardsShown === false, "newState.awardsShown=false");
+    console.assert(s.winScore === 11, "newState.winScore=11");
+    console.assert(Array.isArray(s.notifiedRounds) && s.notifiedRounds.length === 0,
+      "newState.notifiedRounds=[]");
+  }
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -486,6 +494,9 @@ function newState() {
     rounds: [],                                      // populated on Start
     finals: null,                                    // {championship, consolation}
     tiebreakRandom: [],                              // stable per-tournament random for final tiebreak
+    awardsShown: false,
+    winScore: 11,
+    notifiedRounds: [],
   };
 }
 function load() {
@@ -494,6 +505,10 @@ function load() {
     if (!raw) return null;
     const obj = JSON.parse(raw);
     if (!obj || !obj.phase) return null;
+    // Backfill defaults for fields added after the initial release.
+    if (typeof obj.awardsShown !== "boolean") obj.awardsShown = false;
+    if (typeof obj.winScore !== "number") obj.winScore = 11;
+    if (!Array.isArray(obj.notifiedRounds)) obj.notifiedRounds = [];
     return obj;
   } catch (e) { return null; }
 }
