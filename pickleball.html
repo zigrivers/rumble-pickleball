@@ -568,6 +568,25 @@
   }
   .partner-chip.c1 { color: var(--court1); background: rgba(56, 189, 248, 0.15); }
   .partner-chip.c2 { color: var(--court2); background: rgba(167, 139, 250, 0.15); }
+  /* Tap-winner quick-fill pill */
+  .team-row {
+    /* override existing 1fr 110px to allow pill column */
+    grid-template-columns: 1fr auto 110px;
+  }
+  .quickfill-pill {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    min-height: 36px;
+    white-space: nowrap;
+    align-self: center;
+  }
+  .quickfill-pill:active { background: rgba(251, 191, 36, 0.3); }
 </style>
 </head>
 <body>
@@ -1173,6 +1192,10 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes) {
   const node = el("div", { class: "team-row" });
   node.appendChild(el("div", { class: "team-name" }, nameOf(team[0]) + " & " + nameOf(team[1])));
 
+  // Quick-fill pill: shown only when both scores are null.
+  const pillSlot = el("div");  // takes the auto column even when empty
+  node.appendChild(pillSlot);
+
   const input = el("input", {
     class: "score-input",
     type: "number",
@@ -1202,6 +1225,31 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes) {
     node.classList.toggle("winner", isWinner);
     input.classList.toggle("winner", isWinner);
   }
+
+  function refreshPill() {
+    pillSlot.textContent = "";
+    // Quick-fill is a Round-screen feature only; suppress on Finals matchups.
+    if (state.phase !== "playing") return;
+    const bothBlank = !Number.isInteger(game.score1) && !Number.isInteger(game.score2);
+    if (!bothBlank) return;
+    const pill = el("button", {
+      class: "quickfill-pill",
+      title: "Mark this team as winner with " + state.winScore + " points",
+    }, "× " + state.winScore);
+    pill.addEventListener("click", () => {
+      game[scoreKey] = state.winScore;
+      save();
+      refreshes.forEach(fn => fn());
+      // Focus the opponent's input so the user can type the loser's score.
+      const allInputs = node.parentElement.querySelectorAll(".score-input");
+      for (const inp of allInputs) {
+        if (inp !== input) { inp.focus(); break; }
+      }
+    });
+    pillSlot.appendChild(pill);
+  }
+  refreshPill();
+  refreshes.push(refreshPill);
 
   return { node, applyWinnerStyle };
 }
