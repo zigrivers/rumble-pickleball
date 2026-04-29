@@ -1046,10 +1046,9 @@ function runShuffleReveal(finalSlots, onDone) {
   frame = requestAnimationFrame(tick);
 }
 
-function startTournament() {
-  // Compute the assignment up-front (real source of truth).
-  state.slots = shuffle(state.rawNames.map(s => s.trim()));
-  state.rounds = SCHEDULE.map((roundDef, idx) => {
+// Returns a fresh array of 7 round objects with randomized court 1/2 flip.
+function generateRounds() {
+  return SCHEDULE.map((roundDef, idx) => {
     const flip = Math.random() < 0.5;
     const c1 = flip ? roundDef[0] : roundDef[1];
     const c2 = flip ? roundDef[1] : roundDef[0];
@@ -1059,6 +1058,12 @@ function startTournament() {
       court2: { team1: c2[0].slice(), team2: c2[1].slice(), score1: null, score2: null },
     };
   });
+}
+
+function startTournament() {
+  // Compute the assignment up-front (real source of truth).
+  state.slots = shuffle(state.rawNames.map(s => s.trim()));
+  state.rounds = generateRounds();
   state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
   state.currentRound = 1;
   state.notifiedRounds = [];
