@@ -353,24 +353,28 @@
   .seeds-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
+    gap: 6px;
   }
   .seed-row {
-    padding: 10px 12px;
+    padding: 6px 10px;
     background: var(--panel-2);
-    border-radius: 10px;
-    font-size: 18px;
+    border-radius: 8px;
+    font-size: 15px;
+    line-height: 1.3;
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .seed-rank {
     font-weight: 800;
     color: var(--accent);
-    font-size: 20px;
-    min-width: 32px;
+    font-size: 16px;
+    min-width: 26px;
   }
-  .seed-meta { color: var(--muted); font-size: 13px; margin-left: auto; }
+  .seed-meta { color: var(--muted); font-size: 12px; margin-left: auto; }
 
   .champions { text-align: center; padding: 24px 12px 8px; }
   .champions .crown { font-size: 80px; line-height: 1; }
