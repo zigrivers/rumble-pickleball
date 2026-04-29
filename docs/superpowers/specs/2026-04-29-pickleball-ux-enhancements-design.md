@@ -29,14 +29,19 @@ Add the following capabilities to the existing pickleball tournament tracker wit
 
 ## 3. State schema additions
 
-Two new fields inside the existing tournament-state object stored at `pb_tourney_v1`:
+Three new fields inside the existing tournament-state object stored at `pb_tourney_v1`:
 
 | Field | Type | Default | Purpose |
 |---|---|---|---|
-| `awardsShown` | bool | `false` | Confetti gate. Set to `true` after the first time the Champions screen renders confetti so refresh / back-navigation does not refire. |
+| `awardsShown` | bool | `false` | Confetti gate. Set to `true` after the first time the Champions screen renders confetti so refresh / back-navigation does not refire. **Both Reset Tournament and Clear All set this back to `false`** so each new tournament gets a fresh confetti moment. |
 | `winScore` | number | `11` | Default value the tap-winner pill auto-fills. Adjustable in Settings (11/15/21). |
+| `notifiedRounds` | number[] | `[]` | List of round numbers (1–7) for which the round-complete moment (toast + shimmer) has already fired. Persisted so a refresh immediately after entering the final score does not lose the notification, and so re-entering an already-completed round doesn't refire. Reset to `[]` by both Reset Tournament and Clear All. |
 
 No top-level localStorage keys added. Existing fields unchanged. Migration: defaults are applied at load time when fields are absent — no rewrite of existing saved state required.
+
+### 3.1 Name-handling safety
+
+All player-name rendering throughout the app — standings, podium, awards, scorecards, history, paste-import preview, schedule modal, scoreboard rows — **must** use `textContent` / `createTextNode` (the existing `el()` helper handles strings via `document.createTextNode`, which is safe). No `innerHTML` interpolation of user-provided names anywhere. This protects against XSS via the paste-8-names shortcut and any future name-edit path. Acceptance check is in Section 5.
 
 ## 4. Per-screen specs
 
@@ -86,25 +91,36 @@ After each player's name in the Live Standings table, render a small pill:
 Adrian  → Ken
 ```
 
-- Computed from the next round's schedule. Because `currentRound` is 1-based and `SCHEDULE` is 0-indexed, the next round's matchups are at `SCHEDULE[currentRound]` when `currentRound < 7`.
-- Color-coded by court: cyan for South, violet for North — matching the court the partnership will play on in round N+1.
+- **Source of truth**: `state.rounds[state.currentRound]` (the next-round entry in saved state, where the post-randomization court assignment lives — `SCHEDULE` does not have the South/North flip applied). This is read when `state.currentRound < 7`. The lookup yields both the partner slot and which court (`court1` = South, `court2` = North) that pairing will play on.
+- Color-coded by that resolved court: cyan for South (court1), violet for North (court2).
 - Pill style: 12–14px font, `2px 8px` padding, `999px` border radius. Same row as the player name; does not increase row height.
-- Disappears once `currentRound === 7` (no next round) and during finals/done phases. Setup phase has no standings so no chip.
+- Disappears once `state.currentRound === 7` (no next round) and during finals/done phases. Setup phase has no standings so no chip.
 
 #### Tap-winner quick-fill
 
-Each team-row gets a small "× 11" pill positioned between the team name and the score input. Visible only when that row's score is `null`.
+Each team-row gets a small "× 11" pill positioned between the team name and the score input.
 
-- Tap pill → set this team's score to `state.winScore`. Trigger the standard input pipeline (save state, refresh standings/buttons).
-- Score input remains directly editable; pill disappears as soon as a value is present.
+- **Visibility rule**: pill is shown only when **both** scores in that game are still `null`. Once either side has been entered, the pill on both rows disappears. This guarantees the pill always represents the natural "fresh game, mark the winner with their winning score" affordance, and avoids the edge case where setting one row to 11 wouldn't actually win against an opponent who already has a higher number entered.
+- Tap pill → set this team's score to `state.winScore`. Trigger the standard input pipeline (save state, refresh standings/buttons). The opposite team's input becomes focused so the user can immediately type the loser's score.
+- Score input remains directly editable; the pill is a shortcut, not a constraint.
 - Pill amount tracks `state.winScore` — if user changes it in Settings to 15, the pill reads "× 15".
 
 #### Round-complete moment
 
-When both court games on the current round transition from "incomplete" to "complete":
+When the round becomes complete (both courts have valid scores):
 - The primary "Round N+1 →" / "Build Finals →" button gets a CSS-keyframe gold shimmer (1.5 s, fires once).
 - A toast `🎉 Round N complete!` slides into a fixed-position container at the top of the page; auto-dismisses after 2500 ms.
-- Tracking: the round-complete refresh callback compares previous-cycle state to current; only fires shimmer + toast on the actual transition. Editing scores after completion does not refire.
+
+**Tracking (refresh-safe)**: triggered from the playing-screen refresh callback (the same callback that updates the next-round button and standings). On each refresh, if `isRoundComplete(currentRound)` is true *and* `state.notifiedRounds` does not include `state.currentRound`, then:
+
+1. Push the current round number into `state.notifiedRounds`.
+2. `save()`.
+3. Fire toast + shimmer.
+
+Because the gate is persisted, this works correctly across refreshes:
+- If the user enters the final score and immediately refreshes, the next render after reload sees a complete round whose number is not yet in `notifiedRounds`, fires the moment, then persists. Refreshing *again* sees the round already notified and does not refire.
+- Re-editing scores in an already-complete round does not refire.
+- Reset Tournament and Clear All clear `notifiedRounds` so a re-shuffled tournament gets a fresh round-complete moment per round.
 
 ### 4.3 Finals screen
 
@@ -158,6 +174,10 @@ Each step has the player's name above it (gold colored for rank 1) and total poi
 
 The standings table remains for ranks 4–8, rendered below the podium.
 
+**Ranking source (podium + ranks 4–8 table)**: order is the canonical 7-round ranking, i.e. `rankPlayers(7)` — the same ordering used to seed the finals matchups. This keeps the medal awards consistent with the "champion is the team that won the championship game; the season ranking is what got you there" narrative. The numeric stats displayed on each podium step and on each table row (PTS, W, +/−) **include** finals-game contributions (`computeStats(7, includeFinals=true)`) so the totals match what the user sees building during the finals. The order does not change based on the finals; the numbers grow.
+
+**Tie handling**: `rankPlayers` already produces a deterministic total ordering — total points → wins → point differential → head-to-head → per-tournament random tiebreak (`state.tiebreakRandom`). The random tiebreak ensures every tournament has a unique ranking, so the podium always has three distinct players. No ambiguous-podium fallback is needed.
+
 #### Tournament-awards strip
 
 A 2×2 grid of award chips below the podium, before the standings table:
@@ -191,21 +211,51 @@ Reorganized for clarity. Top-to-bottom:
 1. **How this works** button → opens a sub-modal with the same content as the Setup-screen rules block.
 2. **Edit Names** (existing functionality, unchanged).
 3. **Win score** dropdown — `<select>` with 11 / 15 / 21. Bound to `state.winScore`. Drives the tap-winner pill.
-4. **View Full Schedule** button — opens a sub-modal listing all 7 rounds. Each round row shows both court matchups and, if scored, the score. Read-only.
+4. **View Full Schedule** button — visible only when `state.phase !== "setup"`. (During setup there is no `state.rounds`, no slot assignment, and no court flips — there is nothing meaningful to show.) When visible, opens a sub-modal listing all 7 rounds. Each round row shows both court matchups labeled South/North and, if scored, the score. Read-only.
 5. *(Divider)*
-6. **Reset Tournament** *(yellow secondary)* — confirm dialog: "Reset scores and re-shuffle the schedule? Your 8 names will be kept." On confirm: clears scores + rounds + finals, re-shuffles slot assignment, returns to round 1.
-7. **Clear All** *(red danger)* — confirm dialog: "Clear all data including names? This can't be undone." On confirm: replaces state with `newState()`, returns to Setup screen.
+6. **Reset Tournament** *(yellow secondary)* — confirm dialog: "Reset scores and re-shuffle the schedule? Your 8 names will be kept." On confirm:
+   - Source the names to preserve from `state.slots` if `state.phase !== "setup"` (covers any in-tournament name edits the user made via Edit Names), otherwise from `state.rawNames`.
+   - Replace state with `newState()`, then write the preserved names back into both `rawNames` and `slots`.
+   - Re-shuffle slot assignment via the same path used by Start Tournament (so a fresh `state.rounds` with a new court-flip is produced).
+   - Reset `awardsShown` to `false` and `notifiedRounds` to `[]` (these are part of `newState()` and so are reset automatically).
+   - Returns to round 1.
+7. **Clear All** *(red danger)* — confirm dialog: "Clear all data including names? This can't be undone." On confirm: replaces state with `newState()` (which has `awardsShown = false` and `notifiedRounds = []`), returns to Setup screen.
 
 ## 5. Acceptance criteria
 
+**Schedule + ranking integrity**
 - The 7-round schedule continues to cover all 28 player pairs exactly once (regression check).
+- Final-standings table and podium order both come from `rankPlayers(7)`; numbers shown include finals games.
+
+**Score entry + round screen**
 - Live refresh during score entry preserves input focus (regression check from prior session).
-- Confetti fires exactly once per tournament's first arrival at the Champions screen.
-- Round-complete toast/shimmer fires exactly once per round-completion transition.
+- Tap-winner pill is visible only when both scores in that game are `null`; disappears as soon as either side has a value.
+- Tap-winner pill amount tracks `state.winScore` and updates immediately when the Settings dropdown is changed.
+- Partner-preview chip color matches the court the partnership will play on **as resolved in `state.rounds[currentRound]`** (post court-flip), not the static `SCHEDULE` array.
+
+**Round-complete + confetti gating**
+- Round-complete toast/shimmer fires exactly once per round per tournament. Refreshing the page immediately after entering the final score does not lose the moment; refreshing after it has fired does not refire it.
+- Confetti fires exactly once per tournament's first arrival at the Champions screen, gated by `state.awardsShown`.
+- Reset Tournament and Clear All both reset `awardsShown` and `notifiedRounds` so a re-shuffled tournament gets fresh confetti and fresh per-round notifications.
+
+**Setup**
 - Animated shuffle reveal completes within 1500 ms total (1200 ms animation + skip safety) and is skippable.
-- Paste-8-names rejects any input that doesn't yield exactly 8 unique trimmed names.
-- "Reset Tournament" preserves names. "Clear All" wipes them.
+- Paste-8-names rejects any input that doesn't yield exactly 8 unique trimmed names (case-insensitive uniqueness, matching the existing setup gate).
+
+**Settings**
+- "Reset Tournament" preserves the *currently displayed* player names: from `state.slots` post-start, from `state.rawNames` during setup. In-tournament name edits via "Edit Names" are not lost.
+- "Clear All" wipes everything, returns to Setup.
+- "View Full Schedule" is hidden during the setup phase.
+
+**Safety**
+- All player-name rendering uses `textContent` / `createTextNode` (verified by grep for `innerHTML` against name-bearing renderers — none should match for player-name interpolation).
+
+**Awards**
 - Awards math is correct against a hand-computed reference for a seeded tournament.
+- Closest Game tiebreaker is descending winning score (a 21–20 wins over an 11–10).
+- Tied awards render all tied names comma-separated.
+
+**Layout**
 - All new UI keeps the 60 px minimum tap target standard.
 - All new behavior works at iPad portrait (820 × 1180) and iPad landscape (1180 × 820).
 
