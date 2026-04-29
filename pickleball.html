@@ -729,6 +729,26 @@
     color: var(--muted);
     margin-top: 2px;
   }
+  /* Settings inline select row */
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    min-height: 60px;
+  }
+  .settings-row label { font-weight: 700; }
+  .settings-row select {
+    min-height: 44px;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 16px;
+    font-family: inherit;
+  }
 </style>
 </head>
 <body>
@@ -2089,12 +2109,25 @@ function openSettings() {
       });
       modal.appendChild(input);
     }
-  }
 
-  modal.appendChild(el("button", {
-    style: "width: 100%; margin-top: 12px;",
-    onclick: () => { close(); render(); }
-  }, "Done"));
+    const winScoreRow = el("div", { class: "settings-row" });
+    winScoreRow.appendChild(el("label", null, "Win score"));
+    const winSelect = el("select");
+    [11, 15, 21].forEach(v => {
+      const opt = el("option", { value: String(v) }, String(v));
+      if (state.winScore === v) opt.setAttribute("selected", "selected");
+      winSelect.appendChild(opt);
+    });
+    winSelect.addEventListener("change", () => {
+      state.winScore = parseInt(winSelect.value, 10);
+      save();
+    });
+    winScoreRow.appendChild(winSelect);
+    modal.appendChild(winScoreRow);
+
+    const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { close(); render(); } }, "Done");
+    modal.appendChild(closeBtn);
+  }
 
   modal.appendChild(el("button", {
     class: "danger",
