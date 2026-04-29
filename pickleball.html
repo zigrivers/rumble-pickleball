@@ -749,6 +749,45 @@
     font-size: 16px;
     font-family: inherit;
   }
+  /* Schedule modal */
+  .schedule-list { max-height: 60vh; overflow-y: auto; }
+  .schedule-round {
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+  .schedule-round:first-child { border-top: none; }
+  .schedule-round-title {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .schedule-game {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 15px;
+  }
+  .schedule-game .court-tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .schedule-game .court-tag.c1 { background: rgba(56, 189, 248, 0.15); color: var(--court1); }
+  .schedule-game .court-tag.c2 { background: rgba(167, 139, 250, 0.15); color: var(--court2); }
+  .schedule-game .court-tag.gold { background: rgba(251, 191, 36, 0.18); color: var(--gold); }
+  .schedule-game .court-tag.silver { background: rgba(203, 213, 225, 0.15); color: var(--silver); }
+  .schedule-game .game-text { flex: 1; }
+  .schedule-game .game-score {
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
 </style>
 </head>
 <body>
@@ -2054,6 +2093,53 @@ function renderDoneScreen() {
 }
 
 // ---------- settings modal ----------
+function openScheduleModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Full Schedule"));
+
+  const list = el("div", { class: "schedule-list" });
+
+  function gameRow(g, courtTag, courtClass) {
+    const row = el("div", { class: "schedule-game" });
+    row.appendChild(el("span", { class: "court-tag " + courtClass }, courtTag));
+    row.appendChild(el("span", { class: "game-text" },
+      teamName(g.team1) + " vs " + teamName(g.team2)));
+    const scoreText = isGameComplete(g)
+      ? g.score1 + "–" + g.score2
+      : "—";
+    row.appendChild(el("span", { class: "game-score" }, scoreText));
+    return row;
+  }
+
+  state.rounds.forEach(r => {
+    const block = el("div", { class: "schedule-round" });
+    block.appendChild(el("div", { class: "schedule-round-title" }, "Round " + r.round));
+    block.appendChild(gameRow(r.court1, "South", "c1"));
+    block.appendChild(gameRow(r.court2, "North", "c2"));
+    list.appendChild(block);
+  });
+
+  if (state.finals && (state.phase === "finals" || state.phase === "done")) {
+    const block = el("div", { class: "schedule-round" });
+    block.appendChild(el("div", { class: "schedule-round-title" }, "Finals"));
+    block.appendChild(gameRow(state.finals.championship, "Champ", "gold"));
+    block.appendChild(gameRow(state.finals.consolation,  "Cons",  "silver"));
+    list.appendChild(block);
+  }
+
+  modal.appendChild(list);
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-top: 12px;",
+    onclick: close,
+  }, "Close"));
+  bg.appendChild(modal);
+  document.body.appendChild(bg);
+}
+
 function openHowItWorksModal() {
   const bg = el("div", { class: "modal-bg" });
   const close = () => bg.remove();
@@ -2084,6 +2170,13 @@ function openSettings() {
     style: "width: 100%; margin-bottom: 12px;",
     onclick: () => { close(); openHowItWorksModal(); },
   }, "How this works"));
+
+  if (state.phase !== "setup") {
+    modal.appendChild(el("button", {
+      style: "width: 100%; margin-bottom: 12px;",
+      onclick: () => { close(); openScheduleModal(); },
+    }, "View full schedule"));
+  }
 
   if (state.phase === "setup") {
     modal.appendChild(el("p", { class: "muted" },
