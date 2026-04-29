@@ -1231,20 +1231,24 @@ function canStart() {
   return new Set(trimmed.map(n => n.toLowerCase())).size === 8;
 }
 
+const RULES_BULLETS = [
+  "8 players, 2 courts, doubles. Every round, all 8 play.",
+  "7 rounds, one per partner — by the end, you'll have partnered with every other player exactly once.",
+  "Score games however you normally would (typically first to 11, win by 2). Type any final score.",
+  "After round 7, points decide the seeds. Top 4 play the 🏆 Championship, bottom 4 play the 🥈 Consolation.",
+  "Championship is #1 + #4 vs #2 + #3 — a balanced pairing so the top players don't stomp.",
+  "Final ranking: total points → wins → point differential.",
+];
+function renderRulesUl() {
+  const ul = el("ul");
+  RULES_BULLETS.forEach(text => ul.appendChild(el("li", null, text)));
+  return ul;
+}
 function renderRulesBlock() {
   const details = el("details", { class: "rules", open: "" });
   details.appendChild(el("summary", null, "How it works"));
   const body = el("div", { class: "rules-body" });
-  const ul = el("ul");
-  [
-    "8 players, 2 courts, doubles. Every round, all 8 play.",
-    "7 rounds, one per partner — by the end, you'll have partnered with every other player exactly once.",
-    "Score games however you normally would (typically first to 11, win by 2). Type any final score.",
-    "After round 7, points decide the seeds. Top 4 play the 🏆 Championship, bottom 4 play the 🥈 Consolation.",
-    "Championship is #1 + #4 vs #2 + #3 — a balanced pairing so the top players don't stomp.",
-    "Final ranking: total points → wins → point differential.",
-  ].forEach(text => ul.appendChild(el("li", null, text)));
-  body.appendChild(ul);
+  body.appendChild(renderRulesUl());
   details.appendChild(body);
   return details;
 }
@@ -2030,6 +2034,24 @@ function renderDoneScreen() {
 }
 
 // ---------- settings modal ----------
+function openHowItWorksModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "How this works"));
+  const body = el("div", { class: "rules-body", style: "padding: 0; margin-bottom: 16px;" });
+  body.appendChild(renderRulesUl());
+  modal.appendChild(body);
+  modal.appendChild(el("button", {
+    style: "width: 100%;",
+    onclick: close,
+  }, "Close"));
+  bg.appendChild(modal);
+  document.body.appendChild(bg);
+}
+
 function openSettings() {
   const bg = el("div", { class: "modal-bg" });
   const close = () => bg.remove();
@@ -2037,6 +2059,11 @@ function openSettings() {
 
   const modal = el("div", { class: "modal" });
   modal.appendChild(el("h2", null, "Settings"));
+
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-bottom: 12px;",
+    onclick: () => { close(); openHowItWorksModal(); },
+  }, "How this works"));
 
   if (state.phase === "setup") {
     modal.appendChild(el("p", { class: "muted" },
@@ -2082,6 +2109,7 @@ function openSettings() {
     }
   }, "Reset Tournament"));
 
+  bg.appendChild(modal);
   document.body.appendChild(bg);
 }
 
