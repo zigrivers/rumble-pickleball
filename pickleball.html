@@ -222,6 +222,23 @@
   table.standings col.c-w,
   table.standings col.c-diff { width: 72px; }
   table.standings col.c-stack-extra { width: 50px; }
+  table.standings tr.tier-divider td {
+    border-top: 1px solid var(--border);
+    padding: 10px 8px 4px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+  }
+  .standings-footer {
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+    line-height: 1.4;
+  }
   .rank-trajectory {
     display: inline-block;
     margin-left: 4px;
@@ -2889,6 +2906,17 @@ function renderDoneScreen() {
   finalCard.appendChild(head);
 
   const isStack = state.format === "stack";
+  const colSpan = isStack ? 6 : 5;
+  // Tier dividers go BEFORE the listed rank index (0-based). Tier boundaries:
+  // 0–1 champ-W, 2–3 champ-L, 4–5 cons-W, 6–7 cons-L.
+  const dividerLabels = {
+    2: "Championship runners-up",
+    4: "Consolation winners",
+    6: "Consolation runners-up",
+  };
+  const tierDividerRow = (label) =>
+    el("tr", { class: "tier-divider" },
+      el("td", { colspan: String(colSpan) }, label));
   const table = el("table", { class: "standings", style: "margin-top: 10px;" });
   if (isStack) {
     const stackStats = computeStackStats(state.rounds.length);
@@ -2911,11 +2939,11 @@ function renderDoneScreen() {
       el("th", { class: "num", title: "Games on Court 1" }, "⏱"),
     )));
     const tbody = el("tbody");
-    ranking.slice(3).forEach((rs, i) => {
-      const tableRank = i + 3;
+    ranking.forEach((rs, i) => {
+      if (dividerLabels[i]) tbody.appendChild(tierDividerRow(dividerLabels[i]));
       const s = bySlot.get(rs.slot);
-      tbody.appendChild(el("tr", { class: "r" + (tableRank + 1) },
-        rankCell(tableRank),
+      tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+        rankCell(i),
         el("td", { class: "name" }, s.name),
         el("td", { class: "num" }, s.stackScore.toFixed(1)),
         el("td", { class: "num" }, s.wins + "–" + s.losses),
@@ -2942,11 +2970,11 @@ function renderDoneScreen() {
       el("th", { class: "num" }, "+/–"),
     )));
     const tbody = el("tbody");
-    ranking.slice(3).forEach((rs, i) => {
-      const tableRank = i + 3;
+    ranking.forEach((rs, i) => {
+      if (dividerLabels[i]) tbody.appendChild(tierDividerRow(dividerLabels[i]));
       const s = allStats.find(x => x.slot === rs.slot);
-      tbody.appendChild(el("tr", { class: "r" + (tableRank + 1) },
-        rankCell(tableRank),
+      tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+        rankCell(i),
         el("td", { class: "name" }, s.name),
         el("td", { class: "num" }, "" + s.points),
         el("td", { class: "num" }, "" + s.wins),
@@ -2957,6 +2985,8 @@ function renderDoneScreen() {
     table.appendChild(tbody);
   }
   finalCard.appendChild(table);
+  finalCard.appendChild(el("p", { class: "standings-footer" },
+    "Within each tier, season points → wins → differential break ties."));
   wrap.appendChild(finalCard);
 
   wrap.appendChild(el("button", {
