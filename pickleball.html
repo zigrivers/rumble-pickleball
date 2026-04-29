@@ -728,6 +728,44 @@ function runSelfTests() {
     console.assert(nextPartnerInfo(1) === null, "nextPartnerInfo no chip at round 7");
     state = saved;
   }
+  // Task 10 — finalRanking
+  // Verify tier ordering (champ-W > champ-L > cons-W > cons-L) holds
+  // and that within each tier players are ordered by season ranking,
+  // by deriving the expected order from rankPlayers(7) instead of
+  // assuming a particular slot-to-season-rank mapping.
+  {
+    const saved = state;
+    const rounds = SCHEDULE.map((rd, i) => ({
+      round: i + 1,
+      court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 0 },
+      court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 0 },
+    }));
+    state = {
+      phase: "done",
+      slots: ["A","B","C","D","E","F","G","H"],
+      rounds,
+      currentRound: 7,
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+      finals: {
+        championship: { team1: [1,4], team2: [2,3], score1: 9, score2: 11 }, // team2 wins
+        consolation:  { team1: [5,8], team2: [6,7], score1: 11, score2: 9 }, // team1 wins
+      },
+      awardsShown: false, winScore: 11, notifiedRounds: [],
+    };
+    const seasonOrder = rankPlayers(7).map(s => s.slot);
+    const seasonRankOf = slot => seasonOrder.indexOf(slot);
+    const sortBySeason = arr => arr.slice().sort((a,b) => seasonRankOf(a) - seasonRankOf(b));
+    const expected = [
+      ...sortBySeason([2, 3]),  // championship winners
+      ...sortBySeason([1, 4]),  // championship losers
+      ...sortBySeason([5, 8]),  // consolation winners
+      ...sortBySeason([6, 7]),  // consolation losers
+    ];
+    const order = finalRanking().map(s => s.slot);
+    console.assert(JSON.stringify(order) === JSON.stringify(expected),
+      "finalRanking tier order", { order, expected });
+    state = saved;
+  }
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -994,6 +1032,37 @@ function maybeFireRoundComplete(primaryBtn) {
 // rank: 1-based seed number; kind: "gold" (championship) or "silver" (consolation)
 function seedPill(rank, kind) {
   return el("span", { class: "seed-pill " + kind }, "#" + rank);
+}
+
+// Returns an array of 8 stat objects (same shape as rankPlayers items) in
+// tournament-outcome tier order. Falls back to rankPlayers(7) order if finals
+// are missing or undecided.
+function finalRanking() {
+  const seasonOrder = rankPlayers(7);
+  const seasonRank = new Map();
+  seasonOrder.forEach((s, i) => seasonRank.set(s.slot, i));
+  const bySlot = new Map();
+  seasonOrder.forEach(s => bySlot.set(s.slot, s));
+
+  const f = state.finals;
+  const allDecided = f
+    && isGameComplete(f.championship) && f.championship.score1 !== f.championship.score2
+    && isGameComplete(f.consolation)  && f.consolation.score1  !== f.consolation.score2;
+  if (!allDecided) return seasonOrder.slice();
+
+  const champWinTeam  = f.championship.score1 > f.championship.score2 ? f.championship.team1 : f.championship.team2;
+  const champLoseTeam = f.championship.score1 > f.championship.score2 ? f.championship.team2 : f.championship.team1;
+  const consWinTeam   = f.consolation.score1  > f.consolation.score2  ? f.consolation.team1  : f.consolation.team2;
+  const consLoseTeam  = f.consolation.score1  > f.consolation.score2  ? f.consolation.team2  : f.consolation.team1;
+
+  const sortByseason = arr => arr.slice().sort((a, b) => seasonRank.get(a) - seasonRank.get(b));
+  const ordered = [
+    ...sortByseason(champWinTeam),
+    ...sortByseason(champLoseTeam),
+    ...sortByseason(consWinTeam),
+    ...sortByseason(consLoseTeam),
+  ];
+  return ordered.map(slot => bySlot.get(slot));
 }
 
 // ====================== rendering ======================
