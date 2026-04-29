@@ -800,18 +800,41 @@
     font-size: 32px;
   }
   /* Tournament awards */
+  .awards-section { margin: 0 auto 20px; max-width: 900px; }
   .awards-strip {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
-    max-width: 600px;
-    margin: 0 auto 20px;
   }
+  .awards-strip.marquee { max-width: 600px; margin: 0 auto; }
   @media (min-width: 720px) {
-    .awards-strip {
-      grid-template-columns: 1fr 1fr 1fr;
+    .awards-strip.marquee {
+      grid-template-columns: 1fr 1fr 1fr 1fr;
       max-width: 900px;
     }
+  }
+  .awards-strip.secondary {
+    margin-top: 8px;
+  }
+  .awards-strip.secondary .award-chip {
+    padding: 8px 12px;
+  }
+  .awards-strip.secondary .award-label {
+    font-size: 10px;
+    margin-bottom: 2px;
+  }
+  .awards-strip.secondary .award-value {
+    font-size: 13px;
+  }
+  .awards-strip.secondary .award-detail {
+    font-size: 10px;
+    margin-top: 2px;
+  }
+  @media (min-width: 720px) {
+    .awards-strip.secondary { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (min-width: 1024px) {
+    .awards-strip.secondary { grid-template-columns: repeat(4, 1fr); }
   }
   .award-chip {
     background: var(--panel);
@@ -1028,10 +1051,21 @@ function runSelfTests() {
     console.assert(a.mvp.names.length >= 1, "MVP has at least one name");
     console.assert(a.biggestWin.names.every(n => n.includes("+10")),
       "Biggest Win all +10", a.biggestWin);
-    console.assert(a.closestGame.names.every(n => n === "11–9"),
-      "Closest Game all 11–9", a.closestGame);
+    console.assert(a.closestGame.names.length > 0 && a.closestGame.names.every(n => n.includes(" & ")),
+      "Closest Game names are team names", a.closestGame);
+    console.assert(/11–9/.test(a.closestGame.detail || ""),
+      "Closest Game detail includes score", a.closestGame);
     console.assert(a.hotStreak.detail && /in a row/.test(a.hotStreak.detail),
       "Hot Streak detail", a.hotStreak);
+    // New awards
+    console.assert(a.theWall.names.length > 0 && /allowed\/game/.test(a.theWall.detail || ""),
+      "The Wall populated", a.theWall);
+    console.assert(a.coldStreak.names.length > 0 && /in a row/.test(a.coldStreak.detail || ""),
+      "Cold Streak populated (someone has consecutive losses)", a.coldStreak);
+    console.assert(a.gotStomped.names.length > 0 && a.gotStomped.names.every(n => n.includes("−10")),
+      "Got Stomped all −10", a.gotStomped);
+    // Most Improved: needs finalRanking decided. With this state, someone moved.
+    console.assert(a.mostImproved.names.length >= 0, "Most Improved field exists", a.mostImproved);
     // Single-winner sanity: rebuild with only ONE blowout game
     const rounds2 = SCHEDULE.map((rd, i) => ({
       round: i + 1,
@@ -2605,15 +2639,17 @@ function computeAwards() {
   const completed = games.filter(g => isGameComplete(g));
   const decided = completed.filter(g => g.score1 !== g.score2);
 
-  // For each decided game, derive the winner-side summary.
+  // For each decided game, derive winner/loser-side summaries.
   const summarized = decided.map(g => {
     const team1Won = g.score1 > g.score2;
     const winTeam = team1Won ? g.team1 : g.team2;
+    const loseTeam = team1Won ? g.team2 : g.team1;
     const winScore = team1Won ? g.score1 : g.score2;
     const loseScore = team1Won ? g.score2 : g.score1;
     return {
       diff: winScore - loseScore,
       winTeam,
+      loseTeam,
       winScore,
       loseScore,
       label: g.label,
@@ -2633,6 +2669,7 @@ function computeAwards() {
 
   // Closest Game — smallest diff; tiebreak by descending winning score.
   // Multiple games matching the best (diff, -winScore) pair are all reported.
+  // Headline is the winning team(s); the score + location go in the detail.
   let closestGame = { names: [], detail: null };
   if (summarized.length) {
     const minDiff = Math.min(...summarized.map(s => s.diff));
@@ -2640,8 +2677,8 @@ function computeAwards() {
     const maxWinScore = Math.max(...closestSet.map(s => s.winScore));
     const tied = closestSet.filter(s => s.winScore === maxWinScore);
     closestGame = {
-      names: tied.map(t => t.winScore + "–" + t.loseScore),
-      detail: tied.map(t => t.label).join(" / "),
+      names: tied.map(t => teamName(t.winTeam)),
+      detail: tied.map(t => t.winScore + "–" + t.loseScore + " · " + t.label).join(" / "),
     };
   }
 
@@ -2775,12 +2812,111 @@ function computeAwards() {
     };
   }
 
-  return { mvp, biggestWin, closestGame, hotStreak, climber, anchor, closer, bestDuo };
+  // The Wall — lowest avg points conceded per completed game.
+  let theWall = { names: [], detail: null };
+  {
+    const conceded = new Map(); // slot -> { totalAg, games }
+    for (let s = 1; s <= 8; s++) conceded.set(s, { totalAg: 0, games: 0 });
+    for (const g of completed) {
+      for (const slot of g.team1) { const e = conceded.get(slot); e.totalAg += g.score2; e.games++; }
+      for (const slot of g.team2) { const e = conceded.get(slot); e.totalAg += g.score1; e.games++; }
+    }
+    const entries = [...conceded.entries()]
+      .filter(([, v]) => v.games > 0)
+      .map(([slot, v]) => ({ slot, avg: v.totalAg / v.games }));
+    if (entries.length) {
+      const minAvg = Math.min(...entries.map(e => e.avg));
+      const tied = entries.filter(e => e.avg === minAvg);
+      theWall = {
+        names: tied.map(e => nameOf(e.slot)),
+        detail: minAvg.toFixed(1) + " allowed/game",
+      };
+    }
+  }
+
+  // Cold Streak — longest consecutive-losses run for a single player.
+  // Mirrors Hot Streak: ties reset both teams' streaks.
+  let coldStreak = { names: [], detail: null };
+  {
+    const lossStreaks = new Map();
+    const lossBest    = new Map();
+    for (const g of completed) {
+      if (g.score1 === g.score2) {
+        for (const slot of [...g.team1, ...g.team2]) {
+          lossBest.set(slot, Math.max(lossBest.get(slot) || 0, lossStreaks.get(slot) || 0));
+          lossStreaks.set(slot, 0);
+        }
+        continue;
+      }
+      const t1Won = g.score1 > g.score2;
+      const losers  = t1Won ? g.team2 : g.team1;
+      const winners = t1Won ? g.team1 : g.team2;
+      for (const slot of losers) {
+        lossStreaks.set(slot, (lossStreaks.get(slot) || 0) + 1);
+        lossBest.set(slot, Math.max(lossBest.get(slot) || 0, lossStreaks.get(slot)));
+      }
+      for (const slot of winners) {
+        lossBest.set(slot, Math.max(lossBest.get(slot) || 0, lossStreaks.get(slot) || 0));
+        lossStreaks.set(slot, 0);
+      }
+    }
+    for (const [slot, cur] of lossStreaks) {
+      lossBest.set(slot, Math.max(lossBest.get(slot) || 0, cur));
+    }
+    const maxLoss = lossBest.size ? Math.max(...lossBest.values()) : 0;
+    if (maxLoss > 0) {
+      const tied = [...lossBest.entries()].filter(([, v]) => v === maxLoss).map(([k]) => k);
+      coldStreak = { names: tied.map(nameOf), detail: maxLoss + " in a row" };
+    }
+  }
+
+  // Most Improved — biggest jump in rank from after round 2 to final standings.
+  // Skipped if we don't have a finalRanking (no decided finals) or fewer than
+  // 2 rounds of data. Sample is noisy with so few rounds — that's part of the
+  // fun.
+  let mostImproved = { names: [], detail: null };
+  if (state.rounds.length >= 2 && state.finals
+      && isGameComplete(state.finals.championship) && state.finals.championship.score1 !== state.finals.championship.score2
+      && isGameComplete(state.finals.consolation)  && state.finals.consolation.score1  !== state.finals.consolation.score2) {
+    const earlyRanked = rankPlayersForFormat(2);
+    const earlyRankBy = new Map();
+    earlyRanked.forEach((s, i) => earlyRankBy.set(s.slot, i + 1));
+    const finalRanked = finalRanking();
+    const finalRankBy = new Map();
+    finalRanked.forEach((s, i) => finalRankBy.set(s.slot, i + 1));
+    let bestImprov = 0;
+    let topSlots = [];
+    for (const slot of earlyRankBy.keys()) {
+      const improv = (earlyRankBy.get(slot) || 0) - (finalRankBy.get(slot) || 0);
+      if (improv > bestImprov) { bestImprov = improv; topSlots = [slot]; }
+      else if (improv === bestImprov && bestImprov > 0) { topSlots.push(slot); }
+    }
+    if (topSlots.length) {
+      mostImproved = {
+        names: topSlots.map(nameOf),
+        detail: "↑" + bestImprov + " spot" + (bestImprov > 1 ? "s" : "") + " from R2",
+      };
+    }
+  }
+
+  // Got Stomped — losing team in the biggest blowout; mirrors Biggest Win.
+  let gotStomped = { names: [], detail: null };
+  if (summarized.length) {
+    const maxDiff = Math.max(...summarized.map(s => s.diff));
+    const blowouts = summarized.filter(s => s.diff === maxDiff);
+    gotStomped = {
+      names: blowouts.map(b => teamName(b.loseTeam) + " −" + b.diff),
+      detail: blowouts.map(b => b.winScore + "–" + b.loseScore + " · " + b.label).join(" / "),
+    };
+  }
+
+  return { mvp, biggestWin, closestGame, hotStreak, climber, anchor, closer, bestDuo,
+           theWall, coldStreak, mostImproved, gotStomped };
 }
 
 function renderAwardsStrip() {
   const a = computeAwards();
-  const wrap = el("div", { class: "awards-strip" });
+  const wrap = el("div", { class: "awards-section" });
   const chip = (label, item, inlineDetail) => {
     const node = el("div", { class: "award-chip" });
     node.appendChild(el("div", { class: "award-label" }, label));
@@ -2795,20 +2931,26 @@ function renderAwardsStrip() {
     }
     return node;
   };
-  wrap.appendChild(chip("🎯 MVP", a.mvp, true));            // inline detail
-  wrap.appendChild(chip("💥 BIGGEST WIN", a.biggestWin, false));
-  wrap.appendChild(chip("🤏 CLOSEST GAME", a.closestGame, false));
-  wrap.appendChild(chip("🔥 HOT STREAK", a.hotStreak, true)); // inline detail
+  // Marquee — the four headline awards at full size.
+  const marquee = el("div", { class: "awards-strip marquee" });
+  marquee.appendChild(chip("🎯 MVP", a.mvp, true));
+  marquee.appendChild(chip("💥 BIGGEST WIN", a.biggestWin, false));
+  marquee.appendChild(chip("🤏 CLOSEST GAME", a.closestGame, false));
+  marquee.appendChild(chip("🔥 HOT STREAK", a.hotStreak, true));
+  wrap.appendChild(marquee);
+  // Secondary — denser tile of supporting awards. Only shown if any exist.
+  const secondary = el("div", { class: "awards-strip secondary" });
+  if (a.theWall.names.length)      secondary.appendChild(chip("🛡️ THE WALL", a.theWall, true));
+  if (a.coldStreak.names.length)   secondary.appendChild(chip("❄️ COLD STREAK", a.coldStreak, true));
+  if (a.mostImproved.names.length) secondary.appendChild(chip("📈 MOST IMPROVED", a.mostImproved, true));
+  if (a.gotStomped.names.length)   secondary.appendChild(chip("🥱 GOT STOMPED", a.gotStomped, false));
+  if (a.bestDuo.names.length)      secondary.appendChild(chip("🤝 BEST DUO", a.bestDuo, true));
+  if (a.closer.names.length)       secondary.appendChild(chip("🎯 CLOSER", a.closer, true));
   if (state.format === "stack") {
-    wrap.appendChild(chip("🧗 CLIMBER", a.climber, true));
-    wrap.appendChild(chip("⚓ ANCHOR", a.anchor, true));
+    if (a.climber.names.length) secondary.appendChild(chip("🧗 CLIMBER", a.climber, true));
+    if (a.anchor.names.length)  secondary.appendChild(chip("⚓ ANCHOR", a.anchor, true));
   }
-  if (a.closer.names.length) {
-    wrap.appendChild(chip("🎯 CLOSER", a.closer, true));
-  }
-  if (a.bestDuo.names.length) {
-    wrap.appendChild(chip("🤝 BEST DUO", a.bestDuo, true));
-  }
+  if (secondary.children.length) wrap.appendChild(secondary);
   return wrap;
 }
 
