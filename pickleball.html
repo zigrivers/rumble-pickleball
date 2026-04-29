@@ -662,6 +662,41 @@
   .court-card.silver .court-label { font-size: 12px; }
   .court-card.silver .team-name { font-size: 16px; }
   .court-card.silver .score-input { font-size: 28px; height: 60px; }
+  /* Top-3 podium on Champions screen */
+  .podium {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1fr;
+    gap: 8px;
+    align-items: end;
+    max-width: 480px;
+    margin: 28px auto 20px;
+  }
+  .podium-step { text-align: center; }
+  .podium-name { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+  .podium-step.gold .podium-name { font-size: 22px; color: var(--gold); }
+  .podium-points { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .podium-bar {
+    border-radius: 10px 10px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .podium-step.gold .podium-bar {
+    height: 110px;
+    background: linear-gradient(180deg, #fde047 0%, #fbbf24 100%);
+    box-shadow: 0 0 24px rgba(251, 191, 36, 0.35);
+    font-size: 48px;
+  }
+  .podium-step.silver .podium-bar {
+    height: 80px;
+    background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%);
+    font-size: 38px;
+  }
+  .podium-step.bronze .podium-bar {
+    height: 60px;
+    background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+    font-size: 32px;
+  }
 </style>
 </head>
 <body>
@@ -1612,6 +1647,24 @@ function renderFinalsScreen() {
 }
 
 // ---------- done screen ----------
+function renderPodium(ranking) {
+  const stats = computeStats(7, true); // for points
+  const pointsBySlot = new Map(stats.map(s => [s.slot, s.points]));
+  const order = ["silver", "gold", "bronze"]; // visual left/center/right
+  const ranks = [ranking[1], ranking[0], ranking[2]]; // map to visual order
+  const emojis = { silver: "🥈", gold: "🥇", bronze: "🥉" };
+  const podium = el("div", { class: "podium" });
+  order.forEach((kind, i) => {
+    const r = ranks[i];
+    const step = el("div", { class: "podium-step " + kind });
+    step.appendChild(el("div", { class: "podium-name" }, r.name));
+    step.appendChild(el("div", { class: "podium-points" }, pointsBySlot.get(r.slot) + " pts"));
+    step.appendChild(el("div", { class: "podium-bar" }, emojis[kind]));
+    podium.appendChild(step);
+  });
+  return podium;
+}
+
 function renderScorecard(game) {
   const win1 = game.score1 > game.score2;
   const win2 = game.score2 > game.score1;
@@ -1628,6 +1681,7 @@ function renderDoneScreen() {
   const champ = f.championship, cons = f.consolation;
   const champWin = champ.score1 > champ.score2 ? champ.team1 : (champ.score2 > champ.score1 ? champ.team2 : null);
   const consWin  = cons.score1  > cons.score2  ? cons.team1  : (cons.score2  > cons.score1  ? cons.team2  : null);
+  const ranking = finalRanking();
 
   const card = el("div", { class: "card" });
   const champions = el("div", { class: "champions" });
@@ -1645,6 +1699,8 @@ function renderDoneScreen() {
   card.appendChild(champions);
   wrap.appendChild(card);
 
+  wrap.appendChild(renderPodium(ranking));
+
   // Final standings — uses the same renderStandingsCard, with finals included in totals
   const finalCard = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; gap: 10px; flex-wrap: wrap;" },
@@ -1653,7 +1709,6 @@ function renderDoneScreen() {
   );
   finalCard.appendChild(head);
 
-  const ranked = rankPlayers(7);
   const allStats = computeStats(7, true);
   const table = el("table", { class: "standings", style: "margin-top: 10px;" });
   const colgroup = el("colgroup", null,
@@ -1672,10 +1727,11 @@ function renderDoneScreen() {
     el("th", { class: "num" }, "+/–"),
   )));
   const tbody = el("tbody");
-  ranked.forEach((rs, i) => {
+  ranking.slice(3).forEach((rs, i) => {
+    const tableRank = i + 3; // 0-indexed → ranks 4..8 via rankCell(i+3) which renders digits
     const s = allStats.find(x => x.slot === rs.slot);
-    tbody.appendChild(el("tr", { class: "r" + (i + 1) },
-      rankCell(i),
+    tbody.appendChild(el("tr", { class: "r" + (tableRank + 1) },
+      rankCell(tableRank),
       el("td", { class: "name" }, s.name),
       el("td", { class: "num" }, "" + s.points),
       el("td", { class: "num" }, "" + s.wins),
