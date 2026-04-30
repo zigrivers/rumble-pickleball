@@ -3121,6 +3121,43 @@ function buildRallyScoringHelp() {
   const det = el("details", { class: "rules", style: "margin-bottom: 10px;" });
   det.appendChild(el("summary", null, "Rally Scoring"));
   const body = el("div", { class: "rules-body" });
+
+  const b1 = el("div");
+  b1.innerHTML = `
+<p style="margin:0 0 14px;">In rally scoring, <strong>every rally scores a point</strong> — no matter who served.</p>
+<div style="margin-bottom:18px;">
+  <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Rally vs. Sideout</div>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;">
+    <tr>
+      <th style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:left;color:var(--muted);font-weight:600;"></th>
+      <th style="padding:7px 10px;border-bottom:1px solid var(--border);color:var(--accent);text-align:center;font-weight:700;">Rally</th>
+      <th style="padding:7px 10px;border-bottom:1px solid var(--border);color:var(--muted);text-align:center;font-weight:600;">Sideout</th>
+    </tr>
+    <tr style="border-bottom:1px solid var(--panel);">
+      <td style="padding:7px 10px;">Who can score?</td>
+      <td style="padding:7px 10px;color:var(--good);text-align:center;font-weight:600;">Rally winner</td>
+      <td style="padding:7px 10px;text-align:center;">Serving team only</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--panel);">
+      <td style="padding:7px 10px;">Servers per turn</td>
+      <td style="padding:7px 10px;color:var(--good);text-align:center;font-weight:600;">1</td>
+      <td style="padding:7px 10px;text-align:center;">2 (each player once)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--panel);">
+      <td style="padding:7px 10px;">Score called as</td>
+      <td style="padding:7px 10px;color:var(--good);text-align:center;font-weight:600;">Server–Receiver</td>
+      <td style="padding:7px 10px;text-align:center;">Server–Receiver–#</td>
+    </tr>
+    <tr>
+      <td style="padding:7px 10px;">Win condition</td>
+      <td style="padding:7px 10px;color:var(--good);text-align:center;font-weight:600;">Win on your serve</td>
+      <td style="padding:7px 10px;text-align:center;">Win on your serve</td>
+    </tr>
+  </table>
+  <p style="font-size:12px;margin:6px 0 0;">Examples below show Team A – Team B (fixed order). The verbal call uses server score first.</p>
+</div>`;
+  body.appendChild(b1);
+
   det.appendChild(body);
   return det;
 }
