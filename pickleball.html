@@ -3236,6 +3236,43 @@ function buildSideOutScoringHelp() {
   const det = el("details", { class: "rules", style: "margin-bottom: 10px;" });
   det.appendChild(el("summary", null, "Side Out Scoring"));
   const body = el("div", { class: "rules-body" });
+
+  const b1 = el("div");
+  b1.innerHTML = `
+<p style="margin:0 0 14px;">In sideout scoring, <strong>only the serving team can score</strong>. Score is called as three numbers: your score – their score – server number.</p>
+<div style="margin-bottom:18px;">
+  <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Key Rules</div>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border);">
+        <th scope="row" style="padding:7px 10px;width:45%;text-align:left;font-weight:normal;">Score a point?</th>
+        <td style="padding:7px 10px;color:var(--text);">Only if your team is <strong>serving</strong></td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <th scope="row" style="padding:7px 10px;text-align:left;font-weight:normal;">Servers per turn</th>
+        <td style="padding:7px 10px;color:var(--text);"><strong>2</strong> — each player serves once before side out</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <th scope="row" style="padding:7px 10px;text-align:left;font-weight:normal;">Score format</th>
+        <td style="padding:7px 10px;color:var(--text);"><strong>My–Their–Server#</strong> <span style="color:var(--muted);">(e.g. "4–3–1")</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <th scope="row" style="padding:7px 10px;text-align:left;font-weight:normal;">Serve side (after side-out)</th>
+        <td style="padding:7px 10px;color:var(--text);">Even → right · odd → left</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border);">
+        <th scope="row" style="padding:7px 10px;text-align:left;font-weight:normal;">Server 2's side</th>
+        <td style="padding:7px 10px;color:var(--text);">Their <strong>current position</strong> — not reset by score</td>
+      </tr>
+      <tr>
+        <th scope="row" style="padding:7px 10px;text-align:left;font-weight:normal;">Game start</th>
+        <td style="padding:7px 10px;"><code style="background:var(--bg);padding:1px 6px;border-radius:4px;font-size:13px;">0–0–2</code> <span style="color:var(--muted);">— first team gets only 1 server</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>`;
+  body.appendChild(b1);
+
   det.appendChild(body);
   return det;
 }
