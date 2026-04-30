@@ -3310,6 +3310,41 @@ function buildSideOutScoringHelp() {
 </div>`;
   body.appendChild(b2);
 
+  const b3 = el("div");
+  b3.innerHTML = `
+<div>
+  <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Example: Score at 4–3–1</div>
+  <p style="margin:0 0 10px;font-size:14px;"><strong style="color:var(--text);">4–3–1</strong>, Team A serving (Server 1). Score 4 is even → right side.</p>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+    <div style="background:#0d2b1a;border:1px solid var(--good);border-radius:8px;padding:10px 12px;">
+      <div style="font-size:11px;color:var(--good);font-weight:700;margin-bottom:4px;">TEAM A WINS THE RALLY</div>
+      <div style="font-size:14px;color:var(--text);">Score → <strong>5–3–1</strong> · Same server · 5 is odd → switch to left</div>
+    </div>
+    <div style="background:#1a0d2b;border:1px solid var(--court2);border-radius:8px;padding:10px 12px;">
+      <div style="font-size:11px;color:var(--court2);font-weight:700;margin-bottom:4px;">TEAM B WINS THE RALLY</div>
+      <div style="font-size:14px;color:var(--text);">No point · Score → <strong>4–3–2</strong> · Server 2 serves from left (current position)</div>
+    </div>
+    <div style="background:#2b1010;border:1px solid var(--bad);border-radius:8px;padding:10px 12px;">
+      <div style="font-size:11px;color:var(--bad);font-weight:700;margin-bottom:4px;">TEAM B WINS AGAIN (Server 2 loses)</div>
+      <div style="font-size:14px;color:var(--text);">No point · <strong>Side out</strong> · Team B has both servers · From B's view: <strong>3–4–1</strong></div>
+    </div>
+  </div>
+  <div style="background:#1a0e00;border:2px solid var(--accent);border-radius:8px;padding:12px;">
+    <div style="font-size:11px;color:var(--accent);font-weight:700;margin-bottom:8px;">⚡ HOW TO WIN — first to 11, win by 2</div>
+    <div style="display:flex;flex-direction:column;gap:5px;font-size:13px;font-family:monospace;color:var(--text);">
+      <div>10–8, A serving → A wins → <strong style="color:var(--good);">11–8 ✓ GAME</strong></div>
+      <div style="color:var(--muted);font-size:12px;padding:2px 0;">— or tie scenario —</div>
+      <div>10–9, A serving → A wins → <strong style="color:var(--good);">11–9 ✓ GAME</strong></div>
+      <div>10–9, A serving → B wins → no score, 10–9–2 or side out</div>
+      <div style="padding-left:14px;">...side out → B serving → score 9–10–1 from B's view</div>
+      <div style="padding-left:14px;">9–10, B serving → B wins → 10–10 <span style="color:var(--muted);">(tied, not game)</span></div>
+      <div style="padding-left:14px;">...keep going until someone leads by 2 on serve</div>
+    </div>
+    <p style="font-size:12px;color:var(--accent);margin:10px 0 0;">Same as rally: win the last point on your serve, and lead by 2.</p>
+  </div>
+</div>`;
+  body.appendChild(b3);
+
   det.appendChild(body);
   return det;
 }
