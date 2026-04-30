@@ -375,7 +375,7 @@
   }
   .format-options {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 10px;
   }
   .format-option {
@@ -405,6 +405,13 @@
   @media (max-width: 480px) {
     .format-options { grid-template-columns: 1fr; }
   }
+
+  /* Crown Court format */
+  .court-card.crown:not(.c1):not(.c2):not(.gold):not(.silver) {
+    border-top-color: var(--gold);
+    box-shadow: 0 0 32px rgba(251, 191, 36, 0.15);
+  }
+  .court-card.crown:not(.c1):not(.c2):not(.gold):not(.silver) .court-label { color: var(--gold); }
 
   .row-actions {
     display: flex;
@@ -3405,6 +3412,7 @@ function renderDoneScreenCrown() {
   wrap.appendChild(card);
 
   wrap.appendChild(renderPodiumCrown(ranking));
+  wrap.appendChild(renderAwardsStrip());
 
   const standings = el("div", { class: "card", style: "margin-top:14px;" });
   standings.appendChild(el("h3", { style: "margin:0 0 12px;" }, "Final Standings"));
@@ -4298,7 +4306,233 @@ function computeAwards() {
            theWall, coldStreak, mostImproved, gotStomped };
 }
 
+function computeCrownPerformanceAwards(allGames) {
+  const lb = crownLeaderboard();
+  const mvp = { names: [nameOf(lb[0].slot)], detail: lb[0].matchPoints.toFixed(1) + " mp" };
+  const summarized = allGames.map(g => {
+    const t1win = g.score1 > g.score2;
+    return {
+      diff: Math.abs(g.score1 - g.score2),
+      winTeam: t1win ? g.team1 : g.team2,
+      loseTeam: t1win ? g.team2 : g.team1,
+      winScore: t1win ? g.score1 : g.score2,
+      loseScore: t1win ? g.score2 : g.score1,
+    };
+  });
+  const maxDiff = summarized.length ? Math.max(...summarized.map(s => s.diff)) : 0;
+  const biggestWin = summarized.length
+    ? { names: summarized.filter(s => s.diff === maxDiff).map(w => teamName(w.winTeam) + " +" + w.diff), detail: null }
+    : { names: [], detail: null };
+  let closestGame = { names: [], detail: null };
+  if (summarized.length) {
+    const minDiff = Math.min(...summarized.map(s => s.diff));
+    const closestSet = summarized.filter(s => s.diff === minDiff);
+    const maxWinScore = Math.max(...closestSet.map(s => s.winScore));
+    const closest = closestSet.filter(s => s.winScore === maxWinScore);
+    closestGame = { names: closest.map(g => teamName(g.winTeam)), detail: closest[0].winScore + "–" + closest[0].loseScore };
+  }
+  const streaks = new Map(), best = new Map();
+  for (const g of allGames) {
+    if (g.score1 === g.score2) {
+      for (const slot of [...g.team1, ...g.team2]) {
+        best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot) || 0));
+        streaks.set(slot, 0);
+      }
+      continue;
+    }
+    const t1win = g.score1 > g.score2;
+    const winners = t1win ? g.team1 : g.team2;
+    const losers  = t1win ? g.team2 : g.team1;
+    for (const slot of winners) { streaks.set(slot, (streaks.get(slot) || 0) + 1); best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot))); }
+    for (const slot of losers)  { best.set(slot, Math.max(best.get(slot) || 0, streaks.get(slot) || 0)); streaks.set(slot, 0); }
+  }
+  for (const [slot, cur] of streaks) best.set(slot, Math.max(best.get(slot) || 0, cur));
+  const maxStreak = best.size ? Math.max(...best.values()) : 0;
+  const hotStreak = maxStreak > 0
+    ? { names: [...best.entries()].filter(([, v]) => v === maxStreak).map(([s]) => nameOf(s)), detail: maxStreak + " in a row" }
+    : { names: [], detail: null };
+  const conceded = new Map([1, 2, 3, 4].map(s => [s, { total: 0, games: 0 }]));
+  for (const g of allGames) {
+    for (const slot of g.team1) { const e = conceded.get(slot); if (e) { e.total += g.score2; e.games++; } }
+    for (const slot of g.team2) { const e = conceded.get(slot); if (e) { e.total += g.score1; e.games++; } }
+  }
+  const wallEntries = [...conceded.entries()].filter(([, v]) => v.games > 0).map(([slot, v]) => ({ slot, avg: v.total / v.games }));
+  const minWall = wallEntries.length ? Math.min(...wallEntries.map(e => e.avg)) : Infinity;
+  const theWall = wallEntries.length
+    ? { names: wallEntries.filter(e => e.avg === minWall).map(e => nameOf(e.slot)), detail: minWall.toFixed(1) + " allowed/game" }
+    : { names: [], detail: null };
+  const scored = new Map([1, 2, 3, 4].map(s => [s, 0]));
+  for (const g of allGames) {
+    for (const slot of g.team1) scored.set(slot, scored.get(slot) + g.score1);
+    for (const slot of g.team2) scored.set(slot, scored.get(slot) + g.score2);
+  }
+  const maxScored = Math.max(...scored.values());
+  const theEngine = maxScored > 0
+    ? { names: [...scored.entries()].filter(([, v]) => v === maxScored).map(([s]) => nameOf(s)), detail: maxScored + " total pts" }
+    : { names: [], detail: null };
+  return { mvp, biggestWin, closestGame, hotStreak, theWall, theEngine };
+}
+
+function computeCrownMatchAwards(allGames, allMatches) {
+  const closerWL = new Map([1, 2, 3, 4].map(s => [s, { wins: 0, losses: 0 }]));
+  let anyClose = false;
+  for (const g of allGames) {
+    const maxScore = Math.max(g.score1, g.score2);
+    const diff = Math.abs(g.score1 - g.score2);
+    if (!(maxScore >= 7 && diff <= 2)) continue;
+    anyClose = true;
+    const t1win = g.score1 > g.score2;
+    for (const slot of g.team1) { if (t1win) closerWL.get(slot).wins++; else closerWL.get(slot).losses++; }
+    for (const slot of g.team2) { if (!t1win) closerWL.get(slot).wins++; else closerWL.get(slot).losses++; }
+  }
+  let theCloser = { names: [], detail: null };
+  if (anyClose) {
+    const cands = [...closerWL.entries()].map(([slot, v]) => ({ slot, ...v })).filter(c => c.wins > 0);
+    cands.sort((a, b) => b.wins !== a.wins ? b.wins - a.wins : a.losses - b.losses);
+    if (cands.length) {
+      const top = cands[0];
+      const tied = cands.filter(c => c.wins === top.wins && c.losses === top.losses);
+      theCloser = { names: tied.map(c => nameOf(c.slot)), detail: top.wins + "–" + top.losses + " in close games" };
+    }
+  }
+  const sweepCount = new Map([1, 2, 3, 4].map(s => [s, 0]));
+  for (const match of allMatches) {
+    const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+    if (gamesWon1 === 2 && gamesWon2 === 0) {
+      for (const slot of match.team1) sweepCount.set(slot, sweepCount.get(slot) + 1);
+    } else if (gamesWon2 === 2 && gamesWon1 === 0) {
+      for (const slot of match.team2) sweepCount.set(slot, sweepCount.get(slot) + 1);
+    }
+  }
+  const maxSweeps = Math.max(...sweepCount.values());
+  const theSweeper = maxSweeps > 0
+    ? { names: [...sweepCount.entries()].filter(([, v]) => v === maxSweeps).map(([s]) => nameOf(s)), detail: maxSweeps + " sweep" + (maxSweeps > 1 ? "s" : "") }
+    : { names: [], detail: null };
+  const comebackCount = new Map([1, 2, 3, 4].map(s => [s, 0]));
+  for (const match of allMatches) {
+    if (!isCrownMatchComplete(match)) continue;
+    const g0 = match.games[0];
+    if (!Number.isInteger(g0.score1) || !Number.isInteger(g0.score2)) continue;
+    if (g0.score1 === g0.score2) continue;
+    const g0winner = g0.score1 > g0.score2 ? "team1" : "team2";
+    const matchW = crownMatchWinner(match);
+    if (matchW && g0winner !== matchW) {
+      const winSlots = matchW === "team1" ? match.team1 : match.team2;
+      for (const slot of winSlots) comebackCount.set(slot, comebackCount.get(slot) + 1);
+    }
+  }
+  const maxComebacks = Math.max(...comebackCount.values());
+  const comebackKid = maxComebacks > 0
+    ? { names: [...comebackCount.entries()].filter(([, v]) => v === maxComebacks).map(([s]) => nameOf(s)), detail: maxComebacks + " comeback" + (maxComebacks > 1 ? "s" : "") }
+    : { names: [], detail: null };
+  const partnerWR = new Map([1, 2, 3, 4].map(s => [s, { won: 0, played: 0 }]));
+  for (let s = 1; s <= 4; s++) {
+    for (const match of allMatches) {
+      if (!isCrownMatchComplete(match)) continue;
+      const teamIsTeam1 = match.team1.includes(s);
+      const teamIsTeam2 = match.team2.includes(s);
+      if (!teamIsTeam1 && !teamIsTeam2) continue;
+      const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+      const e = partnerWR.get(s);
+      e.won += teamIsTeam1 ? gamesWon1 : gamesWon2;
+      e.played += gamesWon1 + gamesWon2;
+    }
+  }
+  const partnerRatio = (e) => e.played > 0 ? e.won / e.played : 0;
+  const maxPWR = Math.max(...[...partnerWR.values()].map(partnerRatio));
+  const mvpPartner = maxPWR > 0
+    ? { names: [...partnerWR.entries()].filter(([, v]) => partnerRatio(v) === maxPWR).map(([s]) => nameOf(s)),
+        detail: Math.round(maxPWR * 100) + "% game win rate" }
+    : { names: [], detail: null };
+  const g3WL = new Map([1, 2, 3, 4].map(s => [s, { wins: 0, losses: 0 }]));
+  const g3Games = allGames.filter(g => g.gameIdx === 2 && g.score1 !== g.score2);
+  const anyG3 = g3Games.length > 0;
+  for (const g of g3Games) {
+    const t1win = g.score1 > g.score2;
+    for (const slot of g.team1) { const e = g3WL.get(slot); if (e) { if (t1win) e.wins++; else e.losses++; } }
+    for (const slot of g.team2) { const e = g3WL.get(slot); if (e) { if (!t1win) e.wins++; else e.losses++; } }
+  }
+  let moneyGame = { names: [], detail: null };
+  if (anyG3) {
+    const cands = [...g3WL.entries()].map(([slot, v]) => ({ slot, ...v })).filter(c => c.wins > 0);
+    cands.sort((a, b) => b.wins !== a.wins ? b.wins - a.wins : a.losses - b.losses);
+    if (cands.length) {
+      const top = cands[0];
+      const tied = cands.filter(c => c.wins === top.wins && c.losses === top.losses);
+      moneyGame = { names: tied.map(c => nameOf(c.slot)), detail: top.wins + "–" + top.losses + " in Game 3s" };
+    }
+  }
+  return { theCloser, theSweeper, comebackKid, mvpPartner, moneyGame, anyG3 };
+}
+
+function computeCrownAwards() {
+  const allGames = [];
+  for (let mi = 0; mi < state.crownMatches.length; mi++) {
+    const match = state.crownMatches[mi];
+    const theme = match.theme;
+    let _w1 = 0, _w2 = 0;
+    for (let gi = 0; gi < match.games.length; gi++) {
+      const g = match.games[gi];
+      if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
+      if (g.score1 === g.score2) break;
+      if (theme && !isValidCrownGameScore(g.score1, g.score2, theme)) break;
+      allGames.push({ score1: g.score1, score2: g.score2, team1: match.team1, team2: match.team2, matchIdx: mi, gameIdx: gi });
+      if (g.score1 > g.score2) _w1++; else _w2++;
+      if (_w1 === 2 || _w2 === 2) break;
+    }
+  }
+  if (state.crownFinal) {
+    let _w1 = 0, _w2 = 0;
+    for (let gi = 0; gi < state.crownFinal.games.length; gi++) {
+      const g = state.crownFinal.games[gi];
+      if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
+      if (g.score1 === g.score2) break;
+      if (!isValidCrownGameScore(g.score1, g.score2, "Crown")) break;
+      allGames.push({ score1: g.score1, score2: g.score2, team1: state.crownFinal.team1, team2: state.crownFinal.team2, matchIdx: -1, gameIdx: gi });
+      if (g.score1 > g.score2) _w1++; else _w2++;
+      if (_w1 === 2 || _w2 === 2) break;
+    }
+  }
+  const allMatches = [...state.crownMatches];
+  if (state.crownFinal && isCrownMatchComplete(state.crownFinal)) allMatches.push(state.crownFinal);
+  const perf  = computeCrownPerformanceAwards(allGames);
+  const match = computeCrownMatchAwards(allGames, allMatches);
+  return { ...perf, ...match };
+}
+
+function renderCrownAwardsStrip() {
+  const a = computeCrownAwards();
+  const wrap = el("div", { class: "awards-section" });
+  const chip = (label, item, inlineDetail) => {
+    const node = el("div", { class: "award-chip" });
+    node.appendChild(el("div", { class: "award-label" }, label));
+    const valueText = item.names.length ? item.names.join(", ") : "—";
+    const valueEl = el("div", { class: "award-value" }, valueText);
+    if (item.detail && item.names.length && inlineDetail) valueEl.appendChild(document.createTextNode(" · " + item.detail));
+    node.appendChild(valueEl);
+    if (item.detail && item.names.length && !inlineDetail) node.appendChild(el("div", { class: "award-detail" }, item.detail));
+    return node;
+  };
+  const marquee = el("div", { class: "awards-strip marquee" });
+  marquee.appendChild(chip("🌟 REG. SEASON MVP", a.mvp, true));
+  marquee.appendChild(chip("💥 BIGGEST WIN", a.biggestWin, false));
+  marquee.appendChild(chip("🤏 CLOSEST GAME", a.closestGame, false));
+  marquee.appendChild(chip("🔥 HOT STREAK", a.hotStreak, true));
+  wrap.appendChild(marquee);
+  const secondary = el("div", { class: "awards-strip secondary" });
+  if (a.theCloser.names.length)   secondary.appendChild(chip("🎯 THE CLOSER",    a.theCloser,  true));
+  if (a.theSweeper.names.length)  secondary.appendChild(chip("🧹 THE SWEEPER",   a.theSweeper, true));
+  if (a.comebackKid.names.length) secondary.appendChild(chip("💪 COMEBACK KID",  a.comebackKid, true));
+  if (a.mvpPartner.names.length)  secondary.appendChild(chip("🤝 MVP PARTNER",   a.mvpPartner, true));
+  if (a.theWall.names.length)     secondary.appendChild(chip("🧱 THE WALL",      a.theWall,    true));
+  if (a.theEngine.names.length)   secondary.appendChild(chip("🚂 THE ENGINE",    a.theEngine,  true));
+  if (a.anyG3 && a.moneyGame.names.length) secondary.appendChild(chip("💰 MONEY GAME CHAMP", a.moneyGame, true));
+  if (secondary.children.length) wrap.appendChild(secondary);
+  return wrap;
+}
+
 function renderAwardsStrip() {
+  if (state.format === "crown") return renderCrownAwardsStrip();
   const a = computeAwards();
   const wrap = el("div", { class: "awards-section" });
   const chip = (label, item, inlineDetail) => {
