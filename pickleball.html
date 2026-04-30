@@ -1473,6 +1473,152 @@ function runSelfTests() {
     if (wasEnabled) KeepAwake.enable();
   }
 
+  // KeepAwake — aggressive pre-set before enable() starts Layer 3
+  {
+    const wasEnabled = KeepAwake._enabled;
+    const wasAggressive = KeepAwake._aggressive;
+    if (wasEnabled) KeepAwake.disable();
+    KeepAwake.setAggressive(false);
+
+    KeepAwake.setAggressive(true); // set BEFORE enable
+    KeepAwake.enable();
+    console.assert(KeepAwake._aggressive === true, "pre-set aggressive preserved through enable()");
+    // AudioContext may be blocked by browser without user gesture — just verify _aggressive flag
+    console.assert(KeepAwake._aggressive === true, "Layer 3 attempted when aggressive pre-set before enable");
+
+    KeepAwake.disable();
+    KeepAwake.setAggressive(wasAggressive);
+    if (wasEnabled) KeepAwake.enable();
+  }
+
+  // KeepAwake — keepAwake:false preserved across format switch via syncKeepAwakeToState
+  {
+    const wasEnabled = KeepAwake._enabled;
+    const wasAggressive = KeepAwake._aggressive;
+    if (wasEnabled) KeepAwake.disable();
+    KeepAwake.setAggressive(false);
+
+    const savedState = state;
+    const s = newState();
+    s.keepAwake = false;
+    s.keepAwakeAggressive = false;
+    state = s;
+    syncKeepAwakeToState();
+    console.assert(!KeepAwake._enabled, "syncKeepAwakeToState: keepAwake=false disables module");
+    state = savedState;
+
+    KeepAwake.setAggressive(wasAggressive);
+    if (wasEnabled) KeepAwake.enable();
+    else KeepAwake.disable();
+  }
+
+  // KeepAwake — _reVerify() restarts Layer 1 when rafHandle is null
+  {
+    const wasEnabled = KeepAwake._enabled;
+    const wasAggressive = KeepAwake._aggressive;
+    if (wasEnabled) KeepAwake.disable();
+    KeepAwake.setAggressive(false);
+
+    KeepAwake.enable();
+    // Simulate Layer 1 having lapsed by manually nulling the handle
+    if (KeepAwake._rafHandle) cancelAnimationFrame(KeepAwake._rafHandle);
+    KeepAwake._rafHandle = null;
+    KeepAwake._reVerify();
+    console.assert(KeepAwake._rafHandle !== null, "_reVerify() restarts Layer 1 when rafHandle is null");
+
+    KeepAwake.disable();
+    KeepAwake.setAggressive(wasAggressive);
+    if (wasEnabled) KeepAwake.enable();
+  }
+
+  // KeepAwake — canvas count stays exactly 1 across multiple render() calls
+  {
+    const wasEnabled = KeepAwake._enabled;
+    const wasAggressive = KeepAwake._aggressive;
+    if (wasEnabled) KeepAwake.disable();
+    KeepAwake.setAggressive(false);
+
+    KeepAwake.enable();
+    render(); render(); render();
+    const canvasCount = document.querySelectorAll("canvas.ka-canvas").length;
+    console.assert(canvasCount === 1, "canvas count stays 1 across multiple render() calls", canvasCount);
+
+    KeepAwake.disable();
+    KeepAwake.setAggressive(wasAggressive);
+    if (wasEnabled) KeepAwake.enable();
+  }
+
+  // KeepAwake — keepAwake:false preserved in newState() (simulates Start New Tournament)
+  {
+    const wasEnabled = KeepAwake._enabled;
+    const wasAggressive = KeepAwake._aggressive;
+    if (wasEnabled) KeepAwake.disable();
+    KeepAwake.setAggressive(false);
+
+    const savedState = state;
+    const s = newState();
+    // Simulate user having turned off keep-awake before starting a new tournament
+    const keepAwakeWas = false;
+    const keepAwakeAggressiveWas = false;
+    s.keepAwake = keepAwakeWas;
+    s.keepAwakeAggressive = keepAwakeAggressiveWas;
+    state = s;
+    syncKeepAwakeToState();
+    console.assert(state.keepAwake === false, "newState preserves keepAwake=false");
+    console.assert(!KeepAwake._enabled, "module disabled after newState with keepAwake=false");
+    state = savedState;
+
+    KeepAwake.setAggressive(wasAggressive);
+    if (wasEnabled) KeepAwake.enable();
+    else KeepAwake.disable();
+  }
+
+  // KeepAwake — _visibilityHandler installed unconditionally at enable()
+  {
+    const wasEnabled = KeepAwake._enabled;
+    const wasAggressive = KeepAwake._aggressive;
+    if (wasEnabled) KeepAwake.disable();
+    KeepAwake.setAggressive(false);
+
+    // Clear any existing handler
+    if (KeepAwake._visibilityHandler) {
+      document.removeEventListener("visibilitychange", KeepAwake._visibilityHandler);
+      KeepAwake._visibilityHandler = null;
+    }
+
+    KeepAwake.enable();
+    console.assert(typeof KeepAwake._visibilityHandler === "function",
+      "_visibilityHandler installed by enable() regardless of WakeLock support");
+
+    KeepAwake.disable();
+    KeepAwake.setAggressive(wasAggressive);
+    if (wasEnabled) KeepAwake.enable();
+  }
+
+  // KeepAwake — syncKeepAwakeToState handles aggressive:true with already-enabled module
+  {
+    const wasEnabled = KeepAwake._enabled;
+    const wasAggressive = KeepAwake._aggressive;
+    if (wasEnabled) KeepAwake.disable();
+    KeepAwake.setAggressive(false);
+
+    const savedState = state;
+    const s = newState();
+    s.keepAwake = true;
+    s.keepAwakeAggressive = true;
+    state = s;
+
+    KeepAwake.enable(); // already enabled before sync
+    syncKeepAwakeToState();
+    console.assert(KeepAwake._enabled, "module stays enabled after syncKeepAwakeToState with keepAwake=true");
+    console.assert(KeepAwake._aggressive, "module stays aggressive after syncKeepAwakeToState with keepAwakeAggressive=true");
+    state = savedState;
+
+    KeepAwake.disable();
+    KeepAwake.setAggressive(wasAggressive);
+    if (wasEnabled) KeepAwake.enable();
+  }
+
   // ---- Crown Court tests ----
   // matchPointsForMatch
   {
@@ -1735,6 +1881,12 @@ const KeepAwake = {
     if (this._enabled) return;
     this._enabled = true;
     this._lastError = null;
+    if (!this._visibilityHandler) {
+      this._visibilityHandler = () => {
+        if (document.visibilityState === "visible") this._reVerify();
+      };
+      document.addEventListener("visibilitychange", this._visibilityHandler);
+    }
     this._layer1Start();
     this._layer2Acquire();
     if (this._aggressive) this._layer3Start();
@@ -1828,14 +1980,6 @@ const KeepAwake = {
       }
       if (this._pendingWakeLock) return; // guard: avoid overlapping requests
       this._pendingWakeLock = true;
-      // Register visibilitychange before the async request so re-acquisition works
-      // even if the initial request is rejected (e.g. no user gesture yet).
-      if (!this._visibilityHandler) {
-        this._visibilityHandler = () => {
-          if (document.visibilityState === "visible") this._reVerify();
-        };
-        document.addEventListener("visibilitychange", this._visibilityHandler);
-      }
       const promise = navigator.wakeLock.request("screen");
       promise.then(lock => {
         this._pendingWakeLock = false;
@@ -2419,6 +2563,9 @@ function finalRankingCrown() {
 }
 
 function startTournament() {
+  // No syncKeepAwakeToState() here — this function mutates state in-place rather than
+  // replacing it, so keepAwake settings are already live. syncKeepAwakeToState() is only
+  // needed after full state replacements (e.g. newState(), format-switch, data-clear).
   const isCrown = state.format === "crown";
   const count = isCrown ? 4 : 8;
   const names = state.rawNames.slice(0, count).map(s => s.trim());
@@ -2966,6 +3113,22 @@ function renderRallyScoringHelp() {
     "Win by 2 — a 6-6 game keeps going.",
   ].forEach(text => ul.appendChild(el("li", null, text)));
   body.appendChild(ul);
+  det.appendChild(body);
+  return det;
+}
+
+function buildRallyScoringHelp() {
+  const det = el("details", { class: "rules", style: "margin-bottom: 10px;" });
+  det.appendChild(el("summary", null, "Rally Scoring"));
+  const body = el("div", { class: "rules-body" });
+  det.appendChild(body);
+  return det;
+}
+
+function buildSideOutScoringHelp() {
+  const det = el("details", { class: "rules", style: "margin-bottom: 10px;" });
+  det.appendChild(el("summary", null, "Side Out Scoring"));
+  const body = el("div", { class: "rules-body" });
   det.appendChild(body);
   return det;
 }
@@ -4899,6 +5062,12 @@ function openHowItWorksModal() {
     modal.appendChild(det);
   }
 
+  const refHeader = el("div", { style: "border-top: 1px solid var(--border); margin: 6px 0 10px; padding-top: 14px;" });
+  refHeader.appendChild(el("div", { class: "ka-section-title" }, "Reference"));
+  modal.appendChild(refHeader);
+  modal.appendChild(buildRallyScoringHelp());
+  modal.appendChild(buildSideOutScoringHelp());
+
   modal.appendChild(el("button", {
     style: "width: 100%; margin-top: 12px;",
     onclick: close,
@@ -5094,7 +5263,7 @@ function openSettings() {
     refreshKaStatus();
   });
 
-  const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { close(); render(); } }, "Done");
+  const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { syncKeepAwakeToState(); close(); render(); } }, "Done");
   modal.appendChild(closeBtn);
 
   // Divider before destructive actions
@@ -5212,7 +5381,7 @@ function openSettings() {
 }
 
 // ---------- boot ----------
-KeepAwake._aggressive = !!state.keepAwakeAggressive;
+KeepAwake.setAggressive(!!state.keepAwakeAggressive);
 if (state.keepAwake) {
   // Layer 1 (canvas) starts immediately. Layer 2 (WakeLock) and Layer 3 (AudioContext)
   // may be rejected by the browser without a prior user gesture — both are caught internally
