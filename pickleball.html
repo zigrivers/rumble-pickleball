@@ -919,6 +919,94 @@
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
+  /* Keep-awake toggle + status (Display & TV settings) */
+  .ka-section-title {
+    margin: 14px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .ka-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    min-height: 60px;
+  }
+  .ka-row.indent { padding-left: 18px; }
+  .ka-row .ka-text { flex: 1; }
+  .ka-row .ka-title { font-weight: 700; }
+  .ka-row .ka-sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+  .ka-switch {
+    position: relative;
+    display: inline-block;
+    width: 52px;
+    height: 30px;
+    flex-shrink: 0;
+  }
+  .ka-switch input { opacity: 0; width: 0; height: 0; }
+  .ka-switch .slider {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    transition: background-color 0.18s, border-color 0.18s;
+  }
+  .ka-switch .slider::before {
+    position: absolute;
+    content: "";
+    width: 22px;
+    height: 22px;
+    left: 3px;
+    top: 3px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: transform 0.18s, background-color 0.18s;
+  }
+  .ka-switch input:checked + .slider {
+    background: rgba(251, 191, 36, 0.25);
+    border-color: var(--accent);
+  }
+  .ka-switch input:checked + .slider::before {
+    transform: translateX(22px);
+    background: var(--accent);
+  }
+  .ka-switch input:disabled + .slider { opacity: 0.4; cursor: not-allowed; }
+  .ka-status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    background: var(--muted);
+  }
+  .ka-status-dot.green  { background: var(--good); }
+  .ka-status-dot.yellow { background: var(--accent); }
+  .ka-status-dot.gray   { background: var(--muted); }
+  .ka-status-dot.red    { background: var(--bad); }
+  .ka-status-text {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .ka-status-text .ka-detail {
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 12px;
+    margin-left: 6px;
+  }
 </style>
 </head>
 <body>
@@ -926,7 +1014,8 @@
 <script>
 "use strict";
 
-const STORAGE_KEY = "pb_tourney_v2";
+const STORAGE_KEY    = "pb_tourney_v3";
+const STORAGE_KEY_V2 = "pb_tourney_v2";
 const STORAGE_KEY_V1 = "pb_tourney_v1";
 
 // Round-robin partner schedule (1-factorization of K8) — every pair appears exactly once across 7 rounds.
@@ -939,6 +1028,18 @@ const SCHEDULE = [
   [[[1,7],[2,8]], [[3,5],[4,6]]],
   [[[1,8],[2,7]], [[3,6],[4,5]]],
 ];
+
+const CROWN_SCHEDULE = [
+  { team1: [1,2], team2: [3,4], theme: "Opening",      name: "Round 1 — Opening" },
+  { team1: [1,3], team2: [2,4], theme: "Power Round",  name: "Round 2 — Power Round" },
+  { team1: [1,4], team2: [2,3], theme: "Sudden Death", name: "Round 3 — Sudden Death" },
+];
+const CROWN_THEMES = {
+  "Opening":     { winScore: 11, winBy: 2, scoring: "sideout", matchPointMultiplier: 1 },
+  "Power Round": { winScore: 11, winBy: 2, scoring: "sideout", matchPointMultiplier: 1.5 },
+  "Sudden Death":{ winScore: 7,  winBy: 2, scoring: "rally",   matchPointMultiplier: 1 },
+  "Crown":       { winScore: 11, winBy: 2, scoring: "sideout", matchPointMultiplier: 2 },
+};
 
 // -------- self-tests (gated by ?test URL param) --------
 function runSelfTests() {
@@ -1177,13 +1278,13 @@ function runSelfTests() {
     state = saved;
   }
 
-  // Stack — v1 → v2 migration
+  // Stack — v1 → v3 migration (v1 data migrates directly to current STORAGE_KEY)
   {
-    const v1key = "pb_tourney_v1";
-    const v2key = "pb_tourney_v2";
-    // Snapshot any current v2 data so we don't trash a real tournament.
-    const savedV2 = localStorage.getItem(v2key);
-    localStorage.removeItem(v2key);
+    // Snapshot current v3 and v2 data so we don't trash a real tournament.
+    const savedV3 = localStorage.getItem(STORAGE_KEY);
+    const savedV2 = localStorage.getItem(STORAGE_KEY_V2);
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY_V2);
     const v1state = {
       phase: "playing",
       rawNames: ["A","B","C","D","E","F","G","H"],
@@ -1200,17 +1301,19 @@ function runSelfTests() {
       winScore: 11,
       notifiedRounds: [],
     };
-    localStorage.setItem(v1key, JSON.stringify(v1state));
+    localStorage.setItem(STORAGE_KEY_V1, JSON.stringify(v1state));
     const migrated = load();
     console.assert(migrated && migrated.format === "rr", "v1 migration → format rr", migrated && migrated.format);
     console.assert(migrated && migrated.stackRounds === 8, "v1 migration → stackRounds 8");
     console.assert(migrated && Array.isArray(migrated.previousRanks), "v1 migration → previousRanks []");
     console.assert(migrated && migrated.currentRound === 2, "v1 migration preserves state");
-    console.assert(localStorage.getItem(v1key) === null, "v1 key cleared after migration");
-    console.assert(localStorage.getItem(v2key) !== null, "v2 key written after migration");
-    // Restore any prior v2 state (or clear if there was none).
-    localStorage.removeItem(v2key);
-    if (savedV2 !== null) localStorage.setItem(v2key, savedV2);
+    console.assert(localStorage.getItem(STORAGE_KEY_V1) === null, "v1 key cleared after migration");
+    console.assert(localStorage.getItem(STORAGE_KEY) !== null, "v3 key written after migration");
+    // Restore any prior state (or clear if there was none).
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY_V2);
+    if (savedV3 !== null) localStorage.setItem(STORAGE_KEY, savedV3);
+    if (savedV2 !== null) localStorage.setItem(STORAGE_KEY_V2, savedV2);
   }
 
   // Stack — computeAwards: Climber, Anchor, Closer, Best Duo
@@ -1279,22 +1382,223 @@ function runSelfTests() {
     state = saved;
   }
 
+  // KeepAwake — defaults & backfill
+  {
+    const s = newState();
+    console.assert(s.keepAwake === true, "newState.keepAwake=true (default for new tournaments)");
+    console.assert(s.keepAwakeAggressive === false, "newState.keepAwakeAggressive=false (off by default)");
+    const stub = { phase: "playing", format: "rr" };
+    backfillStateDefaults(stub);
+    console.assert(stub.keepAwake === true, "backfill: missing keepAwake → true");
+    console.assert(stub.keepAwakeAggressive === false, "backfill: missing keepAwakeAggressive → false");
+    const stub2 = { phase: "playing", format: "rr", keepAwake: false, keepAwakeAggressive: true };
+    backfillStateDefaults(stub2);
+    console.assert(stub2.keepAwake === false, "backfill: respects existing keepAwake=false");
+    console.assert(stub2.keepAwakeAggressive === true, "backfill: respects existing keepAwakeAggressive=true");
+  }
+
+  // KeepAwake — getStatus shape, enable/disable idempotency, cleanup
+  {
+    // Reset module to a known state regardless of boot-time enable.
+    const wasEnabled = KeepAwake._enabled;
+    const wasAggressive = KeepAwake._aggressive;
+    if (wasEnabled) KeepAwake.disable();
+    KeepAwake.setAggressive(false);
+
+    const s0 = KeepAwake.getStatus();
+    console.assert(typeof s0 === "object" && s0 !== null, "getStatus returns object");
+    console.assert("active" in s0 && "wakeLockHeld" in s0 && "canvasRunning" in s0
+      && "audioRunning" in s0 && "error" in s0, "getStatus has correct shape", s0);
+    console.assert(s0.active === false, "getStatus.active=false when disabled");
+
+    KeepAwake.enable();
+    KeepAwake.enable(); // second call is a no-op
+    const canvasCount = document.querySelectorAll("canvas.ka-canvas").length;
+    console.assert(canvasCount === 1, "enable is idempotent — exactly one ka-canvas", canvasCount);
+    console.assert(KeepAwake._rafHandle !== null, "enable starts rAF loop");
+    const s1 = KeepAwake.getStatus();
+    console.assert(s1.active === true, "getStatus.active=true after enable");
+    console.assert(s1.canvasRunning === true, "getStatus.canvasRunning=true after enable");
+
+    KeepAwake.disable();
+    const canvasAfter = document.querySelectorAll("canvas.ka-canvas").length;
+    console.assert(canvasAfter === 0, "disable removes canvas", canvasAfter);
+    console.assert(KeepAwake._rafHandle === null, "disable cancels rAF");
+    console.assert(KeepAwake._wakeLock === null, "disable releases wake lock reference");
+    console.assert(KeepAwake._audioCtx === null, "disable stops audio context");
+    const s2 = KeepAwake.getStatus();
+    console.assert(s2.active === false && s2.canvasRunning === false && s2.audioRunning === false,
+      "getStatus reflects disabled state", s2);
+
+    // Aggressive toggle: setAggressive(true) starts audio, false stops it.
+    KeepAwake.enable();
+    KeepAwake.setAggressive(true);
+    const s3 = KeepAwake.getStatus();
+    // audioRunning may be false if browser blocks AudioContext without user gesture — that's expected
+    console.assert(KeepAwake._aggressive === true, "setAggressive(true) marks aggressive mode");
+    KeepAwake.setAggressive(false);
+    const s4 = KeepAwake.getStatus();
+    console.assert(s4.audioRunning === false, "setAggressive(false) stops audio (audioRunning=false)", s4);
+    console.assert(KeepAwake._audioCtx === null, "setAggressive(false) clears AudioContext");
+
+    // Restore prior state so the rest of the page keeps working as expected.
+    KeepAwake.disable();
+    KeepAwake.setAggressive(wasAggressive);
+    if (wasEnabled) KeepAwake.enable();
+  }
+
+  // ---- Crown Court tests ----
+  // matchPointsForMatch
+  {
+    const r1 = matchPointsForMatch(2, 0, "Opening");
+    console.assert(r1.perWinner === 3 && r1.perLoser === 0, "matchPointsForMatch(2,0,Opening)", r1);
+    const r2 = matchPointsForMatch(2, 1, "Opening");
+    console.assert(r2.perWinner === 2 && r2.perLoser === 1, "matchPointsForMatch(2,1,Opening)", r2);
+    const r3 = matchPointsForMatch(2, 0, "Power Round");
+    console.assert(r3.perWinner === 4.5 && r3.perLoser === 0, "matchPointsForMatch(2,0,PowerRound)", r3);
+    const r4 = matchPointsForMatch(2, 1, "Power Round");
+    console.assert(r4.perWinner === 3 && r4.perLoser === 1.5, "matchPointsForMatch(2,1,PowerRound)", r4);
+    const r5 = matchPointsForMatch(2, 0, "Sudden Death");
+    console.assert(r5.perWinner === 3 && r5.perLoser === 0, "matchPointsForMatch(2,0,SuddenDeath)", r5);
+    const r6 = matchPointsForMatch(2, 0, "Crown");
+    console.assert(r6.perWinner === 6 && r6.perLoser === 0, "matchPointsForMatch(2,0,Crown)", r6);
+    const r7 = matchPointsForMatch(2, 1, "Crown");
+    console.assert(r7.perWinner === 4 && r7.perLoser === 2, "matchPointsForMatch(2,1,Crown)", r7);
+  }
+
+  // crownPairings: rank1+4 vs rank2+3
+  {
+    const lb = [
+      { slot: 1, matchPoints: 8, pointsScored: 100, pointDiff: 20 },
+      { slot: 2, matchPoints: 6, pointsScored: 90, pointDiff: 10 },
+      { slot: 3, matchPoints: 5, pointsScored: 80, pointDiff: 5 },
+      { slot: 4, matchPoints: 3, pointsScored: 60, pointDiff: -5 },
+    ];
+    const p = crownPairings(lb);
+    console.assert(p.team1.includes(1) && p.team1.includes(4), "crownPairings team1 = rank1+4", p);
+    console.assert(p.team2.includes(2) && p.team2.includes(3), "crownPairings team2 = rank2+3", p);
+  }
+
+  // isCrownMatchComplete and crownMatchWinner
+  {
+    const sweep = {
+      team1: [1,2], team2: [3,4],
+      games: [
+        { score1: 11, score2: 5 },
+        { score1: 11, score2: 7 },
+        { score1: null, score2: null },
+      ],
+    };
+    console.assert(isCrownMatchComplete(sweep), "2-0 sweep is complete");
+    console.assert(crownMatchWinner(sweep) === "team1", "2-0 sweep winner is team1");
+
+    const tied = {
+      team1: [1,2], team2: [3,4],
+      games: [
+        { score1: 11, score2: 5 },
+        { score1: 5, score2: 11 },
+        { score1: null, score2: null },
+      ],
+    };
+    console.assert(!isCrownMatchComplete(tied), "1-1 with no game 3 is not complete");
+
+    const decided = {
+      team1: [1,2], team2: [3,4],
+      games: [
+        { score1: 11, score2: 5 },
+        { score1: 5, score2: 11 },
+        { score1: 11, score2: 9 },
+      ],
+    };
+    console.assert(isCrownMatchComplete(decided), "1-1 game3 complete is done");
+    console.assert(crownMatchWinner(decided) === "team1", "team1 wins game3");
+  }
+
+  // finalRankingCrown: Crown winners rank above losers regardless of regular-season pts
+  {
+    const savedState = state;
+    const makeCrownMatch = (t1, t2, gw1, gw2, theme) => ({
+      team1: t1, team2: t2, theme,
+      games: gw1 === 2 && gw2 === 0
+        ? [{ score1:11, score2:5 }, { score1:11, score2:5 }, { score1:null, score2:null }]
+        : gw1 === 0 && gw2 === 2
+          ? [{ score1:5, score2:11 }, { score1:5, score2:11 }, { score1:null, score2:null }]
+          : [{ score1:11, score2:5 }, { score1:5, score2:11 }, { score1:11, score2:9 }],
+    });
+    state = {
+      phase: "done", format: "crown",
+      slots: ["A","B","C","D","","","",""],
+      crownMatches: [
+        makeCrownMatch([1,2],[3,4], 0, 2, CROWN_SCHEDULE[0].theme),
+        makeCrownMatch([1,3],[2,4], 0, 2, CROWN_SCHEDULE[1].theme),
+        makeCrownMatch([1,4],[2,3], 0, 2, CROWN_SCHEDULE[2].theme),
+      ],
+      crownFinal: {
+        team1: [1,2], team2: [3,4], theme: "Crown",
+        games: [
+          { score1: 11, score2: 5 },
+          { score1: 11, score2: 7 },
+          { score1: null, score2: null },
+        ],
+      },
+      tiebreakRandom: [0,1,2,3],
+      awardsShown: false,
+    };
+    const ranking = finalRankingCrown();
+    console.assert(ranking.length === 4, "finalRankingCrown returns 4 players");
+    const topTwo = [ranking[0].slot, ranking[1].slot].sort((a,b)=>a-b);
+    console.assert(topTwo[0] === 1 && topTwo[1] === 2, "Crown winners rank top 2", topTwo);
+    const bottomTwo = [ranking[2].slot, ranking[3].slot].sort((a,b)=>a-b);
+    console.assert(bottomTwo[0] === 3 && bottomTwo[1] === 4, "Crown losers rank bottom 2", bottomTwo);
+    state = savedState;
+  }
+
+  // v2 → v3 migration: existing v2 state loads with no data loss
+  {
+    const savedV3 = localStorage.getItem(STORAGE_KEY);
+    const savedV2 = localStorage.getItem(STORAGE_KEY_V2);
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY_V2);
+    const v2state = {
+      phase: "playing", format: "rr",
+      rawNames: ["A","B","C","D","E","F","G","H"],
+      slots:    ["A","B","C","D","E","F","G","H"],
+      currentRound: 3,
+      rounds: SCHEDULE.slice(0,3).map((rd, i) => ({
+        round: i + 1,
+        court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 5 },
+        court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 7 },
+      })),
+      finals: null,
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+      awardsShown: false, winScore: 11, notifiedRounds: [],
+      stackRounds: 8, previousRanks: [], keepAwake: true, keepAwakeAggressive: false,
+    };
+    localStorage.setItem(STORAGE_KEY_V2, JSON.stringify(v2state));
+    const migrated = load();
+    console.assert(migrated && migrated.format === "rr", "v2→v3 migration: format preserved", migrated?.format);
+    console.assert(migrated && migrated.currentRound === 3, "v2→v3 migration: currentRound preserved");
+    console.assert(migrated && Array.isArray(migrated.crownMatches), "v2→v3 migration: crownMatches backfilled");
+    console.assert(localStorage.getItem(STORAGE_KEY_V2) === null, "v2 key cleared after migration");
+    console.assert(localStorage.getItem(STORAGE_KEY) !== null, "v3 key written after migration");
+    localStorage.removeItem(STORAGE_KEY_V2);
+    localStorage.removeItem(STORAGE_KEY);
+    if (savedV3 !== null) localStorage.setItem(STORAGE_KEY, savedV3);
+    if (savedV2 !== null) localStorage.setItem(STORAGE_KEY_V2, savedV2);
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
-if (typeof location !== "undefined" && location.search.includes("test")) {
-  queueMicrotask(runSelfTests);
-}
-
 let state = load() || newState();
 
 function newState() {
   return {
-    phase: "setup",                                  // setup | playing | finals | done
-    format: "rr",                                    // "rr" | "stack"
+    phase: "setup",                                  // setup | playing | finals | crown | done
+    format: "rr",                                    // "rr" | "stack" | "crown"
     stackRounds: 8,                                  // only used when format === "stack"
-    rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle, used on setup screen
-    slots:    ["", "", "", "", "", "", "", ""],      // post-shuffle, slot index 0..7 = slot 1..8
+    rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle, used on setup screen; always 8 elements
+    slots:    ["", "", "", "", "", "", "", ""],      // post-shuffle, slot index 0..7 = slot 1..8; always 8 elements
     currentRound: 1,
     rounds: [],                                      // populated on Start
     finals: null,                                    // {championship, consolation}
@@ -1303,6 +1607,11 @@ function newState() {
     winScore: 11,
     notifiedRounds: [],
     previousRanks: [],                               // stack: prior-round rank order (slots), drives trajectory arrows
+    keepAwake: true,                                 // prevents Mac/AirPlay TVs from sleeping during a tournament
+    keepAwakeAggressive: false,                      // adds a silent audio loop (Layer 3); off by default
+    crownMatches: [],                                // crown: 3 themed round-robin matches
+    currentMatch: 0,                                 // crown: 0-based index into crownMatches
+    crownFinal: null,                                // crown: { team1, team2, games } for the Crown Match
   };
 }
 // Apply field defaults to any persisted state (used by both v2 load and v1 migration).
@@ -1310,9 +1619,30 @@ function backfillStateDefaults(obj) {
   if (typeof obj.awardsShown !== "boolean") obj.awardsShown = false;
   if (typeof obj.winScore !== "number") obj.winScore = 11;
   if (!Array.isArray(obj.notifiedRounds)) obj.notifiedRounds = [];
-  if (obj.format !== "stack") obj.format = "rr";
+  if (!["stack","crown"].includes(obj.format)) obj.format = "rr";
   if (typeof obj.stackRounds !== "number") obj.stackRounds = 8;
   if (!Array.isArray(obj.previousRanks)) obj.previousRanks = [];
+  if (typeof obj.keepAwake !== "boolean") obj.keepAwake = true;
+  if (typeof obj.keepAwakeAggressive !== "boolean") obj.keepAwakeAggressive = false;
+  // Crown fields
+  if (!Array.isArray(obj.crownMatches)) obj.crownMatches = [];
+  if (typeof obj.currentMatch !== "number") obj.currentMatch = 0;
+  if (obj.crownFinal === undefined) obj.crownFinal = null;
+  // For Crown format, ensure crownMatches has all 3 entries (guards against partial state)
+  if (obj.format === "crown") {
+    for (let mi = obj.crownMatches.length; mi < 3; mi++) {
+      const s = CROWN_SCHEDULE[mi];
+      obj.crownMatches.push({
+        team1: s.team1.slice(), team2: s.team2.slice(), theme: s.theme,
+        games: [{score1:null,score2:null},{score1:null,score2:null},{score1:null,score2:null}],
+      });
+    }
+  }
+  // Backfill theme on persisted match objects (added in later version)
+  obj.crownMatches.forEach((m, mi) => {
+    if (!m.theme && CROWN_SCHEDULE[mi]) m.theme = CROWN_SCHEDULE[mi].theme;
+  });
+  if (obj.crownFinal && !obj.crownFinal.theme) obj.crownFinal.theme = "Crown";
   return obj;
 }
 function load() {
@@ -1322,7 +1652,20 @@ function load() {
       const obj = JSON.parse(raw);
       if (obj && obj.phase) return backfillStateDefaults(obj);
     }
-    // v1 migration: any v1 state loads as a Round Robin in-progress tournament.
+    // v2 migration: load as-is (backfill handles missing crown fields)
+    const v2raw = localStorage.getItem(STORAGE_KEY_V2);
+    if (v2raw) {
+      const v2 = JSON.parse(v2raw);
+      if (v2 && v2.phase) {
+        const migrated = backfillStateDefaults(v2);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          localStorage.removeItem(STORAGE_KEY_V2);
+        } catch (e) {}
+        return migrated;
+      }
+    }
+    // v1 migration (existing code, unchanged)
     const v1raw = localStorage.getItem(STORAGE_KEY_V1);
     if (v1raw) {
       const v1 = JSON.parse(v1raw);
@@ -1331,7 +1674,7 @@ function load() {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
           localStorage.removeItem(STORAGE_KEY_V1);
-        } catch (e) { /* non-fatal */ }
+        } catch (e) {}
         return migrated;
       }
     }
@@ -1341,6 +1684,278 @@ function load() {
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { console.warn("save failed", e); }
+}
+
+// ---------- KeepAwake: defeats display sleep on AirPlay-mirrored TVs ----------
+// Three layers — they target different failure modes (static-content sleep,
+// OS-level display sleep, and "media stream required" heuristics on Samsung).
+const KeepAwake = {
+  _enabled: false,
+  _aggressive: false,
+  _canvas: null,
+  _rafHandle: null,
+  _wakeLock: null,
+  _wakeLockReleaseHandler: null,
+  _visibilityHandler: null,
+  _releasing: false,
+  _interactionRetryHandler: null,
+  _audioCtx: null,
+  _audioResumeHandler: null,
+  _audioSrc: null,
+  _audioGain: null,
+  _lastError: null,
+
+  enable() {
+    if (this._enabled) return;
+    this._enabled = true;
+    this._lastError = null;
+    this._layer1Start();
+    this._layer2Acquire();
+    if (this._aggressive) this._layer3Start();
+    console.log("[keep-awake] enabled");
+  },
+
+  disable() {
+    if (!this._enabled) return;
+    this._enabled = false;
+    this._layer1Stop();
+    this._layer2Release();
+    this._layer3Stop();
+    console.log("[keep-awake] disabled");
+  },
+
+  setAggressive(on) {
+    this._aggressive = !!on;
+    if (this._enabled) {
+      if (this._aggressive) this._layer3Start();
+      else this._layer3Stop();
+    }
+  },
+
+  getStatus() {
+    return {
+      active: this._enabled,
+      wakeLockHeld: !!this._wakeLock,
+      canvasRunning: !!this._rafHandle,
+      audioRunning: !!(this._audioCtx && this._audioCtx.state === "running"),
+      error: this._lastError,
+    };
+  },
+
+  // Re-verify that all enabled layers are running; called by visibility and interaction handlers.
+  _reVerify() {
+    if (!this._enabled) return;
+    if (!this._rafHandle) this._layer1Start();
+    if (!this._wakeLock && !this._pendingWakeLock) this._layer2Acquire();
+    if (this._aggressive && this._audioCtx && this._audioCtx.state !== "running") {
+      try { this._audioCtx.resume(); } catch (e) {}
+    }
+  },
+
+  // Layer 1: 2x2 canvas with rAF loop. Each frame differs at the pixel level,
+  // which is what AirPlay sees as "video content still updating".
+  _layer1Start() {
+    try {
+      if (this._canvas) return;
+      const c = document.createElement("canvas");
+      c.width = 2; c.height = 2;
+      c.className = "ka-canvas";
+      c.setAttribute("aria-hidden", "true");
+      c.style.cssText = "position:fixed;bottom:0;right:0;width:2px;height:2px;opacity:0.02;pointer-events:none;z-index:-1;";
+      document.body.appendChild(c);
+      this._canvas = c;
+      const ctx = c.getContext("2d");
+      let hue = 0;
+      const tick = () => {
+        if (!this._canvas) return;
+        hue = (hue + 1) % 360;
+        ctx.fillStyle = "hsl(" + hue + ",50%,50%)";
+        ctx.fillRect(0, 0, 2, 2);
+        this._rafHandle = requestAnimationFrame(tick);
+      };
+      this._rafHandle = requestAnimationFrame(tick);
+    } catch (e) {
+      this._lastError = "layer1: " + (e && e.message);
+      console.warn("[keep-awake] layer1 failed", e);
+    }
+  },
+
+  _layer1Stop() {
+    try {
+      if (this._rafHandle) cancelAnimationFrame(this._rafHandle);
+      this._rafHandle = null;
+      if (this._canvas) this._canvas.remove();
+      this._canvas = null;
+    } catch (e) {
+      console.warn("[keep-awake] layer1 stop failed", e);
+    }
+  },
+
+  // Layer 2: Screen Wake Lock API. Auto-releases when tab hidden — re-acquire
+  // on visibilitychange. Also re-acquire on unexpected release events.
+  _pendingWakeLock: false,
+  _layer2Acquire() {
+    try {
+      if (!("wakeLock" in navigator)) {
+        this._lastError = "wake lock unsupported";
+        return;
+      }
+      if (this._pendingWakeLock) return; // guard: avoid overlapping requests
+      this._pendingWakeLock = true;
+      // Register visibilitychange before the async request so re-acquisition works
+      // even if the initial request is rejected (e.g. no user gesture yet).
+      if (!this._visibilityHandler) {
+        this._visibilityHandler = () => {
+          if (document.visibilityState === "visible") this._reVerify();
+        };
+        document.addEventListener("visibilitychange", this._visibilityHandler);
+      }
+      const promise = navigator.wakeLock.request("screen");
+      promise.then(lock => {
+        this._pendingWakeLock = false;
+        if (!this._enabled) { try { lock.release(); } catch (e) {} return; }
+        if (this._wakeLock) { try { this._wakeLock.release(); } catch (e) {} } // release any stale lock
+        this._wakeLock = lock;
+        this._wakeLockReleaseHandler = () => {
+          if (this._wakeLock !== lock) return; // stale handler — a newer lock is already active
+          this._wakeLock = null;
+          if (!this._enabled) return;
+          if (this._releasing) return;
+          if (document.visibilityState !== "visible") return;
+          this._layer2Acquire();
+        };
+        lock.addEventListener("release", this._wakeLockReleaseHandler);
+      }).catch(e => {
+        this._pendingWakeLock = false;
+        this._lastError = "layer2: " + (e && e.message);
+        console.warn("[keep-awake] layer2 request failed", e);
+        // If keep-awake was disabled while the request was in flight, don't register stale listeners.
+        if (!this._enabled) return;
+        // Retry on first user interaction so lock is acquired after page gesture
+        if (!this._interactionRetryHandler) {
+          this._interactionRetryHandler = () => {
+            document.removeEventListener("click",      this._interactionRetryHandler, true);
+            document.removeEventListener("touchstart", this._interactionRetryHandler, true);
+            this._interactionRetryHandler = null;
+            this._reVerify();
+          };
+          document.addEventListener("click",      this._interactionRetryHandler, { capture: true, passive: true });
+          document.addEventListener("touchstart", this._interactionRetryHandler, { capture: true, passive: true });
+        }
+      });
+    } catch (e) {
+      this._pendingWakeLock = false;
+      this._lastError = "layer2: " + (e && e.message);
+      console.warn("[keep-awake] layer2 failed", e);
+    }
+  },
+
+  _layer2Release() {
+    try {
+      if (this._wakeLock) {
+        const lock = this._wakeLock;
+        this._wakeLock = null;
+        this._releasing = true;
+        lock.release()
+          .catch(() => {})
+          .finally(() => { this._releasing = false; });
+      }
+      if (this._visibilityHandler) {
+        document.removeEventListener("visibilitychange", this._visibilityHandler);
+        this._visibilityHandler = null;
+      }
+      if (this._interactionRetryHandler) {
+        document.removeEventListener("click",      this._interactionRetryHandler, true);
+        document.removeEventListener("touchstart", this._interactionRetryHandler, true);
+        this._interactionRetryHandler = null;
+      }
+    } catch (e) {
+      console.warn("[keep-awake] layer2 release failed", e);
+    }
+  },
+
+  // Layer 3: silent looping audio via Web Audio API. Some Samsung AirPlay
+  // implementations only respect "media is playing" if there is an audio stream.
+  _layer3Start() {
+    try {
+      if (this._audioCtx) return;
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0001; // sub-audible (~-80 dB) — non-zero so browser won't suspend "silent" context
+      const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1; // tiny noise; inaudible at 0.0001 gain
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(gain).connect(ctx.destination);
+      src.start(0);
+      // Best-effort resume; if suspended (no user gesture yet), retry on first interaction.
+      if (typeof ctx.resume === "function") {
+        try { ctx.resume(); } catch (e) {}
+        if (ctx.state === "suspended" && !this._audioResumeHandler) {
+          this._audioResumeHandler = () => {
+            document.removeEventListener("click",      this._audioResumeHandler, true);
+            document.removeEventListener("touchstart", this._audioResumeHandler, true);
+            this._audioResumeHandler = null;
+            this._reVerify();
+          };
+          document.addEventListener("click",      this._audioResumeHandler, { capture: true, passive: true });
+          document.addEventListener("touchstart", this._audioResumeHandler, { capture: true, passive: true });
+        }
+      }
+      this._audioCtx = ctx;
+      this._audioSrc = src;
+      this._audioGain = gain;
+    } catch (e) {
+      this._lastError = "layer3: " + (e && e.message);
+      console.warn("[keep-awake] layer3 failed", e);
+    }
+  },
+
+  _layer3Stop() {
+    try {
+      if (this._audioResumeHandler) {
+        document.removeEventListener("click",      this._audioResumeHandler, true);
+        document.removeEventListener("touchstart", this._audioResumeHandler, true);
+        this._audioResumeHandler = null;
+      }
+      if (this._audioSrc) {
+        try { this._audioSrc.stop(); } catch (e) {}
+        try { this._audioSrc.disconnect(); } catch (e) {}
+        this._audioSrc = null;
+      }
+      if (this._audioGain) {
+        try { this._audioGain.disconnect(); } catch (e) {}
+        this._audioGain = null;
+      }
+      if (this._audioCtx) {
+        try { this._audioCtx.close(); } catch (e) {}
+        this._audioCtx = null;
+      }
+    } catch (e) {
+      console.warn("[keep-awake] layer3 stop failed", e);
+    }
+  },
+};
+
+if (typeof location !== "undefined" && location.search.includes("test")) {
+  queueMicrotask(runSelfTests);
+}
+
+let _keepAwakeToastShown = false;
+function showKeepAwakeActivationToast() {
+  if (_keepAwakeToastShown) return;
+  _keepAwakeToastShown = true;
+  showToast("📺 Keep-display-awake is on — your screen won't sleep during the tournament.");
+}
+
+function syncKeepAwakeToState() {
+  if (state.keepAwake && !KeepAwake._enabled) KeepAwake.enable();
+  else if (!state.keepAwake && KeepAwake._enabled) KeepAwake.disable();
+  KeepAwake.setAggressive(!!state.keepAwakeAggressive);
 }
 
 function shuffle(arr) {
@@ -1375,7 +1990,7 @@ function runShuffleReveal(finalSlots, onDone, opts) {
     overlay.appendChild(groupsWrap);
   } else {
     const grid = el("div", { class: "shuffle-grid" });
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < finalSlots.length; i++) {
       const c = el("div", { class: "shuffle-slot" }, finalSlots[i]);
       grid.appendChild(c);
       cells.push(c);
@@ -1386,7 +2001,7 @@ function runShuffleReveal(finalSlots, onDone, opts) {
   document.body.appendChild(overlay);
 
   const startTime = performance.now();
-  const totalMs = 1200;
+  const totalMs = finalSlots.length <= 4 ? 1600 : 1200; // longer reveal for 4-player to maintain suspense
   let frame;
   let done = false;
 
@@ -1395,7 +2010,7 @@ function runShuffleReveal(finalSlots, onDone, opts) {
     done = true;
     cancelAnimationFrame(frame);
     // lock-in: show finalSlots with locked styling
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < cells.length; i++) {
       cells[i].textContent = finalSlots[i];
       cells[i].classList.add("locked");
     }
@@ -1416,10 +2031,10 @@ function runShuffleReveal(finalSlots, onDone, opts) {
     const stepIndex = Math.floor(elapsed / interval);
     // re-randomize cells (cosmetic only — finalSlots is the real assignment)
     const perm = shuffle(finalSlots);
-    for (let i = 0; i < 8; i++) cells[i].textContent = perm[i];
+    for (let i = 0; i < cells.length; i++) cells[i].textContent = perm[i];
     // progressive lock-in: start locking final cells in the last 35% of the animation
     if (progress > 0.65) {
-      const lockedCount = Math.min(8, Math.floor((progress - 0.65) / 0.35 * 8) + 1);
+      const lockedCount = Math.min(cells.length, Math.floor((progress - 0.65) / 0.35 * cells.length) + 1);
       for (let i = 0; i < lockedCount; i++) {
         cells[i].textContent = finalSlots[i];
         cells[i].classList.add("locked");
@@ -1611,24 +2226,208 @@ function buildNextStackRound(prevRound) {
   };
 }
 
+// ---------- Crown Court logic ----------
+
+// Takes winner's games won first, loser's games won second — caller resolves who won.
+function matchPointsForMatch(gamesWonWinner, gamesWonLoser, theme) {
+  const m = (CROWN_THEMES[theme] || {}).matchPointMultiplier || 1;
+  if (gamesWonWinner === 2 && gamesWonLoser === 0) return { perWinner: 3 * m, perLoser: 0 };
+  if (gamesWonWinner === 2 && gamesWonLoser === 1) return { perWinner: 2 * m, perLoser: 1 * m };
+  return { perWinner: 0, perLoser: 0 };
+}
+
+function isValidCrownGameScore(s1, s2, theme) {
+  if (s1 < 0 || s2 < 0) return false;
+  const cfg = CROWN_THEMES[theme];
+  if (!cfg) return true; // unknown theme: advisory only
+  const winner = Math.max(s1, s2);
+  const diff = Math.abs(s1 - s2);
+  return winner >= cfg.winScore && diff >= cfg.winBy;
+}
+
+function crownGamesWon(match, maxGames) {
+  const theme = match.theme; // set on match objects; undefined for test fixtures (no validation)
+  let w1 = 0, w2 = 0;
+  const games = maxGames != null ? match.games.slice(0, maxGames) : match.games;
+  for (const g of games) {
+    if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
+    if (g.score1 === g.score2) break;
+    if (theme && !isValidCrownGameScore(g.score1, g.score2, theme)) break;
+    if (g.score1 > g.score2) w1++;
+    else w2++;
+    if (w1 === 2 || w2 === 2) break;
+  }
+  return { gamesWon1: w1, gamesWon2: w2 };
+}
+
+function isCrownMatchComplete(match) {
+  // Rely solely on crownGamesWon reaching 2 wins — this enforces theme winScore/winBy via
+  // isValidCrownGameScore. A 1-1 tie resolves only when game 3 produces a valid, non-equal score.
+  const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+  return gamesWon1 === 2 || gamesWon2 === 2;
+}
+
+function crownMatchWinner(match) {
+  if (!isCrownMatchComplete(match)) return null;
+  const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+  if (gamesWon1 === gamesWon2) return null;
+  return gamesWon1 > gamesWon2 ? "team1" : "team2";
+}
+
+function crownPlayerStats() {
+  const stats = [1,2,3,4].map(slot => ({
+    slot, name: nameOf(slot),
+    matchPoints: 0,
+    gamesWon: 0, gamesLost: 0,
+    pointsScored: 0, pointDiff: 0,
+  }));
+  state.crownMatches.forEach((match, mi) => {
+    if (!isCrownMatchComplete(match)) return;
+    const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+    const theme = CROWN_SCHEDULE[mi].theme;
+    const winner = crownMatchWinner(match);
+    if (!winner) return; // defensive: complete match always has a winner, but guard null explicitly
+    const winTeam  = winner === "team1" ? match.team1 : match.team2;
+    const loseTeam = winner === "team1" ? match.team2 : match.team1;
+    const winGames = winner === "team1" ? gamesWon1 : gamesWon2;
+    const loseGames = winner === "team1" ? gamesWon2 : gamesWon1;
+    const pts = matchPointsForMatch(winGames, loseGames, theme);
+    for (const slot of winTeam)  { stats[slot-1].matchPoints += pts.perWinner; }
+    for (const slot of loseTeam) { stats[slot-1].matchPoints += pts.perLoser; }
+    // Accumulate game stats using the same boundary as crownGamesWon (theme-aware)
+    const games = [];
+    let _w1 = 0, _w2 = 0;
+    for (const g of match.games) {
+      if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
+      if (g.score1 === g.score2) break;
+      if (match.theme && !isValidCrownGameScore(g.score1, g.score2, match.theme)) break;
+      games.push(g);
+      if (g.score1 > g.score2) _w1++; else if (g.score2 > g.score1) _w2++;
+      if (_w1 === 2 || _w2 === 2) break;
+    }
+    for (const g of games) {
+      for (const slot of match.team1) {
+        stats[slot-1].pointsScored += g.score1;
+        stats[slot-1].pointDiff    += (g.score1 - g.score2);
+        if (g.score1 > g.score2) stats[slot-1].gamesWon++; else if (g.score2 > g.score1) stats[slot-1].gamesLost++;
+      }
+      for (const slot of match.team2) {
+        stats[slot-1].pointsScored += g.score2;
+        stats[slot-1].pointDiff    += (g.score2 - g.score1);
+        if (g.score2 > g.score1) stats[slot-1].gamesWon++; else if (g.score1 > g.score2) stats[slot-1].gamesLost++;
+      }
+    }
+  });
+  return stats;
+}
+
+function crownLeaderboard() {
+  const stats = crownPlayerStats();
+  return stats.sort((a, b) => {
+    if (b.matchPoints !== a.matchPoints) return b.matchPoints - a.matchPoints;
+    if (b.pointsScored !== a.pointsScored) return b.pointsScored - a.pointsScored;
+    if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff;
+    return state.tiebreakRandom[a.slot-1] - state.tiebreakRandom[b.slot-1];
+  });
+}
+
+function crownPairings(lb) {
+  // rank 1 partners rank 4; rank 2 partners rank 3
+  const team1 = [lb[0].slot, lb[3].slot];
+  const team2 = [lb[1].slot, lb[2].slot];
+  return { team1, team2 };
+}
+
+function finalRankingCrown() {
+  if (!state.crownFinal || !isCrownMatchComplete(state.crownFinal)) {
+    return crownLeaderboard();
+  }
+  const winner = crownMatchWinner(state.crownFinal);
+  const crownWinTeam  = winner === "team1" ? state.crownFinal.team1 : (winner === "team2" ? state.crownFinal.team2 : null);
+  const crownLoseTeam = winner === "team1" ? state.crownFinal.team2 : (winner === "team2" ? state.crownFinal.team1 : null);
+  if (!crownWinTeam || !crownLoseTeam) return crownLeaderboard();
+
+  const stats = crownPlayerStats();
+  const { gamesWon1: cw1, gamesWon2: cw2 } = crownGamesWon(state.crownFinal);
+  const crownWinGames  = winner === "team1" ? cw1 : cw2;
+  const crownLoseGames = winner === "team1" ? cw2 : cw1;
+  const crownPts = matchPointsForMatch(crownWinGames, crownLoseGames, "Crown");
+  for (const slot of crownWinTeam)  stats[slot-1].matchPoints += crownPts.perWinner;
+  for (const slot of crownLoseTeam) stats[slot-1].matchPoints += crownPts.perLoser;
+
+  const crownFinalValidGames = [];
+  { let _cw1 = 0, _cw2 = 0;
+    for (const g of state.crownFinal.games) {
+      if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
+      if (g.score1 === g.score2) break;
+      if (!isValidCrownGameScore(g.score1, g.score2, "Crown")) break;
+      crownFinalValidGames.push(g);
+      if (g.score1 > g.score2) _cw1++; else if (g.score2 > g.score1) _cw2++;
+      if (_cw1 === 2 || _cw2 === 2) break;
+    }
+  }
+  for (const g of crownFinalValidGames) {
+    const t1win = g.score1 > g.score2;
+    for (const slot of state.crownFinal.team1) {
+      stats[slot-1].pointsScored += g.score1;
+      stats[slot-1].pointDiff    += (g.score1 - g.score2);
+      if (t1win) stats[slot-1].gamesWon++; else if (g.score2 > g.score1) stats[slot-1].gamesLost++;
+    }
+    for (const slot of state.crownFinal.team2) {
+      stats[slot-1].pointsScored += g.score2;
+      stats[slot-1].pointDiff    += (g.score2 - g.score1);
+      if (g.score2 > g.score1) stats[slot-1].gamesWon++; else if (g.score1 > g.score2) stats[slot-1].gamesLost++;
+    }
+  }
+
+  const sortWithin = (team) => team.slice().sort((a, b) => {
+    const sa = stats[a-1], sb = stats[b-1];
+    if (sb.matchPoints !== sa.matchPoints) return sb.matchPoints - sa.matchPoints;
+    if (sb.pointsScored !== sa.pointsScored) return sb.pointsScored - sa.pointsScored;
+    if (sb.pointDiff !== sa.pointDiff) return sb.pointDiff - sa.pointDiff;
+    return state.tiebreakRandom[a-1] - state.tiebreakRandom[b-1];
+  });
+
+  const ordered = [...sortWithin(crownWinTeam), ...sortWithin(crownLoseTeam)];
+  return ordered.map(slot => ({ ...stats[slot-1] }));
+}
+
 function startTournament() {
-  // Compute the assignment up-front (real source of truth).
-  state.slots = shuffle(state.rawNames.map(s => s.trim()));
-  state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
+  const isCrown = state.format === "crown";
+  const count = isCrown ? 4 : 8;
+  const names = state.rawNames.slice(0, count).map(s => s.trim());
+  const shuffled = shuffle(names);
+
+  state.tiebreakRandom = shuffle(isCrown ? [0,1,2,3] : [0,1,2,3,4,5,6,7]);
   state.currentRound = 1;
   state.notifiedRounds = [];
   state.awardsShown = false;
   state.previousRanks = [];
   state.finals = null;
-  if (state.format === "stack") {
+
+  if (isCrown) {
+    state.crownMatches = CROWN_SCHEDULE.map(s => ({
+      team1: s.team1.slice(),
+      team2: s.team2.slice(),
+      theme: s.theme,
+      games: [
+        { score1: null, score2: null, team1: s.team1.slice(), team2: s.team2.slice() },
+        { score1: null, score2: null, team1: s.team1.slice(), team2: s.team2.slice() },
+        { score1: null, score2: null, team1: s.team1.slice(), team2: s.team2.slice() },
+      ],
+    }));
+    state.currentMatch = 0;
+    state.crownFinal = null;
+    // slots always stays 8 elements so nameOf()/format-switching never breaks
+    state.slots = [...shuffled, "", "", "", ""];
+    state.phase = "playing";
+    save();
+    runShuffleReveal(shuffled.slice(), () => render());
+  } else if (state.format === "stack") {
+    state.slots = shuffled;
     state.rounds = [assignInitialStackCourts()];
-  } else {
-    state.rounds = generateRounds();
-  }
-  state.phase = "playing";
-  save();
-  // Cosmetic reveal animation, then render the playing screen.
-  if (state.format === "stack") {
+    state.phase = "playing";
+    save();
     const r1 = state.rounds[0];
     const c1Slots = [...r1.court1.team1, ...r1.court1.team2];
     const c2Slots = [...r1.court2.team1, ...r1.court2.team2];
@@ -1641,6 +2440,10 @@ function startTournament() {
       ],
     });
   } else {
+    state.slots = shuffled;
+    state.rounds = generateRounds();
+    state.phase = "playing";
+    save();
     runShuffleReveal(state.slots.slice(), () => render());
   }
 }
@@ -1852,6 +2655,7 @@ function render() {
   if (state.phase === "setup")        app.appendChild(renderSetup());
   else if (state.phase === "playing") app.appendChild(renderPlaying());
   else if (state.phase === "finals")  app.appendChild(renderFinalsScreen());
+  else if (state.phase === "crown")   app.appendChild(renderCrownPhaseScreen());
   else if (state.phase === "done")    app.appendChild(renderDoneScreen());
   window.scrollTo({ top: 0, behavior: "auto" });
   if (state.phase === "playing") {
@@ -1861,14 +2665,20 @@ function render() {
 }
 
 function totalRegularRounds() {
-  return state.format === "stack" ? state.stackRounds : 7;
+  if (state.format === "stack") return state.stackRounds;
+  if (state.format === "crown") return 3;
+  return 7;
 }
 
 function renderHeader() {
   let progressText = "Setup";
-  if (state.phase === "playing")     progressText = "Round " + state.currentRound + " of " + totalRegularRounds();
-  else if (state.phase === "finals") progressText = "Finals";
-  else if (state.phase === "done")   progressText = "🏆 Champions";
+  if (state.phase === "playing") {
+    progressText = state.format === "crown"
+      ? "Match " + (state.currentMatch + 1) + " of 3"
+      : "Round " + state.currentRound + " of " + totalRegularRounds();
+  } else if (state.phase === "finals") progressText = "Finals";
+  else if (state.phase === "crown")   progressText = "👑 Crown Match";
+  else if (state.phase === "done")    progressText = "🏆 Champions";
   return el("header", { class: "top" },
     el("div", { class: "title" }, "🏓 Rumble Pickleball"),
     el("div", { class: "progress" }, progressText),
@@ -1877,9 +2687,10 @@ function renderHeader() {
 }
 
 function canStart() {
-  const trimmed = state.rawNames.map(n => (n || "").trim());
-  if (trimmed.some(n => !n)) return false;
-  return new Set(trimmed.map(n => n.toLowerCase())).size === 8;
+  const count = state.format === "crown" ? 4 : 8;
+  const trimmed = (state.rawNames || []).slice(0, count).map(n => (n || "").trim());
+  if (trimmed.length < count || trimmed.some(n => !n)) return false;
+  return new Set(trimmed.map(n => n.toLowerCase())).size === count;
 }
 
 const RULES_RR = [
@@ -1890,6 +2701,16 @@ const RULES_RR = [
   "Championship is #1 + #4 vs #2 + #3 — a balanced pairing so the top players don't stomp.",
   "Final ranking is by tournament outcome: Championship winners (1–2) → Championship losers (3–4) → Consolation winners (5–6) → Consolation losers (7–8). Within each tier, season rank (points → wins → differential) breaks the order.",
 ];
+const RULES_CROWN = [
+  "4 players, 3 themed best-of-3 matches, then a Championship Crown Match.",
+  "Round 1 — Opening: sideout scoring to 11, win by 2. Match points: 3 per winner (sweep) or 2/1 (close).",
+  "Round 2 — Power Round: same rules as Opening but match points are worth 1.5×.",
+  "Round 3 — Sudden Death: rally scoring to 7, win by 2. Standard match point values.",
+  "After 3 rounds, the leaderboard seeds the Crown Match: Rank 1 + Rank 4 vs Rank 2 + Rank 3.",
+  "Crown Match: sideout scoring to 11, win by 2. Match points are worth 2×.",
+  "Crown Match winners are the 👑 Champions, regardless of regular-season ranking.",
+  "Tiebreakers (within tier): match points → points scored → point differential → random draw.",
+];
 const RULES_STACK = [
   "8 players, 2 courts, doubles. Court 1 is the top court (🏆); Court 2 is the climbing court.",
   "Games to 11, win by 1 — quick games. Ties not allowed; play it out.",
@@ -1899,7 +2720,9 @@ const RULES_STACK = [
   "After the regular rounds, top 4 by Stack Score play the 🏆 Championship (#1 + #4 vs #2 + #3); bottom 4 play the 🥈 Consolation.",
 ];
 function rulesForActiveFormat() {
-  return state.format === "stack" ? RULES_STACK : RULES_RR;
+  if (state.format === "stack") return RULES_STACK;
+  if (state.format === "crown") return RULES_CROWN;
+  return RULES_RR;
 }
 function renderRulesUl(bullets) {
   const ul = el("ul");
@@ -1911,40 +2734,46 @@ function renderRulesBlock() {
   details.appendChild(el("summary", null, "How it works"));
   const body = el("div", { class: "rules-body" });
   body.appendChild(renderRulesUl());
+  body.appendChild(el("p", { style: "margin: 10px 0 0;" },
+    "📺 If you're showing the tournament on a TV via AirPlay, the ",
+    el("strong", null, "Keep display awake"),
+    " setting (in ⚙ Settings) prevents your Mac and the TV from going dark during quiet stretches."));
   details.appendChild(body);
   return details;
 }
 
-// Returns { ok: true, names: string[8] } or { ok: false, count: number, error: string }.
-// Splits on newlines or commas, trims, drops empties. Validates exactly 8 unique
-// (case-insensitive, matching canStart()'s gate).
-function parsePastedNames(text) {
+// Returns { ok: true, names: string[] } or { ok: false, count: number, error: string }.
+// Splits on newlines or commas, trims, drops empties. Validates exactly `count` unique
+// (case-insensitive). count defaults to 8 for backward compat with existing callers.
+function parsePastedNames(text, count) {
+  count = count || 8;
   const parts = String(text || "")
     .split(/[\n,]/)
     .map(s => s.trim())
     .filter(Boolean);
   const lower = parts.map(s => s.toLowerCase());
   const uniqueCount = new Set(lower).size;
-  if (parts.length !== 8 || uniqueCount !== 8) {
+  if (parts.length !== count || uniqueCount !== count) {
     return { ok: false, count: parts.length, error:
-      `found ${parts.length}${parts.length === uniqueCount ? "" : ` (${parts.length - uniqueCount} duplicate)`} — need 8 unique names` };
+      `found ${parts.length}${parts.length === uniqueCount ? "" : ` (${parts.length - uniqueCount} duplicate)`} — need ${count} unique names` };
   }
   return { ok: true, names: parts };
 }
 
 function openPasteModal() {
+  const playerCount = state.format === "crown" ? 4 : 8;
   const bg = el("div", { class: "modal-bg" });
   const close = () => bg.remove();
   bg.addEventListener("click", e => { if (e.target === bg) close(); });
 
   const modal = el("div", { class: "modal" });
-  modal.appendChild(el("h2", null, "Paste 8 names"));
+  modal.appendChild(el("h2", null, "Paste " + playerCount + " names"));
   modal.appendChild(el("p", { class: "muted", style: "margin: 0 0 12px;" },
     "One name per line, or comma-separated. Whitespace is trimmed."));
 
   const textarea = el("textarea", {
     class: "paste-textarea",
-    placeholder: "Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd",
+    placeholder: playerCount === 4 ? "Adrian\nAlex\nKen\nSam" : "Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd",
     autocomplete: "off",
     autocapitalize: "words",
     autocorrect: "off",
@@ -1959,12 +2788,13 @@ function openPasteModal() {
     class: "primary",
     style: "width: 100%; margin-top: 12px;",
     onclick: () => {
-      const result = parsePastedNames(textarea.value);
+      const result = parsePastedNames(textarea.value, playerCount);
       if (!result.ok) {
         errorLine.textContent = result.error;
         return;
       }
-      for (let i = 0; i < 8; i++) state.rawNames[i] = result.names[i];
+      for (let i = 0; i < playerCount; i++) state.rawNames[i] = result.names[i];
+      // rawNames[playerCount..7] intentionally untouched to preserve names on format switch
       save();
       close();
       render();
@@ -1989,6 +2819,7 @@ function renderFormatChooser() {
   const opts = [
     { id: "rr",    title: "Round Robin",  blurb: "7 rounds, every pair partners once. Top 4 → Championship." },
     { id: "stack", title: "Stack Format", blurb: "Court 1 (top) vs Court 2 (climbing). Win to climb, lose to drop." },
+    { id: "crown", title: "Crown Court",  blurb: "4 players, 3 themed rounds + a Championship Crown Match." },
   ];
   opts.forEach(opt => {
     const isActive = state.format === opt.id;
@@ -2026,23 +2857,27 @@ function renderFormatChooser() {
 }
 
 function renderSetup() {
+  const playerCount = state.format === "crown" ? 4 : 8;
   const wrap = el("div");
   wrap.appendChild(renderRulesBlock());
   wrap.appendChild(renderFormatChooser());
+  const subtitleMap = {
+    stack: "Names are randomly assigned to Court 1 and Court 2 when the tournament starts.",
+    crown: "Names are randomly assigned to slots 1–4 when the tournament starts.",
+  };
   const card = el("div", { class: "card" },
-    el("h2", null, "Enter 8 Players"),
+    el("h2", null, "Enter " + playerCount + " Players"),
     el("p", { class: "muted", style: "margin: 0 0 14px;" },
-      state.format === "stack"
-        ? "Names are randomly assigned to Court 1 and Court 2 when the tournament starts."
-        : "Names are randomly assigned to slots 1–8 when the tournament starts.")
+      subtitleMap[state.format] || "Names are randomly assigned to slots 1–8 when the tournament starts.")
   );
   const pasteLink = el("button", {
     class: "paste-link",
     onclick: openPasteModal,
-  }, "Paste 8 names");
+  }, "Paste " + playerCount + " names");
   card.appendChild(pasteLink);
   const list = el("div", { class: "setup-list" });
-  for (let i = 0; i < 8; i++) {
+  // Display only playerCount inputs; rawNames[playerCount..7] preserved on format switch
+  for (let i = 0; i < playerCount; i++) {
     const input = el("input", {
       class: "name-input",
       type: "text",
@@ -2087,7 +2922,549 @@ function movementToastText(prevRound, newRound) {
   return teamName(c2Win) + " climb to Court 1 · " + teamName(c1Lose) + " drop to Court 2";
 }
 
+// ---------- Crown playing screens ----------
+function renderRallyScoringHelp() {
+  const det = el("details", { class: "rules", style: "margin-bottom:12px;" });
+  det.appendChild(el("summary", null, "How rally scoring works"));
+  const body = el("div", { class: "rules-body" });
+  const ul = el("ul");
+  [
+    "Every rally scores a point — the team that wins the rally gets the point, whether or not they served.",
+    "There is NO second server. Each team gets one server per service turn.",
+    "Serving team's score determines side: even score = right side, odd score = left side.",
+    "If the serving team wins the rally: same server, switches sides, serves again.",
+    "If the receiving team wins the rally: they get the point AND the serve (side-out).",
+    "Score is called as two numbers (server score, receiver score).",
+    "Receiving team does NOT switch sides when they score.",
+    "Game-point exception: the winning point must be won on your own serve.",
+    "Win by 2 — a 6-6 game keeps going.",
+  ].forEach(text => ul.appendChild(el("li", null, text)));
+  body.appendChild(ul);
+  det.appendChild(body);
+  return det;
+}
+
+function renderCrownMatchCard(match, sched, externalRefreshes) {
+  const refreshes = externalRefreshes || [];
+  const themeConfig = CROWN_THEMES[sched.theme] || CROWN_THEMES["Opening"];
+  const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+  const matchComplete = isCrownMatchComplete(match);
+  // Game 3 enablement is based only on games 1-2, not the final result — keeps Game 3 editable after a 2-1 match.
+  const { gamesWon1: g12w1, gamesWon2: g12w2 } = crownGamesWon(match, 2);
+
+  const card = el("div", { class: "court-card crown c1", style: "max-width:560px;margin:0 auto 14px;" });
+  card.appendChild(el("div", { class: "court-label" }, "👑 " + sched.name.toUpperCase()));
+
+  const scoreIndicator = el("div", {
+    style: "text-align:center;font-size:14px;color:var(--muted);margin-bottom:12px;"
+  }, "Match score: " + gamesWon1 + "–" + gamesWon2);
+  card.appendChild(scoreIndicator);
+
+  if (sched.theme === "Sudden Death") card.appendChild(renderRallyScoringHelp());
+
+  const crownOpts = { winScore: themeConfig.winScore, winBy: themeConfig.winBy, theme: sched.theme };
+  const gamesWrap = el("div");
+
+  for (let gi = 0; gi < 3; gi++) {
+    const game = match.games[gi];
+    if (!game.team1) game.team1 = match.team1;
+    if (!game.team2) game.team2 = match.team2;
+    const isGame3 = gi === 2;
+    const game3Needed = g12w1 === 1 && g12w2 === 1;
+    const game3NotNeeded = (g12w1 === 2 && g12w2 === 0) || (g12w2 === 2 && g12w1 === 0);
+
+    const game3Disabled = isGame3 && !game3Needed; // disabled until 1-1 split
+    const gameCard = el("div", {
+      style: "margin-bottom:10px;" + (game3Disabled ? "opacity:0.4;pointer-events:none;" : "")
+    });
+    const labelText = isGame3
+      ? "Game 3" + (game3NotNeeded ? " (not needed — sweep)" : game3Needed ? " (play now)" : " (if needed)")
+      : "Game " + (gi + 1);
+    const labelEl = el("div", {
+      class: "muted",
+      style: "font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;"
+    }, labelText);
+    gameCard.appendChild(labelEl);
+
+    const matchup = el("div", { class: "matchup" });
+    const t1Wrap = renderTeamRow(game, "team1", "score1", "score2", refreshes, crownOpts);
+    const t2Wrap = renderTeamRow(game, "team2", "score2", "score1", refreshes, crownOpts);
+    matchup.appendChild(t1Wrap.node);
+    matchup.appendChild(t2Wrap.node);
+    gameCard.appendChild(matchup);
+
+    const summary = el("div", { class: "court-summary" });
+    gameCard.appendChild(summary);
+    const capturedGame = game;
+    const updateSummary = () => {
+      const s1 = capturedGame.score1, s2 = capturedGame.score2;
+      if (Number.isInteger(s1) && Number.isInteger(s2)) {
+        if (s1 === s2) {
+          summary.className = "court-summary tiemsg"; summary.textContent = "Tied — enter a tiebreaker";
+        } else if (!isValidCrownGameScore(s1, s2, sched.theme)) {
+          summary.className = "court-summary tiemsg";
+          summary.textContent = "Need " + themeConfig.winScore + "+ pts, win by " + themeConfig.winBy;
+        } else if (s1 > s2) {
+          summary.className = "court-summary winmsg"; summary.textContent = "🎉 " + teamName(match.team1) + " win";
+        } else {
+          summary.className = "court-summary winmsg"; summary.textContent = "🎉 " + teamName(match.team2) + " win";
+        }
+      } else {
+        summary.className = "court-summary";
+        summary.textContent = "Awaiting scores";
+      }
+      t1Wrap.applyWinnerStyle();
+      t2Wrap.applyWinnerStyle();
+      const { gamesWon1: w1, gamesWon2: w2 } = crownGamesWon(match);
+      scoreIndicator.textContent = "Match score: " + w1 + "–" + w2;
+    };
+    updateSummary();
+    refreshes.push(updateSummary);
+
+    gamesWrap.appendChild(gameCard);
+
+    if (isGame3) {
+      const capturedCard = gameCard;
+      const capturedGame3 = game;
+      refreshes.push(() => {
+        const { gamesWon1: cw1, gamesWon2: cw2 } = crownGamesWon(match, 2);
+        const nowSweep = (cw1 === 2 && cw2 === 0) || (cw2 === 2 && cw1 === 0);
+        const nowNeeded = cw1 === 1 && cw2 === 1;
+        const nowDisabled = !nowNeeded;
+        // Clear stale game 3 scores when a sweep makes game 3 not needed
+        if (nowDisabled && (Number.isInteger(capturedGame3.score1) || Number.isInteger(capturedGame3.score2))) {
+          capturedGame3.score1 = null;
+          capturedGame3.score2 = null;
+          save();
+          render(); // full re-render so DOM inputs reflect cleared scores
+          return;
+        }
+        capturedCard.style.opacity = nowDisabled ? "0.4" : "";
+        capturedCard.style.pointerEvents = nowDisabled ? "none" : "";
+        labelEl.textContent = "Game 3" + (nowSweep ? " (not needed — sweep)" : nowNeeded ? " (play now)" : " (if needed)");
+      });
+    }
+  }
+  card.appendChild(gamesWrap);
+
+  const completeBanner = el("div");
+  const updateCompleteBanner = () => {
+    completeBanner.textContent = "";
+    if (isCrownMatchComplete(match) && sched.theme !== "Crown" && state.currentMatch < 2) {
+      const nextSched = CROWN_SCHEDULE[state.currentMatch + 1];
+      completeBanner.appendChild(el("div", {
+        style: "margin-top:12px;padding:10px 12px;background:var(--panel-2);border-radius:10px;text-align:center;color:var(--muted);font-size:14px;"
+      },
+        el("div", { style: "margin-bottom:4px;color:var(--good);font-weight:700;" }, "Match Complete!"),
+        el("div", null, "Next: " + nextSched.name),
+      ));
+    }
+  };
+  updateCompleteBanner();
+  refreshes.push(updateCompleteBanner);
+  card.appendChild(completeBanner);
+
+  return card;
+}
+
+function renderCrownStandingsCard() {
+  const stats = crownLeaderboard();
+  const completedMatches = state.crownMatches.filter(isCrownMatchComplete).length;
+  const card = el("div", { class: "card" });
+  card.appendChild(el("div", { style: "display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:10px;flex-wrap:wrap;" },
+    el("h3", { style: "margin:0;" }, "Live Standings"),
+    el("span", { class: "muted" }, completedMatches + " of 3 matches complete"),
+  ));
+  const table = el("table", { class: "standings" });
+  table.appendChild(el("thead", null, el("tr", null,
+    el("th", { style: "text-align:center;" }, "#"),
+    el("th", null, "Player"),
+    el("th", { class: "num" }, "MP"),
+    el("th", { class: "num" }, "G W–L"),
+    el("th", { class: "num" }, "PTS"),
+    el("th", { class: "num" }, "+/–"),
+  )));
+  const tbody = el("tbody");
+  stats.forEach((s, i) => {
+    const top2badge = i < 2 ? el("span", {
+      style: "display:inline-block;margin-left:6px;font-size:11px;padding:2px 6px;border-radius:999px;background:rgba(251,191,36,0.15);color:var(--gold);font-weight:700;vertical-align:middle;"
+    }, "🏆 Top 2") : null;
+    tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+      rankCell(i),
+      el("td", { class: "name" }, s.name, top2badge),
+      el("td", { class: "num" }, s.matchPoints.toFixed(1)),
+      el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
+      el("td", { class: "num" }, "" + s.pointsScored),
+      el("td", { class: "num", style: s.pointDiff > 0 ? "color:var(--good);" : (s.pointDiff < 0 ? "color:var(--bad);" : "") },
+        (s.pointDiff > 0 ? "+" : "") + s.pointDiff),
+    ));
+  });
+  table.appendChild(tbody);
+  card.appendChild(table);
+  return card;
+}
+
+function renderCrownPlaying() {
+  const wrap = el("div");
+  const match = state.crownMatches[state.currentMatch];
+  const sched = CROWN_SCHEDULE[state.currentMatch];
+  const theme = sched.theme;
+  const refreshes = [];
+
+  if (theme === "Power Round") {
+    wrap.appendChild(el("div", {
+      class: "card",
+      style: "text-align:center;background:rgba(251,191,36,0.1);border-color:var(--accent);margin-bottom:14px;padding:12px;"
+    }, "⚡ Power Round — match points worth 1.5×"));
+  } else if (theme === "Sudden Death") {
+    wrap.appendChild(el("div", {
+      class: "card",
+      style: "text-align:center;background:rgba(239,68,68,0.08);border-color:var(--bad);margin-bottom:14px;padding:12px;"
+    }, "🔥 Sudden Death — rally scoring to 7, win by 2"));
+  }
+
+  wrap.appendChild(renderCrownMatchCard(match, sched, refreshes));
+
+  // Navigation buttons
+  const actions = el("div", { class: "row-actions" });
+  const matchComplete = isCrownMatchComplete(match);
+  const allMatchesComplete = state.crownMatches.every(isCrownMatchComplete);
+
+  if (state.currentMatch > 0) {
+    actions.appendChild(el("button", {
+      class: "secondary",
+      onclick: () => { state.currentMatch--; save(); render(); }
+    }, "← Match " + state.currentMatch));
+  }
+
+  let primaryBtn;
+  if (state.currentMatch < 2) {
+    primaryBtn = el("button", {
+      class: "primary",
+      disabled: !matchComplete,
+      onclick: () => {
+        if (!isCrownMatchComplete(state.crownMatches[state.currentMatch])) return;
+        state.currentMatch++;
+        save();
+        render();
+      }
+    }, "Match " + (state.currentMatch + 2) + " →");
+    refreshes.push(() => {
+      primaryBtn.disabled = !isCrownMatchComplete(state.crownMatches[state.currentMatch]);
+    });
+  } else {
+    primaryBtn = el("button", {
+      class: "primary",
+      disabled: !state.crownMatches.every(isCrownMatchComplete),
+      onclick: () => {
+        if (!state.crownMatches.every(isCrownMatchComplete)) return;
+        buildCrownMatch();
+        render();
+      }
+    }, "Advance to Crown Match →");
+    actions.appendChild(primaryBtn);
+    const advanceHint = el("div", {
+      class: "muted",
+      style: "font-size:12px;margin-top:6px;display:none;"
+    }, "Complete all 3 matches first — check that each game meets win score and margin.");
+    actions.appendChild(advanceHint);
+    refreshes.push(() => {
+      const ready = state.crownMatches.every(isCrownMatchComplete);
+      primaryBtn.disabled = !ready;
+      advanceHint.style.display = ready ? "none" : "";
+    });
+  }
+  if (primaryBtn && !actions.contains(primaryBtn)) actions.appendChild(primaryBtn);
+  wrap.appendChild(actions);
+
+  const hist = renderCrownHistory();
+  if (hist) wrap.appendChild(hist);
+
+  let standingsNode = renderCrownStandingsCard();
+  wrap.appendChild(standingsNode);
+  refreshes.push(() => {
+    const updated = renderCrownStandingsCard();
+    wrap.replaceChild(updated, standingsNode);
+    standingsNode = updated;
+  });
+
+  return wrap;
+}
+
+function buildCrownMatch() {
+  const lb = crownLeaderboard();
+  const { team1, team2 } = crownPairings(lb);
+  const sameTeam = (a, b) => [...a].sort().join() === [...b].sort().join();
+  // Preserve existing Crown Match scores if the pairing is unchanged.
+  if (state.crownFinal && sameTeam(state.crownFinal.team1, team1) && sameTeam(state.crownFinal.team2, team2)) {
+    state.phase = "crown";
+    save();
+    return;
+  }
+  state.crownFinal = {
+    team1, team2,
+    theme: "Crown",
+    games: [
+      { score1: null, score2: null, team1: team1.slice(), team2: team2.slice() },
+      { score1: null, score2: null, team1: team1.slice(), team2: team2.slice() },
+      { score1: null, score2: null, team1: team1.slice(), team2: team2.slice() },
+    ],
+  };
+  state.phase = "crown";
+  save();
+}
+
+function renderCrownMatchupDisplay(crownFinal, lb) {
+  const rankBySlot = new Map();
+  lb.forEach((s, i) => rankBySlot.set(s.slot, i + 1));
+  const renderTeamPill = (team) =>
+    team.map(slot => "#" + rankBySlot.get(slot) + " " + nameOf(slot)).join(" & ");
+  const wrap = el("div", { style: "display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;margin-top:8px;" });
+  wrap.appendChild(el("span", { style: "font-weight:700;font-size:18px;" }, renderTeamPill(crownFinal.team1)));
+  wrap.appendChild(el("span", { style: "color:var(--muted);" }, "vs"));
+  wrap.appendChild(el("span", { style: "font-weight:700;font-size:18px;" }, renderTeamPill(crownFinal.team2)));
+  return wrap;
+}
+
+function renderCrownPhaseScreen() {
+  if (!state.crownFinal) return el("div", { class: "card" }, "Error: Crown Match data not found.");
+  const wrap = el("div");
+  const lb = crownLeaderboard();
+  const matchComplete = isCrownMatchComplete(state.crownFinal);
+
+  const banner = el("div", { class: "court-card crown gold", style: "text-align:center;margin-bottom:14px;padding:20px;" });
+  banner.appendChild(el("div", { style: "font-size:48px;margin-bottom:8px;" }, "👑"));
+  banner.appendChild(el("h2", { style: "margin:0;color:var(--gold);" }, "The Crown Match"));
+  banner.appendChild(renderCrownMatchupDisplay(state.crownFinal, lb));
+  wrap.appendChild(banner);
+
+  const crownRefreshes = [];
+  const crownSched = { name: "Crown Match", theme: "Crown" };
+  wrap.appendChild(renderCrownMatchCard(state.crownFinal, crownSched, crownRefreshes));
+
+  const finishBtn = el("button", {
+    class: "primary",
+    style: "width:100%;margin-bottom:8px;",
+    onclick: () => {
+      if (!isCrownMatchComplete(state.crownFinal)) return;
+      state.phase = "done"; save(); render();
+    }
+  }, "👑 Crown Champions");
+  finishBtn.disabled = !matchComplete;
+  crownRefreshes.push(() => { finishBtn.disabled = !isCrownMatchComplete(state.crownFinal); });
+  wrap.appendChild(finishBtn);
+
+  wrap.appendChild(el("button", {
+    class: "ghost",
+    style: "width:100%;",
+    onclick: () => {
+      state.phase = "playing"; state.currentMatch = 2;
+      save(); render();
+    }
+  }, "← Back to Match 3"));
+
+  wrap.appendChild(renderCrownStandingsCard());
+  return wrap;
+}
+
+// ---------- Crown history ----------
+function renderCrownHistory() {
+  const completed = state.crownMatches.filter(isCrownMatchComplete);
+  if (!completed.length) return null;
+  const det = el("details", { class: "rules", style: "margin:0 0 14px;" });
+  det.appendChild(el("summary", null, "Match History (" + completed.length + " complete)"));
+  const body = el("div", { class: "rules-body" });
+  state.crownMatches.forEach((match, mi) => {
+    if (!isCrownMatchComplete(match)) return;
+    const sched = CROWN_SCHEDULE[mi];
+    const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+    const winner = crownMatchWinner(match);
+    const section = el("div", { style: "margin-bottom:12px;" });
+    section.appendChild(el("div", { style: "font-weight:700;margin-bottom:4px;" }, sched.name));
+    // Valid games (same early-exit logic as crownGamesWon)
+    const games = [];
+    let _w1 = 0, _w2 = 0;
+    for (const g of match.games) {
+      if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
+      if (g.score1 === g.score2) break;
+      if (!isValidCrownGameScore(g.score1, g.score2, sched.theme)) break;
+      games.push(g);
+      if (g.score1 > g.score2) _w1++; else if (g.score2 > g.score1) _w2++;
+      if (_w1 === 2 || _w2 === 2) break;
+    }
+    games.forEach((g, gi) => {
+      const t1w = g.score1 > g.score2;
+      section.appendChild(el("div", { style: "font-size:13px;color:var(--muted);margin-bottom:2px;" },
+        "G" + (gi+1) + ": " +
+        nameOf(match.team1[0]) + "/" + nameOf(match.team1[1]) + (t1w ? " ✓" : "") + " " +
+        g.score1 + "–" + g.score2 + " " +
+        nameOf(match.team2[0]) + "/" + nameOf(match.team2[1]) + (!t1w && g.score2 > g.score1 ? " ✓" : "")
+      ));
+    });
+    const winnerName = winner === "team1" ? teamName(match.team1) : teamName(match.team2);
+    section.appendChild(el("div", { style: "font-size:13px;font-weight:700;margin-top:4px;color:var(--good);" },
+      "Winner: " + winnerName + " (" + gamesWon1 + "–" + gamesWon2 + ")"
+    ));
+    body.appendChild(section);
+  });
+  det.appendChild(body);
+  return det;
+}
+
+// ---------- Crown done screen ----------
+function renderCrownMatchScorecard(crownFinal) {
+  const games = [];
+  let _w1 = 0, _w2 = 0;
+  for (const g of crownFinal.games) {
+    if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2) || g.score1 === g.score2) break;
+    if (!isValidCrownGameScore(g.score1, g.score2, "Crown")) break;
+    games.push(g);
+    if (g.score1 > g.score2) _w1++; else _w2++;
+    if (_w1 === 2 || _w2 === 2) break;
+  }
+  const wrap = el("div", { style: "margin:12px auto 0;max-width:480px;" });
+  games.forEach((g, i) => {
+    const t1win = g.score1 > g.score2;
+    wrap.appendChild(el("div", { class: "scorecard", style: "margin-bottom:8px;" },
+      el("div", { class: "sc-team left" + (t1win ? " win" : "") }, teamName(crownFinal.team1)),
+      el("div", { class: "sc-score" }, g.score1 + " – " + g.score2),
+      el("div", { class: "sc-team right" + (!t1win ? " win" : "") }, teamName(crownFinal.team2)),
+    ));
+  });
+  return wrap;
+}
+
+function renderPodiumCrown(ranking) {
+  const stats = crownPlayerStats();
+  const matchPts = new Map(stats.map(s => [s.slot, s.matchPoints]));
+  const { gamesWon1, gamesWon2 } = crownGamesWon(state.crownFinal);
+  const winner = crownMatchWinner(state.crownFinal);
+  const winTeam  = winner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
+  const loseTeam = winner === "team1" ? state.crownFinal.team2 : state.crownFinal.team1;
+  const winGames  = winner === "team1" ? gamesWon1 : gamesWon2;
+  const loseGames = winner === "team1" ? gamesWon2 : gamesWon1;
+  const pts = matchPointsForMatch(winGames, loseGames, "Crown");
+
+  const order = ["silver", "gold", "bronze"];
+  const podiumRanks = [ranking[1], ranking[0], ranking[2]];
+  const emojis = { silver: "🥈", gold: "👑", bronze: "🥉" };
+  const podium = el("div", { class: "podium" });
+  order.forEach((kind, i) => {
+    const r = podiumRanks[i];
+    const totalMp = (matchPts.get(r.slot) || 0) + (winTeam.includes(r.slot) ? pts.perWinner : pts.perLoser);
+    const step = el("div", { class: "podium-step " + kind });
+    step.appendChild(el("div", { class: "podium-name" }, r.name));
+    step.appendChild(el("div", { class: "podium-points" }, totalMp.toFixed(1) + " mp"));
+    step.appendChild(el("div", { class: "podium-bar" }, emojis[kind]));
+    podium.appendChild(step);
+  });
+
+  const wrap = el("div");
+  wrap.appendChild(podium);
+  if (ranking[3]) {
+    const r4 = ranking[3];
+    const totalMp = (matchPts.get(r4.slot) || 0) + (winTeam.includes(r4.slot) ? pts.perWinner : pts.perLoser);
+    wrap.appendChild(el("div", { style: "text-align:center;padding:8px;color:var(--muted);font-size:15px;" },
+      "4th: " + r4.name + " · " + totalMp.toFixed(1) + " mp"
+    ));
+  }
+  return wrap;
+}
+
+function renderDoneScreenCrown() {
+  const wrap = el("div");
+
+  if (!state.awardsShown) {
+    state.awardsShown = true;
+    save();
+    queueMicrotask(runConfetti);
+  }
+
+  const ranking = finalRankingCrown();
+  const crownWinner = crownMatchWinner(state.crownFinal);
+  const champTeam = crownWinner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
+  const rsMVP = crownLeaderboard()[0];
+
+  const card = el("div", { class: "card" });
+  const champions = el("div", { class: "champions" });
+  champions.appendChild(el("div", { class: "crown" }, "👑"));
+  champions.appendChild(el("h1", null, "CHAMPIONS"));
+  champions.appendChild(el("div", { class: "winners" }, teamName(champTeam)));
+  champions.appendChild(renderCrownMatchScorecard(state.crownFinal));
+
+  const mvpOnChampTeam = champTeam.includes(rsMVP.slot);
+  const mvpBlock = el("div", { style: "margin-top:24px;padding:14px;background:var(--panel-2);border-radius:12px;" });
+  mvpBlock.appendChild(el("div", { style: "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px;" }, "🌟 Regular Season MVP"));
+  mvpBlock.appendChild(el("div", { style: "font-size:22px;font-weight:800;" }, rsMVP.name));
+  if (mvpOnChampTeam) {
+    mvpBlock.appendChild(el("div", { style: "font-size:12px;color:var(--gold);font-weight:700;margin-top:4px;" }, "Champion · Regular Season MVP"));
+  }
+  mvpBlock.appendChild(el("div", { style: "font-size:13px;color:var(--muted);margin-top:2px;" }, rsMVP.matchPoints.toFixed(1) + " match pts (regular season)"));
+  champions.appendChild(mvpBlock);
+  card.appendChild(champions);
+  wrap.appendChild(card);
+
+  wrap.appendChild(renderPodiumCrown(ranking));
+
+  const standings = el("div", { class: "card", style: "margin-top:14px;" });
+  standings.appendChild(el("h3", { style: "margin:0 0 12px;" }, "Final Standings"));
+  const table = el("table", { class: "standings" });
+  table.appendChild(el("thead", null, el("tr", null,
+    el("th", { style: "text-align:center;" }, "#"),
+    el("th", null, "Player"),
+    el("th", { class: "num" }, "Total MP"),
+    el("th", { class: "num" }, "G W–L"),
+    el("th", { class: "num" }, "PTS"),
+    el("th", { class: "num" }, "+/–"),
+  )));
+  const standingsTbody = el("tbody");
+  ranking.forEach((s, i) => {
+    if (i === 2) {
+      standingsTbody.appendChild(el("tr", null,
+        el("td", { colspan: "6", style: "text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 0 4px;border-top:1px dashed var(--border);" },
+          "Crown Match Runners-Up")
+      ));
+    }
+    standingsTbody.appendChild(el("tr", { class: "r" + (i + 1) },
+      rankCell(i),
+      el("td", { class: "name" }, s.name),
+      el("td", { class: "num" }, s.matchPoints.toFixed(1)),
+      el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
+      el("td", { class: "num" }, "" + s.pointsScored),
+      el("td", { class: "num", style: s.pointDiff > 0 ? "color:var(--good);" : (s.pointDiff < 0 ? "color:var(--bad);" : "") },
+        (s.pointDiff > 0 ? "+" : "") + s.pointDiff),
+    ));
+  });
+  table.appendChild(standingsTbody);
+  standings.appendChild(table);
+  wrap.appendChild(standings);
+
+  wrap.appendChild(el("button", {
+    class: "ghost", style: "width:100%;margin-bottom:10px;",
+    onclick: () => { state.phase = "crown"; save(); render(); }
+  }, "← Edit Crown Match Scores"));
+
+  wrap.appendChild(el("button", {
+    class: "primary", style: "width:100%;",
+    onclick: () => {
+      if (confirm("Start a new tournament? This clears all scores and names.")) {
+        const keptKeepAwake = state.keepAwake;
+        const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+        state = newState();
+        state.keepAwake = keptKeepAwake;
+        state.keepAwakeAggressive = keptKeepAwakeAggressive;
+        syncKeepAwakeToState();
+        save(); render();
+      }
+    }
+  }, "Start New Tournament"));
+
+  return wrap;
+}
+
+// ---------- playing screens ----------
 function renderPlaying() {
+  if (state.format === "crown") return renderCrownPlaying();
   const wrap = el("div");
   const round = state.rounds[state.currentRound - 1];
   const isStack = state.format === "stack";
@@ -2257,12 +3634,17 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   return card;
 }
 
-function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, seedInfo) {
+function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) {
   const team = game[teamKey];
+  // Normalise legacy callers that pass a raw seeds Map as opts.
+  if (opts instanceof Map) opts = { seeds: opts };
+  const seeds = opts && opts.seeds ? opts.seeds : null;
+  const kind = opts && opts.kind != null ? opts.kind : null;
+  const quickFillTarget = (opts && opts.winScore != null) ? opts.winScore : state.winScore;
+  const crownTheme = opts && opts.theme ? opts.theme : null;
+
   const node = el("div", { class: "team-row" });
-  if (seedInfo) {
-    const kind = seedInfo.kind; // "gold" or "silver"
-    const seeds = seedInfo.seeds; // Map<slot, rank>
+  if (seeds) {
     const nameNode = el("div", { class: "team-name" });
     nameNode.appendChild(seedPill(seeds.get(team[0]), kind));
     nameNode.appendChild(document.createTextNode(nameOf(team[0])));
@@ -2303,23 +3685,24 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, seedIn
 
   function applyWinnerStyle() {
     const a = game[scoreKey], b = game[otherScoreKey];
-    const isWinner = Number.isInteger(a) && Number.isInteger(b) && a > b;
+    let isWinner = Number.isInteger(a) && Number.isInteger(b) && a > b;
+    if (isWinner && crownTheme) isWinner = isValidCrownGameScore(a, b, crownTheme);
     node.classList.toggle("winner", isWinner);
     input.classList.toggle("winner", isWinner);
   }
 
   function refreshPill() {
     pillSlot.textContent = "";
-    // Quick-fill is a Round-screen feature only; suppress on Finals matchups.
-    if (state.phase !== "playing") return;
+    // Quick-fill is a Round/Crown-screen feature; suppress on Finals matchups.
+    if (state.phase !== "playing" && state.phase !== "crown") return;
     const bothBlank = !Number.isInteger(game.score1) && !Number.isInteger(game.score2);
     if (!bothBlank) return;
     const pill = el("button", {
       class: "quickfill-pill",
-      title: "Mark this team as winner with " + state.winScore + " points",
-    }, "× " + state.winScore);
+      title: "Fill " + quickFillTarget + " pts for this team — still enter the other score",
+    }, "× " + quickFillTarget);
     pill.addEventListener("click", () => {
-      game[scoreKey] = state.winScore;
+      game[scoreKey] = quickFillTarget;
       save();
       refreshes.forEach(fn => fn());
       // Focus the opponent's input so the user can type the loser's score.
@@ -2356,6 +3739,7 @@ function trajectorySpan(slot, currentIdx) {
 
 function renderStandingsCard(throughRound, opts) {
   if (state.format === "stack") return renderStackStandingsCard(throughRound, opts);
+  if (state.format === "crown") return renderCrownStandingsCard();
   opts = opts || {};
   const stats = rankPlayers(throughRound);
   const card = el("div", { class: "card" });
@@ -3005,6 +4389,7 @@ function runConfetti() {
 }
 
 function renderDoneScreen() {
+  if (state.format === "crown") return renderDoneScreenCrown();
   const wrap = el("div");
   const f = state.finals;
   const champ = f.championship, cons = f.consolation;
@@ -3142,7 +4527,13 @@ function renderDoneScreen() {
     style: "width: 100%;",
     onclick: () => {
       if (confirm("Start a new tournament? This clears all scores and names.")) {
-        state = newState(); save(); render();
+        const keptKeepAwake = state.keepAwake;
+        const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+        state = newState();
+        state.keepAwake = keptKeepAwake;
+        state.keepAwakeAggressive = keptKeepAwakeAggressive;
+        syncKeepAwakeToState();
+        save(); render();
       }
     }
   }, "Start New Tournament"));
@@ -3173,23 +4564,46 @@ function openScheduleModal() {
     return row;
   }
 
-  const isStack = state.format === "stack";
-  const c1Tag = isStack ? "Court 1" : "South";
-  const c2Tag = isStack ? "Court 2" : "North";
-  state.rounds.forEach(r => {
-    const block = el("div", { class: "schedule-round" });
-    block.appendChild(el("div", { class: "schedule-round-title" }, "Round " + r.round));
-    block.appendChild(gameRow(r.court1, c1Tag, "c1"));
-    block.appendChild(gameRow(r.court2, c2Tag, "c2"));
-    list.appendChild(block);
-  });
-
-  if (state.finals && (state.phase === "finals" || state.phase === "done")) {
-    const block = el("div", { class: "schedule-round" });
-    block.appendChild(el("div", { class: "schedule-round-title" }, "Finals"));
-    block.appendChild(gameRow(state.finals.championship, "Champ", "gold"));
-    block.appendChild(gameRow(state.finals.consolation,  "Cons",  "silver"));
-    list.appendChild(block);
+  if (state.format === "crown") {
+    (state.crownMatches || []).forEach((match, mi) => {
+      const sched = CROWN_SCHEDULE[mi];
+      const block = el("div", { class: "schedule-round" });
+      block.appendChild(el("div", { class: "schedule-round-title" }, sched ? sched.name : "Match " + (mi + 1)));
+      const g = { team1: match.team1, team2: match.team2,
+        score1: isCrownMatchComplete(match) ? crownGamesWon(match).gamesWon1 : null,
+        score2: isCrownMatchComplete(match) ? crownGamesWon(match).gamesWon2 : null };
+      block.appendChild(gameRow(g, "👑", "c1"));
+      list.appendChild(block);
+    });
+    if (state.crownFinal && (state.phase === "crown" || state.phase === "done")) {
+      const block = el("div", { class: "schedule-round" });
+      block.appendChild(el("div", { class: "schedule-round-title" }, "Crown Match"));
+      const cf = state.crownFinal;
+      const { gamesWon1, gamesWon2 } = crownGamesWon(cf);
+      const finalComplete = isCrownMatchComplete(cf);
+      const g = { team1: cf.team1, team2: cf.team2,
+        score1: finalComplete ? gamesWon1 : null, score2: finalComplete ? gamesWon2 : null };
+      block.appendChild(gameRow(g, "👑", "gold"));
+      list.appendChild(block);
+    }
+  } else {
+    const isStack = state.format === "stack";
+    const c1Tag = isStack ? "Court 1" : "South";
+    const c2Tag = isStack ? "Court 2" : "North";
+    state.rounds.forEach(r => {
+      const block = el("div", { class: "schedule-round" });
+      block.appendChild(el("div", { class: "schedule-round-title" }, "Round " + r.round));
+      block.appendChild(gameRow(r.court1, c1Tag, "c1"));
+      block.appendChild(gameRow(r.court2, c2Tag, "c2"));
+      list.appendChild(block);
+    });
+    if (state.finals && (state.phase === "finals" || state.phase === "done")) {
+      const block = el("div", { class: "schedule-round" });
+      block.appendChild(el("div", { class: "schedule-round-title" }, "Finals"));
+      block.appendChild(gameRow(state.finals.championship, "Champ", "gold"));
+      block.appendChild(gameRow(state.finals.consolation,  "Cons",  "silver"));
+      list.appendChild(block);
+    }
   }
 
   modal.appendChild(list);
@@ -3209,10 +4623,11 @@ function openHowItWorksModal() {
   const modal = el("div", { class: "modal" });
   modal.appendChild(el("h2", null, "How this works"));
 
-  // Show both formats. The active format is expanded; the other is collapsed.
+  // Show all formats. The active format is expanded; others are collapsed.
   const sections = [
-    { id: "rr",    label: "Round Robin", bullets: RULES_RR },
+    { id: "rr",    label: "Round Robin",  bullets: RULES_RR },
     { id: "stack", label: "Stack Format", bullets: RULES_STACK },
+    { id: "crown", label: "Crown Court",  bullets: RULES_CROWN },
   ];
   for (const s of sections) {
     const isActive = state.format === s.id;
@@ -3235,7 +4650,11 @@ function openHowItWorksModal() {
 
 function openSettings() {
   const bg = el("div", { class: "modal-bg" });
-  const close = () => bg.remove();
+  let statusTimer = null;
+  const close = () => {
+    if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+    bg.remove();
+  };
   bg.addEventListener("click", e => { if (e.target === bg) close(); });
 
   const modal = el("div", { class: "modal" });
@@ -3260,7 +4679,8 @@ function openSettings() {
     modal.appendChild(el("h3", null, "Edit Names"));
     modal.appendChild(el("p", { class: "muted", style: "margin: 0 0 10px;" },
       "Slots are fixed. Renaming updates the player everywhere."));
-    for (let i = 0; i < 8; i++) {
+    const editableSlots = state.format === "crown" ? 4 : 8;
+    for (let i = 0; i < editableSlots; i++) {
       const input = el("input", {
         class: "name-input",
         style: "margin-bottom: 8px;",
@@ -3278,7 +4698,11 @@ function openSettings() {
       modal.appendChild(input);
     }
 
-    const winScoreRow = el("div", { class: "settings-row" });
+    if (state.format === "crown") {
+      modal.appendChild(el("p", { class: "muted", style: "margin: 8px 0 0;" },
+        "Win scores are fixed by Crown Court format — Opening to 11, Power Round to 11 (1.5×), Sudden Death to 7."));
+    }
+    const winScoreRow = el("div", { class: "settings-row", style: state.format === "crown" ? "display:none;" : "" });
     winScoreRow.appendChild(el("label", null, "Win score"));
     const winSelect = el("select");
     [11, 15, 21].forEach(v => {
@@ -3319,6 +4743,98 @@ function openSettings() {
     }
   }
 
+  // ---- Display & TV ----
+  modal.appendChild(el("div", { class: "ka-section-title" }, "Display & TV"));
+
+  // Primary toggle: Keep display awake
+  const kaPrimaryRow = el("div", { class: "ka-row" });
+  const kaPrimaryText = el("div", { class: "ka-text" });
+  kaPrimaryText.appendChild(el("div", { class: "ka-title" }, "Keep display awake"));
+  kaPrimaryText.appendChild(el("div", { class: "ka-sub" },
+    "Prevents your Mac and AirPlay TVs from sleeping during a tournament."));
+  const kaPrimarySwitch = el("label", { class: "ka-switch" });
+  const kaPrimaryInput = el("input", { type: "checkbox" });
+  if (state.keepAwake) kaPrimaryInput.setAttribute("checked", "checked");
+  kaPrimarySwitch.appendChild(kaPrimaryInput);
+  kaPrimarySwitch.appendChild(el("span", { class: "slider" }));
+  kaPrimaryRow.appendChild(kaPrimaryText);
+  kaPrimaryRow.appendChild(kaPrimarySwitch);
+  modal.appendChild(kaPrimaryRow);
+
+  // Sub-toggle: Aggressive mode (silent audio)
+  const kaAggRow = el("div", { class: "ka-row indent" });
+  const kaAggText = el("div", { class: "ka-text" });
+  kaAggText.appendChild(el("div", { class: "ka-title" }, "Aggressive mode (silent audio)"));
+  kaAggText.appendChild(el("div", { class: "ka-sub" },
+    "Enable if your TV still sleeps. Adds a silent audio loop."));
+  const kaAggSwitch = el("label", { class: "ka-switch" });
+  const kaAggInput = el("input", { type: "checkbox" });
+  if (state.keepAwakeAggressive) kaAggInput.setAttribute("checked", "checked");
+  if (!state.keepAwake) kaAggInput.disabled = true;
+  kaAggSwitch.appendChild(kaAggInput);
+  kaAggSwitch.appendChild(el("span", { class: "slider" }));
+  kaAggRow.appendChild(kaAggText);
+  kaAggRow.appendChild(kaAggSwitch);
+  modal.appendChild(kaAggRow);
+
+  // Status row (live)
+  const kaStatusRow = el("div", { class: "ka-row" });
+  const kaStatusLabel = el("div", { class: "ka-text" });
+  kaStatusLabel.appendChild(el("div", { class: "ka-title" }, "Status"));
+  const kaStatusDisplay = el("div", { class: "ka-status-text" });
+  kaStatusRow.appendChild(kaStatusLabel);
+  kaStatusRow.appendChild(kaStatusDisplay);
+  modal.appendChild(kaStatusRow);
+
+  function refreshKaStatus() {
+    const s = KeepAwake.getStatus();
+    let dotClass = "gray", text = "Keep-awake off", detail = "";
+    if (!s.active) {
+      // off — always gray, ignore stale errors from prior session
+    } else if (s.error && !s.canvasRunning) {
+      dotClass = "red"; text = "Keep-awake error"; detail = s.error;
+    } else if (s.active && s.canvasRunning && s.wakeLockHeld) {
+      dotClass = "green"; text = "Keep-awake active";
+    } else if (s.active && s.canvasRunning && !s.wakeLockHeld) {
+      dotClass = "yellow"; text = "Keep-awake partial";
+      detail = "wake lock unavailable";
+    } else if (s.active && !s.canvasRunning) {
+      dotClass = "red"; text = "Keep-awake error"; detail = s.error || "canvas not running";
+    }
+    kaStatusDisplay.innerHTML = "";
+    kaStatusDisplay.appendChild(el("span", { class: "ka-status-dot " + dotClass }));
+    kaStatusDisplay.appendChild(el("span", null, text));
+    if (detail) kaStatusDisplay.appendChild(el("span", { class: "ka-detail" }, "(" + detail + ")"));
+  }
+  refreshKaStatus();
+  statusTimer = setInterval(() => {
+    if (!document.body.contains(bg)) { clearInterval(statusTimer); statusTimer = null; return; }
+    refreshKaStatus();
+  }, 2000);
+
+  kaPrimaryInput.addEventListener("change", () => {
+    state.keepAwake = kaPrimaryInput.checked;
+    if (state.keepAwake) {
+      KeepAwake.enable();
+      showKeepAwakeActivationToast();
+    } else {
+      KeepAwake.disable();
+      state.keepAwakeAggressive = false;
+      kaAggInput.checked = false;
+      KeepAwake.setAggressive(false);
+      _keepAwakeToastShown = false;
+    }
+    kaAggInput.disabled = !state.keepAwake;
+    save();
+    refreshKaStatus();
+  });
+  kaAggInput.addEventListener("change", () => {
+    state.keepAwakeAggressive = kaAggInput.checked;
+    KeepAwake.setAggressive(state.keepAwakeAggressive);
+    save();
+    refreshKaStatus();
+  });
+
   const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { close(); render(); } }, "Done");
   modal.appendChild(closeBtn);
 
@@ -3328,54 +4844,85 @@ function openSettings() {
   }));
 
   // Switch format — confirms-and-wipes if a tournament is in progress.
-  const otherFormatLabel = state.format === "stack" ? "Round Robin" : "Stack Format";
-  modal.appendChild(el("button", {
-    style: "width: 100%; margin-top: 8px;",
-    onclick: () => {
-      const newFormat = state.format === "stack" ? "rr" : "stack";
-      const inSetup = state.phase === "setup";
-      const msg = inSetup
-        ? "Switch to " + otherFormatLabel + "?"
-        : "Switch to " + otherFormatLabel + "? This wipes the current tournament (names are kept).";
-      if (!confirm(msg)) return;
-      if (inSetup) {
-        state.format = newFormat;
-      } else {
-        const keptNames = state.rawNames.slice();
-        const keptWinScore = state.winScore;
-        const keptStackRounds = state.stackRounds;
-        state = newState();
-        state.rawNames = keptNames;
-        state.winScore = keptWinScore;
-        state.format = newFormat;
-        state.stackRounds = keptStackRounds;
-      }
-      save();
-      close();
-      render();
-    },
-  }, "Switch to " + otherFormatLabel));
+  const allFormats = [
+    { id: "rr",    label: "Round Robin" },
+    { id: "stack", label: "Stack Format" },
+    { id: "crown", label: "Crown Court" },
+  ];
+  allFormats.filter(f => f.id !== state.format).forEach(f => {
+    modal.appendChild(el("button", {
+      style: "width: 100%; margin-top: 8px;",
+      onclick: () => {
+        const inSetup = state.phase === "setup";
+        const msg = inSetup
+          ? "Switch to " + f.label + "?"
+          : "Switch to " + f.label + "? This wipes the current tournament (names are kept).";
+        if (!confirm(msg)) return;
+        if (inSetup) {
+          state.format = f.id;
+        } else {
+          const keptNames = state.rawNames.slice();
+          const keptWinScore = state.winScore;
+          const keptStackRounds = state.stackRounds;
+          const keptKeepAwake = state.keepAwake;
+          const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+          state = newState();
+          state.rawNames = keptNames;
+          state.winScore = keptWinScore;
+          state.format = f.id;
+          state.stackRounds = keptStackRounds;
+          state.keepAwake = keptKeepAwake;
+          state.keepAwakeAggressive = keptKeepAwakeAggressive;
+          syncKeepAwakeToState();
+        }
+        save();
+        close();
+        render();
+      },
+    }, "Switch to " + f.label));
+  });
 
   // Reset Tournament — visible only outside the setup phase
   if (state.phase !== "setup") {
     modal.appendChild(el("button", {
       style: "width: 100%; margin-top: 8px; background: var(--accent); color: #1a1207; border-color: var(--accent);",
       onclick: () => {
-        if (!confirm("Reset scores and re-shuffle the schedule? Your 8 names will be kept.")) return;
+        const isCrown = state.format === "crown";
+        const playerCount = isCrown ? 4 : 8;
+        if (!confirm("Reset scores and re-shuffle the schedule? Your " + playerCount + " names will be kept.")) return;
         const keptNames = state.slots.slice();
         const keptWinScore = state.winScore;
         const keptFormat = state.format;
         const keptStackRounds = state.stackRounds;
+        const keptKeepAwake = state.keepAwake;
+        const keptKeepAwakeAggressive = state.keepAwakeAggressive;
         state = newState();
         state.format = keptFormat;
         state.stackRounds = keptStackRounds;
-        state.rawNames = keptNames.slice();
-        state.slots = shuffle(keptNames);
-        state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
-        state.rounds = keptFormat === "stack" ? [assignInitialStackCourts()] : generateRounds();
         state.winScore = keptWinScore;
+        state.keepAwake = keptKeepAwake;
+        state.keepAwakeAggressive = keptKeepAwakeAggressive;
         state.phase = "playing";
         state.currentRound = 1;
+        if (isCrown) {
+          const crowNames = keptNames.slice(0, 4);
+          const shuffled = shuffle(crowNames.slice());
+          state.rawNames = [...crowNames, "", "", "", ""];
+          state.slots = [...shuffled, "", "", "", ""];
+          state.tiebreakRandom = shuffle([0,1,2,3]);
+          state.crownMatches = CROWN_SCHEDULE.map(s => ({
+            team1: s.team1.slice(), team2: s.team2.slice(), theme: s.theme,
+            games: [{score1:null,score2:null},{score1:null,score2:null},{score1:null,score2:null}],
+          }));
+          state.currentMatch = 0;
+          state.crownFinal = null;
+        } else {
+          state.rawNames = keptNames.slice();
+          state.slots = shuffle(keptNames);
+          state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
+          state.rounds = keptFormat === "stack" ? [assignInitialStackCourts()] : generateRounds();
+        }
+        syncKeepAwakeToState();
         save();
         close();
         render();
@@ -3389,7 +4936,12 @@ function openSettings() {
     style: "width: 100%; margin-top: 8px;",
     onclick: () => {
       if (!confirm("Clear all data including names? This can't be undone.")) return;
+      const keptKeepAwakeClear = state.keepAwake;
+      const keptKeepAwakeAggressiveClear = state.keepAwakeAggressive;
       state = newState();
+      state.keepAwake = keptKeepAwakeClear;
+      state.keepAwakeAggressive = keptKeepAwakeAggressiveClear;
+      syncKeepAwakeToState();
       save();
       close();
       render();
@@ -3401,6 +4953,14 @@ function openSettings() {
 }
 
 // ---------- boot ----------
+KeepAwake._aggressive = !!state.keepAwakeAggressive;
+if (state.keepAwake) {
+  // Layer 1 (canvas) starts immediately. Layer 2 (WakeLock) and Layer 3 (AudioContext)
+  // may be rejected by the browser without a prior user gesture — both are caught internally
+  // and will retry on first user interaction or next visibility change.
+  KeepAwake.enable();
+  // Do not show toast on boot — only show when user explicitly enables via settings.
+}
 render();
 </script>
 </body>
