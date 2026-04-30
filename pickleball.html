@@ -187,6 +187,9 @@
     outline: none;
     border-color: var(--accent);
   }
+  .score-input:placeholder-shown:not(:focus) {
+    border-color: rgba(255, 255, 255, 0.22);
+  }
   .score-input.winner {
     border-color: var(--good);
     color: var(--good);
@@ -222,6 +225,15 @@
   table.standings col.c-w,
   table.standings col.c-diff { width: 72px; }
   table.standings col.c-stack-extra { width: 50px; }
+  @media (max-width: 480px) {
+    table.standings col.c-rank { width: 44px; }
+    table.standings col.c-pts,
+    table.standings col.c-w { width: 60px; }
+    table.standings col.c-diff { width: 0; }
+    table.standings col.c-stack-extra { width: 0; }
+    table.standings th.col-hide-mobile,
+    table.standings td.col-hide-mobile { display: none; padding: 0; }
+  }
   table.standings tr.tier-divider td {
     border-top: 1px solid var(--border);
     padding: 10px 8px 4px;
@@ -404,6 +416,7 @@
   }
   @media (max-width: 480px) {
     .format-options { grid-template-columns: 1fr; }
+    .title { font-size: 15px; white-space: nowrap; }
   }
 
   /* Crown Court format */
@@ -504,6 +517,7 @@
     color: var(--text);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
+    white-space: nowrap;
   }
   .champions .consolation-block {
     margin-top: 32px;
@@ -530,6 +544,11 @@
   }
   .consolation-block .scorecard .sc-team { font-size: 16px; }
   .consolation-block .scorecard .sc-score { font-size: 28px; }
+  @media (max-width: 480px) {
+    .scorecard { grid-template-columns: 1fr; gap: 2px; padding: 10px 16px; text-align: center; }
+    .scorecard .sc-team.left, .scorecard .sc-team.right { text-align: center; }
+    .scorecard .sc-score { font-size: 32px; margin: 2px 0; }
+  }
 
   h2, h3 { margin: 0 0 12px; }
   .muted { color: var(--muted); font-size: 14px; }
@@ -2737,7 +2756,7 @@ function renderRulesUl(bullets) {
   return ul;
 }
 function renderRulesBlock() {
-  const details = el("details", { class: "rules", open: "" });
+  const details = el("details", { class: "rules" });
   details.appendChild(el("summary", null, "How it works"));
   const body = el("div", { class: "rules-body" });
   body.appendChild(renderRulesUl());
@@ -3089,7 +3108,7 @@ function renderCrownStandingsCard() {
     el("th", { class: "num" }, "MP"),
     el("th", { class: "num" }, "G W–L"),
     el("th", { class: "num" }, "PTS"),
-    el("th", { class: "num" }, "+/–"),
+    el("th", { class: "num col-hide-mobile" }, "+/–"),
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
@@ -3102,7 +3121,7 @@ function renderCrownStandingsCard() {
       el("td", { class: "num" }, s.matchPoints.toFixed(1)),
       el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
       el("td", { class: "num" }, "" + s.pointsScored),
-      el("td", { class: "num", style: s.pointDiff > 0 ? "color:var(--good);" : (s.pointDiff < 0 ? "color:var(--bad);" : "") },
+      el("td", { class: "num col-hide-mobile", style: s.pointDiff > 0 ? "color:var(--good);" : (s.pointDiff < 0 ? "color:var(--bad);" : "") },
         (s.pointDiff > 0 ? "+" : "") + s.pointDiff),
     ));
   });
@@ -3423,7 +3442,7 @@ function renderDoneScreenCrown() {
     el("th", { class: "num" }, "Total MP"),
     el("th", { class: "num" }, "G W–L"),
     el("th", { class: "num" }, "PTS"),
-    el("th", { class: "num" }, "+/–"),
+    el("th", { class: "num col-hide-mobile" }, "+/–"),
   )));
   const standingsTbody = el("tbody");
   ranking.forEach((s, i) => {
@@ -3439,7 +3458,7 @@ function renderDoneScreenCrown() {
       el("td", { class: "num" }, s.matchPoints.toFixed(1)),
       el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
       el("td", { class: "num" }, "" + s.pointsScored),
-      el("td", { class: "num", style: s.pointDiff > 0 ? "color:var(--good);" : (s.pointDiff < 0 ? "color:var(--bad);" : "") },
+      el("td", { class: "num col-hide-mobile", style: s.pointDiff > 0 ? "color:var(--good);" : (s.pointDiff < 0 ? "color:var(--bad);" : "") },
         (s.pointDiff > 0 ? "+" : "") + s.pointDiff),
     ));
   });
@@ -3770,7 +3789,7 @@ function renderStandingsCard(throughRound, opts) {
     el("th", null, "Player"),
     el("th", { class: "num" }, "PTS"),
     el("th", { class: "num" }, "W"),
-    el("th", { class: "num" }, "+/–"),
+    el("th", { class: "num col-hide-mobile" }, "+/–"),
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
@@ -3791,7 +3810,7 @@ function renderStandingsCard(throughRound, opts) {
       el("td", { class: "num" }, "" + s.points),
       el("td", { class: "num" }, "" + s.wins),
       el("td", {
-        class: "num",
+        class: "num col-hide-mobile",
         style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : ""),
       }, (s.diff > 0 ? "+" : "") + s.diff),
     ));
@@ -3825,8 +3844,8 @@ function renderStackStandingsCard(throughRound, opts) {
     el("th", null, "Player"),
     el("th", { class: "num", title: "Stack Score" }, "SS"),
     el("th", { class: "num", title: "Wins–Losses" }, "W–L"),
-    el("th", { class: "num", title: "Court climbs (C2 → C1)" }, "🔼"),
-    el("th", { class: "num", title: "Games on Court 1" }, "⏱"),
+    el("th", { class: "num col-hide-mobile", title: "Court climbs (C2 → C1)" }, "Climbs"),
+    el("th", { class: "num col-hide-mobile", title: "Games on Court 1" }, "C1"),
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
@@ -3840,8 +3859,8 @@ function renderStackStandingsCard(throughRound, opts) {
       el("td", { class: "name" }, s.name),
       el("td", { class: "num" }, s.stackScore.toFixed(1)),
       el("td", { class: "num" }, s.wins + "–" + s.losses),
-      el("td", { class: "num" }, "" + s.courtClimbs),
-      el("td", { class: "num" }, "" + s.gamesOnCourt1),
+      el("td", { class: "num col-hide-mobile" }, "" + s.courtClimbs),
+      el("td", { class: "num col-hide-mobile" }, "" + s.gamesOnCourt1),
     ));
   });
   table.appendChild(tbody);
@@ -4506,11 +4525,14 @@ function renderCrownAwardsStrip() {
   const chip = (label, item, inlineDetail) => {
     const node = el("div", { class: "award-chip" });
     node.appendChild(el("div", { class: "award-label" }, label));
-    const valueText = item.names.length ? item.names.join(", ") : "—";
+    const names = item.names;
+    const valueText = names.length
+      ? (names.length > 2 ? names.slice(0, 2).join(", ") + " +" + (names.length - 2) + " more" : names.join(", "))
+      : "—";
     const valueEl = el("div", { class: "award-value" }, valueText);
-    if (item.detail && item.names.length && inlineDetail) valueEl.appendChild(document.createTextNode(" · " + item.detail));
+    if (item.detail && names.length && inlineDetail) valueEl.appendChild(document.createTextNode(" · " + item.detail));
     node.appendChild(valueEl);
-    if (item.detail && item.names.length && !inlineDetail) node.appendChild(el("div", { class: "award-detail" }, item.detail));
+    if (item.detail && names.length && !inlineDetail) node.appendChild(el("div", { class: "award-detail" }, item.detail));
     return node;
   };
   const marquee = el("div", { class: "awards-strip marquee" });
@@ -4538,13 +4560,16 @@ function renderAwardsStrip() {
   const chip = (label, item, inlineDetail) => {
     const node = el("div", { class: "award-chip" });
     node.appendChild(el("div", { class: "award-label" }, label));
-    const valueText = item.names.length ? item.names.join(", ") : "—";
+    const names = item.names;
+    const valueText = names.length
+      ? (names.length > 2 ? names.slice(0, 2).join(", ") + " +" + (names.length - 2) + " more" : names.join(", "))
+      : "—";
     const valueEl = el("div", { class: "award-value" }, valueText);
-    if (item.detail && item.names.length && inlineDetail) {
+    if (item.detail && names.length && inlineDetail) {
       valueEl.appendChild(document.createTextNode(" · " + item.detail));
     }
     node.appendChild(valueEl);
-    if (item.detail && item.names.length && !inlineDetail) {
+    if (item.detail && names.length && !inlineDetail) {
       node.appendChild(el("div", { class: "award-detail" }, item.detail));
     }
     return node;
@@ -4696,8 +4721,8 @@ function renderDoneScreen() {
       el("th", null, "Player"),
       el("th", { class: "num", title: "Stack Score" }, "SS"),
       el("th", { class: "num", title: "Wins–Losses" }, "W–L"),
-      el("th", { class: "num", title: "Court climbs" }, "🔼"),
-      el("th", { class: "num", title: "Games on Court 1" }, "⏱"),
+      el("th", { class: "num col-hide-mobile", title: "Court climbs" }, "Climbs"),
+      el("th", { class: "num col-hide-mobile", title: "Games on Court 1" }, "C1"),
     )));
     const tbody = el("tbody");
     ranking.forEach((rs, i) => {
@@ -4708,8 +4733,8 @@ function renderDoneScreen() {
         el("td", { class: "name" }, s.name),
         el("td", { class: "num" }, s.stackScore.toFixed(1)),
         el("td", { class: "num" }, s.wins + "–" + s.losses),
-        el("td", { class: "num" }, "" + s.courtClimbs),
-        el("td", { class: "num" }, "" + s.gamesOnCourt1),
+        el("td", { class: "num col-hide-mobile" }, "" + s.courtClimbs),
+        el("td", { class: "num col-hide-mobile" }, "" + s.gamesOnCourt1),
       ));
     });
     table.appendChild(tbody);
@@ -4728,7 +4753,7 @@ function renderDoneScreen() {
       el("th", null, "Player"),
       el("th", { class: "num" }, "PTS"),
       el("th", { class: "num" }, "W"),
-      el("th", { class: "num" }, "+/–"),
+      el("th", { class: "num col-hide-mobile" }, "+/–"),
     )));
     const tbody = el("tbody");
     ranking.forEach((rs, i) => {
@@ -4739,7 +4764,7 @@ function renderDoneScreen() {
         el("td", { class: "name" }, s.name),
         el("td", { class: "num" }, "" + s.points),
         el("td", { class: "num" }, "" + s.wins),
-        el("td", { class: "num", style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : "") },
+        el("td", { class: "num col-hide-mobile", style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : "") },
           (s.diff > 0 ? "+" : "") + s.diff),
       ));
     });
