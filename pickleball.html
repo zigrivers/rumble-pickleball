@@ -3197,6 +3197,37 @@ function buildRallyScoringHelp() {
 </div>`;
   body.appendChild(b2);
 
+  const b3 = el("div");
+  b3.innerHTML = `
+<div>
+  <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Example: Score at 4–3</div>
+  <p style="margin:0 0 10px;font-size:14px;"><strong style="color:var(--text);">4–3</strong>, Team A serving. Score 4 is even → serve from right.</p>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+    <div style="background:#0d2b1a;border:1px solid var(--good);border-radius:8px;padding:10px 12px;">
+      <div style="font-size:11px;color:var(--good);font-weight:700;margin-bottom:4px;">TEAM A WINS THE RALLY</div>
+      <div style="font-size:14px;color:var(--text);">Score → <strong>5–3</strong> · A still serves · 5 is odd → switch to left</div>
+    </div>
+    <div style="background:#0d1e2b;border:1px solid var(--court1);border-radius:8px;padding:10px 12px;">
+      <div style="font-size:11px;color:var(--court1);font-weight:700;margin-bottom:4px;">TEAM B WINS THE RALLY</div>
+      <div style="font-size:14px;color:var(--text);">Score → <strong>4–4</strong> · B now serves · 4 is even → B serves from right</div>
+    </div>
+  </div>
+  <div style="background:#1a0e00;border:2px solid var(--accent);border-radius:8px;padding:12px;">
+    <div style="font-size:11px;color:var(--accent);font-weight:700;margin-bottom:8px;">⚡ HOW TO WIN — first to 7, win by 2</div>
+    <div style="display:flex;flex-direction:column;gap:5px;font-size:13px;font-family:monospace;color:var(--text);">
+      <div>6–5, A serving → A wins → <strong style="color:var(--good);">7–5 ✓ GAME</strong></div>
+      <div style="color:var(--muted);font-size:12px;padding:2px 0;">— or tie scenario —</div>
+      <div>6–6, A serving → A wins → 7–6 <span style="color:var(--muted);">(up by 1, not game)</span></div>
+      <div style="padding-left:14px;">7–6, A serving → A wins → <strong style="color:var(--good);">8–6 ✓ GAME</strong></div>
+      <div style="padding-left:14px;">7–6, A serving → B wins → 7–7, B serving</div>
+      <div style="padding-left:28px;">7–7, B serving → B wins → 8–7 <span style="color:var(--muted);">(not game)</span></div>
+      <div style="padding-left:28px;">8–7, B serving → B wins → <strong style="color:var(--good);">9–7 ✓ GAME</strong></div>
+    </div>
+    <p style="font-size:12px;color:var(--accent);margin:10px 0 0;">Winning while receiving gives you the point and the serve — but you still need to win one more on your own serve to take the game.</p>
+  </div>
+</div>`;
+  body.appendChild(b3);
+
   det.appendChild(body);
   return det;
 }
