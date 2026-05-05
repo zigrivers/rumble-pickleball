@@ -2722,6 +2722,38 @@ function startTournament() {
         { label: "Court 2",    count: 4 },
       ],
     });
+  } else if (state.format === "king") {
+    state.slots = shuffled;
+    state.rounds = [assignInitialKingCourts()];
+    state.phase = "playing";
+    save();
+    const r1k = state.rounds[0];
+    const kC1Slots = [...r1k.court1.team1, ...r1k.court1.team2];
+    const kC2Slots = [...r1k.court2.team1, ...r1k.court2.team2];
+    const kDisplay = [...kC1Slots.map(nameOf), ...kC2Slots.map(nameOf)];
+    runShuffleReveal(kDisplay, () => render(), {
+      title: "Drawing courts…",
+      groups: [
+        { label: "👑 King's Court", count: 4 },
+        { label: "Bottom Court",   count: 4 },
+      ],
+    });
+  } else if (state.format === "gauntlet") {
+    state.slots = shuffled;
+    state.rounds = [assignInitialGauntletCourts()];
+    state.phase = "playing";
+    save();
+    const r1g = state.rounds[0];
+    const gC1Slots = [...r1g.court1.team1, ...r1g.court1.team2];
+    const gC2Slots = [...r1g.court2.team1, ...r1g.court2.team2];
+    const gDisplay = [...gC1Slots.map(nameOf), ...gC2Slots.map(nameOf)];
+    runShuffleReveal(gDisplay, () => render(), {
+      title: "Drawing courts…",
+      groups: [
+        { label: "Court 1 (Top)", count: 4 },
+        { label: "Court 2",       count: 4 },
+      ],
+    });
   } else {
     state.slots = shuffled;
     state.rounds = generateRounds();
