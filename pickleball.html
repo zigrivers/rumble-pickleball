@@ -2400,6 +2400,89 @@ function buildNextStackRound(prevRound) {
   };
 }
 
+// === KING FORMAT ===
+// Court 1 = King's Court (top). After each round: winners move/stay up, losers move/stay down.
+// Random re-pairing on each court every round. Ranking = composite King Score.
+
+function assignInitialKingCourts() {
+  const slots = shuffle([1,2,3,4,5,6,7,8]);
+  const c1 = shuffle(slots.slice(0, 4));
+  const c2 = shuffle(slots.slice(4));
+  return {
+    round: 1,
+    court1: { team1: [c1[0], c1[1]], team2: [c1[2], c1[3]], score1: null, score2: null },
+    court2: { team1: [c2[0], c2[1]], team2: [c2[2], c2[3]], score1: null, score2: null },
+  };
+}
+
+function computeKingStats(throughRound) {
+  const stats = [];
+  for (let s = 1; s <= 8; s++) {
+    stats.push({ slot: s, name: nameOf(s), wins: 0, pointsScored: 0, kingCourtWins: 0, kingScore: 0 });
+  }
+  const upTo = Math.min(throughRound || 0, state.rounds.length);
+  for (let i = 0; i < upTo; i++) {
+    const r = state.rounds[i];
+    for (const courtKey of [1, 2]) {
+      const game = courtKey === 1 ? r.court1 : r.court2;
+      if (!isGameComplete(game)) continue;
+      const t1Won = game.score1 > game.score2;
+      const t2Won = game.score2 > game.score1;
+      for (const teamKey of ["team1", "team2"]) {
+        const team = game[teamKey];
+        const pts = teamKey === "team1" ? game.score1 : game.score2;
+        const won = (teamKey === "team1" && t1Won) || (teamKey === "team2" && t2Won);
+        for (const slot of team) {
+          const st = stats[slot - 1];
+          st.pointsScored += pts;
+          if (won) {
+            st.wins++;
+            if (courtKey === 1) st.kingCourtWins++;
+          }
+        }
+      }
+    }
+  }
+  stats.forEach(s => { s.kingScore = s.wins + s.pointsScored + s.kingCourtWins; });
+  return stats;
+}
+
+function rankPlayersKing(throughRound) {
+  const stats = computeKingStats(throughRound);
+  const tieRand = (state.tiebreakRandom && state.tiebreakRandom.length === 8)
+    ? state.tiebreakRandom : [0,1,2,3,4,5,6,7];
+  stats.sort((a, b) => {
+    if (b.kingScore !== a.kingScore) return b.kingScore - a.kingScore;
+    return tieRand.indexOf(a.slot - 1) - tieRand.indexOf(b.slot - 1);
+  });
+  return stats;
+}
+
+function buildNextKingRound(prevRound) {
+  if (!isRoundDecided(prevRound)) throw new Error("buildNextKingRound called with undecided round");
+  const c1 = prevRound.court1, c2 = prevRound.court2;
+  const c1Win  = c1.score1 > c1.score2 ? c1.team1 : c1.team2;
+  const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
+  const c2Win  = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
+  const c2Lose = c2.score1 > c2.score2 ? c2.team2 : c2.team1;
+  // Movement: winners pool → King's Court; losers pool → Bottom Court. Random re-pair on each.
+  const newC1 = shuffle([...c1Win, ...c2Win]);
+  const newC2 = shuffle([...c1Lose, ...c2Lose]);
+  return {
+    round: prevRound.round + 1,
+    court1: { team1: [newC1[0], newC1[1]], team2: [newC1[2], newC1[3]], score1: null, score2: null },
+    court2: { team1: [newC2[0], newC2[1]], team2: [newC2[2], newC2[3]], score1: null, score2: null },
+  };
+}
+
+function kingMovementToastText(prevRound) {
+  const c2Win  = prevRound.court2.score1 > prevRound.court2.score2
+    ? prevRound.court2.team1 : prevRound.court2.team2;
+  const c1Lose = prevRound.court1.score1 > prevRound.court1.score2
+    ? prevRound.court1.team2 : prevRound.court1.team1;
+  return teamName(c2Win) + " climb to King's Court · " + teamName(c1Lose) + " drop to Bottom";
+}
+
 // ---------- Crown Court logic ----------
 
 // Takes winner's games won first, loser's games won second — caller resolves who won.
