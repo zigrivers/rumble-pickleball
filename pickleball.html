@@ -2896,6 +2896,22 @@ const RULES_STACK = [
   "Stack Score per game: points scored + 0.5× points if on Court 1 + 3 for a win + 2 if you climbed by winning on Court 2. Highest Stack Score after the regular rounds = #1 seed.",
   "After the regular rounds, top 4 by Stack Score play the 🏆 Championship (#1 + #4 vs #2 + #3); bottom 4 play the 🥈 Consolation.",
 ];
+const RULES_KING = [
+  "8 players, 2 courts. Court 1 is the 👑 King's Court; Court 2 is the Bottom Court.",
+  "All 8 players play every round.",
+  "After each round: Court 1 winners stay on Court 1, Court 2 winners climb to Court 1. Court 1 losers drop to Court 2, Court 2 losers stay on Court 2. All players on each court are then randomly re-paired into two new teams.",
+  "Ranking: King Score = wins + points scored + Court 1 wins. Highest King Score after all rounds = #1 seed.",
+  "After regular rounds, top 4 by King Score play the 🏆 Championship (#1+#4 vs #2+#3); bottom 4 play the 🥈 Consolation.",
+  "Tiebreaker: the initial random seed drawn at tournament start.",
+];
+const RULES_GAUNTLET = [
+  "8 players, 2 courts, doubles.",
+  "After every round, all 8 players are re-ranked by performance (points scored → wins → point differential → head-to-head).",
+  "Pairing rule: Court 1 gets #1+#4 vs #2+#3; Court 2 gets #5+#8 vs #6+#7 — the best play the best, the rest play the rest.",
+  "Round 1 uses a random seed order.",
+  "Standard scoring (default first to 11, win by 2). Standings use the same points/wins/differential ranking as Round Robin.",
+  "After all rounds, top 4 play the 🏆 Championship, bottom 4 play the 🥈 Consolation.",
+];
 function rulesForActiveFormat() {
   if (state.format === "stack") return RULES_STACK;
   if (state.format === "crown") return RULES_CROWN;
