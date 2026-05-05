@@ -4065,7 +4065,11 @@ function renderPlaying() {
   if (state.format === "crown") return renderCrownPlaying();
   const wrap = el("div");
   const round = state.rounds[state.currentRound - 1];
-  const isStack = state.format === "stack";
+  const isStack       = state.format === "stack";
+  const isKing        = state.format === "king";
+  const isGauntlet    = state.format === "gauntlet";
+  const isIncremental = isStack || isKing || isGauntlet; // rounds built one at a time
+  const requiresDecided = isStack || isKing;             // ties block advancement
   const total = totalRegularRounds();
 
   // Refresh hooks injected by score inputs
@@ -4077,10 +4081,12 @@ function renderPlaying() {
   // navigation row
   // RR: round is "advanceable" when both scores are present (ties allowed).
   // Stack: round is "advanceable" only when both courts are decided (no ties).
-  const advanceReady = isStack ? isRoundDecided(round) : isRoundComplete(round);
-  const allRoundsAdvanceable = isStack
+  const advanceReady = requiresDecided ? isRoundDecided(round) : isRoundComplete(round);
+  const allRoundsAdvanceable = requiresDecided
     ? (state.rounds.length === total && state.rounds.every(isRoundDecided))
-    : state.rounds.every(isRoundComplete);
+    : isIncremental
+      ? (state.rounds.length === total && state.rounds.every(isRoundComplete))
+      : state.rounds.every(isRoundComplete);
   const actions = el("div", { class: "row-actions" });
   if (state.currentRound > 1) {
     actions.appendChild(el("button", {
