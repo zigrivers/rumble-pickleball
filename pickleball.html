@@ -5694,6 +5694,32 @@ function openSettings() {
           "Locked once games begin."));
       }
     }
+    if (state.format === "king" || state.format === "gauntlet") {
+      const isFmt = state.format === "king";
+      const noGamesPlayed = !state.rounds.some(r =>
+        isGameComplete(r.court1) || isGameComplete(r.court2)
+      );
+      const roundsRow = el("div", { class: "settings-row" });
+      roundsRow.appendChild(el("label", null, isFmt ? "King rounds" : "Gauntlet rounds"));
+      const sel = el("select");
+      [6,7,8,9,10,11,12].forEach(v => {
+        const opt = el("option", { value: String(v) }, String(v));
+        if ((isFmt ? state.kingRounds : state.gauntletRounds) === v) opt.setAttribute("selected", "selected");
+        sel.appendChild(opt);
+      });
+      if (!noGamesPlayed) sel.disabled = true;
+      sel.addEventListener("change", () => {
+        if (isFmt) state.kingRounds = parseInt(sel.value, 10);
+        else state.gauntletRounds = parseInt(sel.value, 10);
+        save();
+      });
+      roundsRow.appendChild(sel);
+      modal.appendChild(roundsRow);
+      if (!noGamesPlayed) {
+        modal.appendChild(el("p", { class: "muted", style: "font-size: 11px; margin: 0 0 6px;" },
+          "Locked once games begin."));
+      }
+    }
   }
 
   // ---- Display & TV ----
@@ -5798,9 +5824,11 @@ function openSettings() {
 
   // Switch format — confirms-and-wipes if a tournament is in progress.
   const allFormats = [
-    { id: "rr",    label: "Round Robin" },
-    { id: "stack", label: "Stack Format" },
-    { id: "crown", label: "Crown Court" },
+    { id: "rr",       label: "Round Robin" },
+    { id: "stack",    label: "Stack Format" },
+    { id: "king",     label: "King of the Court" },
+    { id: "gauntlet", label: "Gauntlet" },
+    { id: "crown",    label: "Crown Court" },
   ];
   allFormats.filter(f => f.id !== state.format).forEach(f => {
     modal.appendChild(el("button", {
@@ -5817,6 +5845,8 @@ function openSettings() {
           const keptNames = state.rawNames.slice();
           const keptWinScore = state.winScore;
           const keptStackRounds = state.stackRounds;
+          const keptKingRounds = state.kingRounds;
+          const keptGauntletRounds = state.gauntletRounds;
           const keptKeepAwake = state.keepAwake;
           const keptKeepAwakeAggressive = state.keepAwakeAggressive;
           state = newState();
@@ -5824,6 +5854,8 @@ function openSettings() {
           state.winScore = keptWinScore;
           state.format = f.id;
           state.stackRounds = keptStackRounds;
+          state.kingRounds = keptKingRounds;
+          state.gauntletRounds = keptGauntletRounds;
           state.keepAwake = keptKeepAwake;
           state.keepAwakeAggressive = keptKeepAwakeAggressive;
           syncKeepAwakeToState();
@@ -5847,11 +5879,15 @@ function openSettings() {
         const keptWinScore = state.winScore;
         const keptFormat = state.format;
         const keptStackRounds = state.stackRounds;
+        const keptKingRounds = state.kingRounds;
+        const keptGauntletRounds = state.gauntletRounds;
         const keptKeepAwake = state.keepAwake;
         const keptKeepAwakeAggressive = state.keepAwakeAggressive;
         state = newState();
         state.format = keptFormat;
         state.stackRounds = keptStackRounds;
+        state.kingRounds = keptKingRounds;
+        state.gauntletRounds = keptGauntletRounds;
         state.winScore = keptWinScore;
         state.keepAwake = keptKeepAwake;
         state.keepAwakeAggressive = keptKeepAwakeAggressive;
@@ -5873,7 +5909,10 @@ function openSettings() {
           state.rawNames = keptNames.slice();
           state.slots = shuffle(keptNames);
           state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
-          state.rounds = keptFormat === "stack" ? [assignInitialStackCourts()] : generateRounds();
+          state.rounds = keptFormat === "stack"    ? [assignInitialStackCourts()]
+                       : keptFormat === "king"     ? [assignInitialKingCourts()]
+                       : keptFormat === "gauntlet" ? [assignInitialGauntletCourts()]
+                       : generateRounds();
         }
         syncKeepAwakeToState();
         save();
