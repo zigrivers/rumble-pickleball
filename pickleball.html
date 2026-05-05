@@ -4210,10 +4210,10 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   else if (courtKey === "cons") { className += " silver"; labelText = "🥈 CONSOLATION"; }
   else if (courtKey === 1) {
     className += " c1" + (isStack ? " stack-top" : "");
-    labelText = isStack ? "🏆 COURT 1" : "SOUTH COURT";
+    labelText = { stack: "🏆 COURT 1", king: "👑 KING'S COURT", gauntlet: "COURT 1 (TOP)" }[state.format] || "SOUTH COURT";
   } else {
     className += " c2" + (isStack ? " stack-bot" : "");
-    labelText = isStack ? "COURT 2" : "NORTH COURT";
+    labelText = { stack: "COURT 2", king: "BOTTOM COURT", gauntlet: "COURT 2" }[state.format] || "NORTH COURT";
   }
 
   const card = el("div", { class: className });
@@ -4470,9 +4470,8 @@ function renderHistory(currentRound) {
   past.forEach(r => {
     const block = el("div", { class: "history-round" });
     block.appendChild(el("div", { class: "history-round-title" }, "Round " + r.round));
-    const isStack = state.format === "stack";
-    const c1Label = isStack ? "Court 1" : "South";
-    const c2Label = isStack ? "Court 2" : "North";
+    const c1Label = { stack: "Court 1", king: "King's Court", gauntlet: "Court 1" }[state.format] || "South";
+    const c2Label = { stack: "Court 2", king: "Bottom",       gauntlet: "Court 2" }[state.format] || "North";
     [{ g: r.court1, num: 1, label: c1Label }, { g: r.court2, num: 2, label: c2Label }].forEach(({ g, num, label }) => {
       const t1Win = isGameComplete(g) && g.score1 > g.score2;
       const t2Win = isGameComplete(g) && g.score2 > g.score1;
@@ -5437,9 +5436,8 @@ function openScheduleModal() {
       list.appendChild(block);
     }
   } else {
-    const isStack = state.format === "stack";
-    const c1Tag = isStack ? "Court 1" : "South";
-    const c2Tag = isStack ? "Court 2" : "North";
+    const c1Tag = { stack: "Court 1", king: "King's Court", gauntlet: "Court 1" }[state.format] || "South";
+    const c2Tag = { stack: "Court 2", king: "Bottom",       gauntlet: "Court 2" }[state.format] || "North";
     state.rounds.forEach(r => {
       const block = el("div", { class: "schedule-round" });
       block.appendChild(el("div", { class: "schedule-round-title" }, "Round " + r.round));
