@@ -1768,7 +1768,9 @@ function newState() {
   return {
     phase: "setup",                                  // setup | playing | finals | crown | done
     format: "rr",                                    // "rr" | "stack" | "crown"
-    stackRounds: 8,                                  // only used when format === "stack"
+    stackRounds:    8,                                  // only used when format === "stack"
+    kingRounds:     9,                                  // only used when format === "king"
+    gauntletRounds: 8,                                  // only used when format === "gauntlet"
     rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle, used on setup screen; always 8 elements
     slots:    ["", "", "", "", "", "", "", ""],      // post-shuffle, slot index 0..7 = slot 1..8; always 8 elements
     currentRound: 1,
@@ -1791,8 +1793,10 @@ function backfillStateDefaults(obj) {
   if (typeof obj.awardsShown !== "boolean") obj.awardsShown = false;
   if (typeof obj.winScore !== "number") obj.winScore = 11;
   if (!Array.isArray(obj.notifiedRounds)) obj.notifiedRounds = [];
-  if (!["stack","crown"].includes(obj.format)) obj.format = "rr";
+  if (!["rr","stack","crown","king","gauntlet"].includes(obj.format)) obj.format = "rr";
   if (typeof obj.stackRounds !== "number") obj.stackRounds = 8;
+  if (!Number.isInteger(obj.kingRounds)     || obj.kingRounds     < 6 || obj.kingRounds     > 12) obj.kingRounds     = 9;
+  if (!Number.isInteger(obj.gauntletRounds) || obj.gauntletRounds < 6 || obj.gauntletRounds > 12) obj.gauntletRounds = 8;
   if (!Array.isArray(obj.previousRanks)) obj.previousRanks = [];
   if (typeof obj.keepAwake !== "boolean") obj.keepAwake = true;
   if (typeof obj.keepAwakeAggressive !== "boolean") obj.keepAwakeAggressive = false;
