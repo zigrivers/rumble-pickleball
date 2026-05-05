@@ -4355,10 +4355,60 @@ function trajectorySpan(slot, currentIdx) {
   return el("span", { class: "rank-trajectory same", title: "No change" }, "—");
 }
 
-function renderStandingsCard(throughRound, opts) {
-  if (state.format === "stack") return renderStackStandingsCard(throughRound, opts);
-  if (state.format === "crown") return renderCrownStandingsCard();
+function renderKingStandingsCard(throughRound, opts) {
   opts = opts || {};
+  const stats = rankPlayersKing(throughRound);
+  const card = el("div", { class: "card" });
+  const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
+    el("h3", { style: "margin: 0;" }, opts.title || "Live Standings"),
+    opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+  );
+  card.appendChild(head);
+  const table = el("table", { class: "standings" });
+  const colgroup = el("colgroup", null,
+    el("col", { class: "c-rank" }),
+    el("col", { class: "c-name" }),
+    el("col", { class: "c-pts" }),
+    el("col", { class: "c-w" }),
+    el("col", { class: "c-stack-extra" }),
+    el("col", { class: "c-stack-extra" }),
+  );
+  table.appendChild(colgroup);
+  table.appendChild(el("thead", null, el("tr", null,
+    el("th", { style: "text-align: center;" }, "#"),
+    el("th", null, "Player"),
+    el("th", { class: "num", title: "King Score = wins + points + Court 1 wins" }, "Score"),
+    el("th", { class: "num", title: "Total wins" }, "W"),
+    el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
+    el("th", { class: "num col-hide-mobile", title: "Points scored" }, "PTS"),
+  )));
+  const tbody = el("tbody");
+  stats.forEach((s, i) => {
+    const traj = trajectorySpan(s.slot, i);
+    const rankTd = el("td", { class: "rank" });
+    if (i < 3) rankTd.appendChild(el("span", { class: "rank-badge medal" }, MEDALS[i]));
+    else       rankTd.appendChild(el("span", { class: "rank-badge" }, "" + (i + 1)));
+    if (traj) rankTd.appendChild(traj);
+    tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+      rankTd,
+      el("td", { class: "name" }, s.name),
+      el("td", { class: "num" }, "" + s.kingScore),
+      el("td", { class: "num" }, "" + s.wins),
+      el("td", { class: "num col-hide-mobile" }, "" + s.kingCourtWins),
+      el("td", { class: "num col-hide-mobile" }, "" + s.pointsScored),
+    ));
+  });
+  table.appendChild(tbody);
+  card.appendChild(table);
+  return card;
+}
+
+function renderStandingsCard(throughRound, opts) {
+  if (state.format === "stack")    return renderStackStandingsCard(throughRound, opts);
+  if (state.format === "crown")    return renderCrownStandingsCard();
+  if (state.format === "king")     return renderKingStandingsCard(throughRound, opts);
+  opts = opts || {};
+  if (state.format === "gauntlet") opts = { ...opts, hidePartners: true };
   const stats = rankPlayers(throughRound);
   const card = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
