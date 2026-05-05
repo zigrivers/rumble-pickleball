@@ -5342,7 +5342,8 @@ function renderDoneScreen() {
   finalCard.appendChild(head);
 
   const isStack = state.format === "stack";
-  const colSpan = isStack ? 6 : 5;
+  const isKing  = state.format === "king";
+  const colSpan = (isStack || isKing) ? 6 : 5;
   // Tier dividers go BEFORE the listed rank index (0-based). Tier boundaries:
   // 0–1 champ-W, 2–3 champ-L, 4–5 cons-W, 6–7 cons-L.
   const dividerLabels = {
@@ -5388,8 +5389,42 @@ function renderDoneScreen() {
       ));
     });
     table.appendChild(tbody);
+  } else if (isKing) {
+    const kingStats = computeKingStats(state.rounds.length);
+    const byKingSlot = new Map(kingStats.map(s => [s.slot, s]));
+    const colgroup = el("colgroup", null,
+      el("col", { class: "c-rank" }),
+      el("col", { class: "c-name" }),
+      el("col", { class: "c-pts" }),
+      el("col", { class: "c-w" }),
+      el("col", { class: "c-stack-extra" }),
+      el("col", { class: "c-stack-extra" }),
+    );
+    table.appendChild(colgroup);
+    table.appendChild(el("thead", null, el("tr", null,
+      el("th", { style: "text-align: center;" }, "#"),
+      el("th", null, "Player"),
+      el("th", { class: "num", title: "King Score" }, "Score"),
+      el("th", { class: "num" }, "W"),
+      el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
+      el("th", { class: "num col-hide-mobile", title: "Points scored" }, "PTS"),
+    )));
+    const tbody = el("tbody");
+    ranking.forEach((rs, i) => {
+      if (dividerLabels[i]) tbody.appendChild(tierDividerRow(dividerLabels[i]));
+      const s = byKingSlot.get(rs.slot);
+      tbody.appendChild(el("tr", { class: "r" + (i + 1) },
+        rankCell(i),
+        el("td", { class: "name" }, s.name),
+        el("td", { class: "num" }, "" + s.kingScore),
+        el("td", { class: "num" }, "" + s.wins),
+        el("td", { class: "num col-hide-mobile" }, "" + s.kingCourtWins),
+        el("td", { class: "num col-hide-mobile" }, "" + s.pointsScored),
+      ));
+    });
+    table.appendChild(tbody);
   } else {
-    const allStats = computeStats(7, true);
+    const allStats = computeStats(totalRegularRounds(), true);
     const colgroup = el("colgroup", null,
       el("col", { class: "c-rank" }),
       el("col", { class: "c-name" }),
@@ -5421,8 +5456,10 @@ function renderDoneScreen() {
     table.appendChild(tbody);
   }
   finalCard.appendChild(table);
-  finalCard.appendChild(el("p", { class: "standings-footer" },
-    "Within each tier, season points → wins → differential break ties."));
+  const footerText = isKing
+    ? "Within each tier, King Score (wins + points + Court 1 wins) breaks ties."
+    : "Within each tier, season points → wins → differential break ties.";
+  finalCard.appendChild(el("p", { class: "standings-footer" }, footerText));
   wrap.appendChild(finalCard);
 
   wrap.appendChild(el("button", {
