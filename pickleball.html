@@ -4619,8 +4619,11 @@ function renderPodium(ranking) {
   if (isStack) {
     const stackStats = computeStackStats(state.rounds.length);
     labelBySlot = new Map(stackStats.map(s => [s.slot, s.stackScore.toFixed(1) + " SS"]));
+  } else if (state.format === "king") {
+    const ks = computeKingStats(state.rounds.length);
+    labelBySlot = new Map(ks.map(s => [s.slot, s.kingScore + " KS"]));
   } else {
-    const stats = computeStats(7, true);
+    const stats = computeStats(totalRegularRounds(), true);
     labelBySlot = new Map(stats.map(s => [s.slot, s.points + " pts"]));
   }
   const order = ["silver", "gold", "bronze"]; // visual left/center/right
@@ -4655,7 +4658,7 @@ function renderScorecard(game) {
 function computeAwards() {
   const isStack = state.format === "stack";
 
-  // MVP — format-aware: Stack uses Stack Score, RR uses raw points.
+  // MVP — format-aware: Stack uses Stack Score, King uses King Score, RR uses raw points.
   let mvp;
   if (isStack) {
     const ss = computeStackStats(state.rounds.length);
@@ -4664,8 +4667,15 @@ function computeAwards() {
     mvp = winners.length
       ? { names: winners.map(s => nameOf(s.slot)), detail: maxSS.toFixed(1) + " SS" }
       : { names: [], detail: null };
+  } else if (state.format === "king") {
+    const ks = computeKingStats(state.rounds.length);
+    const maxKS = ks.reduce((m, s) => Math.max(m, s.kingScore), 0);
+    const winners = ks.filter(s => s.kingScore === maxKS && maxKS > 0);
+    mvp = winners.length
+      ? { names: winners.map(s => nameOf(s.slot)), detail: maxKS + " KS" }
+      : { names: [], detail: null };
   } else {
-    const stats = computeStats(7, true);
+    const stats = computeStats(totalRegularRounds(), true);
     const maxPts = stats.reduce((m, s) => Math.max(m, s.points), 0);
     const mvpNames = stats.filter(s => s.points === maxPts).map(s => nameOf(s.slot));
     mvp = { names: mvpNames, detail: maxPts + " pts" };
@@ -4673,8 +4683,8 @@ function computeAwards() {
 
   // Build chronological game list: regular rounds (each has c1, c2), then champ, cons.
   const games = [];
-  const c1Tag = isStack ? "Court 1" : "South";
-  const c2Tag = isStack ? "Court 2" : "North";
+  const c1Tag = { stack: "Court 1", king: "King's Court", gauntlet: "Court 1" }[state.format] || "South";
+  const c2Tag = { stack: "Court 2", king: "Bottom Court", gauntlet: "Court 2" }[state.format] || "North";
   for (let r = 0; r < state.rounds.length; r++) {
     const round = state.rounds[r];
     games.push({ ...round.court1, label: "R" + (r + 1) + " " + c1Tag });
