@@ -3023,8 +3023,10 @@ const RULES_GAUNTLET = [
   "After all rounds, top 4 play the 🏆 Championship, bottom 4 play the 🥈 Consolation.",
 ];
 function rulesForActiveFormat() {
-  if (state.format === "stack") return RULES_STACK;
-  if (state.format === "crown") return RULES_CROWN;
+  if (state.format === "stack")    return RULES_STACK;
+  if (state.format === "king")     return RULES_KING;
+  if (state.format === "gauntlet") return RULES_GAUNTLET;
+  if (state.format === "crown")    return RULES_CROWN;
   return RULES_RR;
 }
 function renderRulesUl(bullets) {
@@ -3120,9 +3122,11 @@ function renderFormatChooser() {
   wrap.appendChild(el("div", { class: "format-chooser-label" }, "Format"));
   const row = el("div", { class: "format-options" });
   const opts = [
-    { id: "rr",    title: "Round Robin",  blurb: "7 rounds, every pair partners once. Top 4 → Championship." },
-    { id: "stack", title: "Stack Format", blurb: "Court 1 (top) vs Court 2 (climbing). Win to climb, lose to drop." },
-    { id: "crown", title: "Crown Court",  blurb: "4 players, 3 themed rounds + a Championship Crown Match." },
+    { id: "rr",       title: "Round Robin",      blurb: "7 rounds, every pair partners once. Top 4 → Championship." },
+    { id: "stack",    title: "Stack Format",      blurb: "Court 1 (top) vs Court 2 (climbing). Win to climb, lose to drop." },
+    { id: "king",     title: "King of the Court", blurb: "Winners stay or climb, losers drop. Random re-pairing each round." },
+    { id: "gauntlet", title: "Gauntlet",          blurb: "Re-rank after every round. Top pairs top, bottom pairs bottom." },
+    { id: "crown",    title: "Crown Court",        blurb: "4 players, 3 themed rounds + a Championship Crown Match." },
   ];
   opts.forEach(opt => {
     const isActive = state.format === opt.id;
@@ -3153,6 +3157,32 @@ function renderFormatChooser() {
       state.stackRounds = parseInt(sel.value, 10);
       save();
     });
+    sub.appendChild(sel);
+    wrap.appendChild(sub);
+  }
+  if (state.format === "king") {
+    const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
+    sub.appendChild(el("label", null, "Rounds"));
+    const sel = el("select");
+    [6,7,8,9,10,11,12].forEach(v => {
+      const opt = el("option", { value: String(v) }, String(v));
+      if (state.kingRounds === v) opt.setAttribute("selected", "selected");
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", () => { state.kingRounds = parseInt(sel.value, 10); save(); });
+    sub.appendChild(sel);
+    wrap.appendChild(sub);
+  }
+  if (state.format === "gauntlet") {
+    const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
+    sub.appendChild(el("label", null, "Rounds"));
+    const sel = el("select");
+    [6,7,8,9,10,11,12].forEach(v => {
+      const opt = el("option", { value: String(v) }, String(v));
+      if (state.gauntletRounds === v) opt.setAttribute("selected", "selected");
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", () => { state.gauntletRounds = parseInt(sel.value, 10); save(); });
     sub.appendChild(sel);
     wrap.appendChild(sub);
   }
@@ -5393,9 +5423,11 @@ function openHowItWorksModal() {
 
   // Show all formats. The active format is expanded; others are collapsed.
   const sections = [
-    { id: "rr",    label: "Round Robin",  bullets: RULES_RR },
-    { id: "stack", label: "Stack Format", bullets: RULES_STACK },
-    { id: "crown", label: "Crown Court",  bullets: RULES_CROWN },
+    { id: "rr",       label: "Round Robin",      bullets: RULES_RR },
+    { id: "stack",    label: "Stack Format",      bullets: RULES_STACK },
+    { id: "king",     label: "King of the Court", bullets: RULES_KING },
+    { id: "gauntlet", label: "Gauntlet",          bullets: RULES_GAUNTLET },
+    { id: "crown",    label: "Crown Court",       bullets: RULES_CROWN },
   ];
   for (const s of sections) {
     const isActive = state.format === s.id;
