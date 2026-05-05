@@ -4555,6 +4555,7 @@ function seedRankBySlot() {
 function renderFinalsScreen() {
   const wrap = el("div");
   const isStack = state.format === "stack";
+  const isKing = state.format === "king";
   const total = totalRegularRounds();
   const ranked = rankPlayersForFormat(total);
 
@@ -4565,7 +4566,9 @@ function renderFinalsScreen() {
   ranked.forEach((s, i) => {
     const meta = isStack
       ? s.stackScore.toFixed(1) + " SS · " + s.wins + "W"
-      : s.points + " pts · " + s.wins + "W";
+      : isKing
+        ? s.kingScore + " KS · " + s.wins + "W"
+        : s.points + " pts · " + s.wins + "W";
     grid.appendChild(el("div", { class: "seed-row" },
       el("span", { class: "seed-rank" }, "#" + (i + 1)),
       el("span", null, s.name),
