@@ -2892,7 +2892,9 @@ function maybeFireRoundComplete(primaryBtn) {
   const round = state.rounds[idx];
   if (!round) return;
   // In Stack format, a tied round can't advance the tournament — don't celebrate it yet.
-  const advanceable = state.format === "stack" ? isRoundDecided(round) : isRoundComplete(round);
+  const advanceable = (state.format === "stack" || state.format === "king")
+    ? isRoundDecided(round)
+    : isRoundComplete(round);
   if (!advanceable) return;
   if (state.notifiedRounds.includes(state.currentRound)) return;
   state.notifiedRounds.push(state.currentRound);
@@ -4099,18 +4101,26 @@ function renderPlaying() {
     primaryBtn = el("button", {
       class: "primary",
       onclick: () => {
-        if (isStack) {
-          if (!isRoundDecided(round)) return;
+        if (isIncremental) {
+          if (requiresDecided ? !isRoundDecided(round) : !isRoundComplete(round)) return;
           // Build the next round if it doesn't already exist (e.g. user went
           // back, then advanced again — keep the existing pairing). previousRanks
           // is snapshotted only on first-time advance so backward navigation
           // doesn't clobber the baseline used for trajectory arrows.
           let toastMsg = null;
           if (state.rounds.length === state.currentRound) {
-            state.previousRanks = rankPlayersStack(state.currentRound).map(s => s.slot);
-            const next = buildNextStackRound(round);
-            state.rounds.push(next);
-            toastMsg = movementToastText(round, next);
+            state.previousRanks = rankPlayersForFormat(state.currentRound).map(s => s.slot);
+            if (isStack) {
+              const next = buildNextStackRound(round);
+              state.rounds.push(next);
+              toastMsg = movementToastText(round, next);
+            } else if (isKing) {
+              const next = buildNextKingRound(round);
+              state.rounds.push(next);
+              toastMsg = kingMovementToastText(round);
+            } else {
+              state.rounds.push(buildNextGauntletRound(round));
+            }
           }
           state.currentRound++;
           save();
@@ -4131,9 +4141,11 @@ function renderPlaying() {
       onclick: () => {
         // Re-evaluate at click time — score inputs may have completed the
         // round since this button was rendered.
-        const ready = isStack
+        const ready = requiresDecided
           ? (state.rounds.length === total && state.rounds.every(isRoundDecided))
-          : state.rounds.every(isRoundComplete);
+          : isIncremental
+            ? (state.rounds.length === total && state.rounds.every(isRoundComplete))
+            : state.rounds.every(isRoundComplete);
         if (ready) { buildFinals(); render(); }
       }
     }, "Build Finals →");
@@ -4160,11 +4172,13 @@ function renderPlaying() {
   // Wire refresh: update primary button state + replace standings live
   refreshes.push(() => {
     if (state.currentRound < total) {
-      primaryBtn.disabled = isStack ? !isRoundDecided(round) : !isRoundComplete(round);
+      primaryBtn.disabled = requiresDecided ? !isRoundDecided(round) : !isRoundComplete(round);
     } else {
-      primaryBtn.disabled = isStack
+      primaryBtn.disabled = requiresDecided
         ? !(state.rounds.length === total && state.rounds.every(isRoundDecided))
-        : !state.rounds.every(isRoundComplete);
+        : isIncremental
+          ? !(state.rounds.length === total && state.rounds.every(isRoundComplete))
+          : !state.rounds.every(isRoundComplete);
     }
     const newStandings = renderStandingsCard(state.currentRound, standingsOpts());
     standingsCard.replaceWith(newStandings);
