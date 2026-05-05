@@ -2483,6 +2483,29 @@ function kingMovementToastText(prevRound) {
   return teamName(c2Win) + " climb to King's Court · " + teamName(c1Lose) + " drop to Bottom";
 }
 
+// === GAUNTLET FORMAT ===
+// Re-rank all 8 after every round. Court 1: #1+#4 vs #2+#3; Court 2: #5+#8 vs #6+#7.
+// Reuses existing rankPlayers() (points scored → wins → diff → h2h) — no new stats needed.
+
+function buildGauntletPairing(ranked, roundNum) {
+  return {
+    round: roundNum,
+    court1: { team1: [ranked[0], ranked[3]], team2: [ranked[1], ranked[2]], score1: null, score2: null },
+    court2: { team1: [ranked[4], ranked[7]], team2: [ranked[5], ranked[6]], score1: null, score2: null },
+  };
+}
+
+function assignInitialGauntletCourts() {
+  // rankPlayers(0) returns all players with 0 stats → sorted by tiebreakRandom (already set in startTournament).
+  const ranked = rankPlayers(0).map(s => s.slot);
+  return buildGauntletPairing(ranked, 1);
+}
+
+function buildNextGauntletRound(prevRound) {
+  const ranked = rankPlayers(prevRound.round).map(s => s.slot);
+  return buildGauntletPairing(ranked, prevRound.round + 1);
+}
+
 // ---------- Crown Court logic ----------
 
 // Takes winner's games won first, loser's games won second — caller resolves who won.
@@ -2784,7 +2807,9 @@ function rankPlayers(throughRound) {
 
 // Format-aware overall ranking through `throughRound` (1-based, inclusive).
 function rankPlayersForFormat(throughRound) {
-  return state.format === "stack" ? rankPlayersStack(throughRound) : rankPlayers(throughRound);
+  if (state.format === "stack") return rankPlayersStack(throughRound);
+  if (state.format === "king")  return rankPlayersKing(throughRound);
+  return rankPlayers(throughRound); // rr, gauntlet: same ranking
 }
 
 function buildFinals() {
@@ -2804,7 +2829,7 @@ function buildFinals() {
 // known until after advancing.
 function nextPartnerInfo(slot) {
   if (state.phase !== "playing") return null;
-  if (state.format === "stack") return null;
+  if (state.format === "stack" || state.format === "king" || state.format === "gauntlet") return null;
   if (state.currentRound >= 7) return null;
   const next = state.rounds[state.currentRound]; // currentRound is 1-based; this is round N+1
   if (!next) return null;
@@ -2925,8 +2950,10 @@ function render() {
 }
 
 function totalRegularRounds() {
-  if (state.format === "stack") return state.stackRounds;
-  if (state.format === "crown") return 3;
+  if (state.format === "stack")    return state.stackRounds;
+  if (state.format === "king")     return state.kingRounds;
+  if (state.format === "gauntlet") return state.gauntletRounds;
+  if (state.format === "crown")    return 3;
   return 7;
 }
 
