@@ -15,10 +15,10 @@
 **Modify:** `pickleball.html` — the only file.
 
 **New code inserted (in order):**
-1. `RULES_KING`, `RULES_GAUNTLET` constants — after `RULES_STACK`
-2. `// === KING FORMAT ===` block — after `buildNextStackRound`, before Crown logic
-3. `// === GAUNTLET FORMAT ===` block — after King block, before Crown logic
-4. `renderKingStandingsCard()` — just before `renderStandingsCard()`
+1. `RULES_KING`, `RULES_GAUNTLET` constants — after `RULES_STACK` (Task 2)
+2. `// === KING FORMAT ===` block — after `buildNextStackRound`, before Crown logic (Task 3)
+3. `// === GAUNTLET FORMAT ===` block — after King block, before Crown logic (Task 4)
+4. `renderKingStandingsCard()` — just before `renderStandingsCard()` (Task 10)
 
 **Existing functions modified:**
 `newState`, `backfillStateDefaults`, `totalRegularRounds`, `rankPlayersForFormat`, `nextPartnerInfo`, `startTournament`, `maybeFireRoundComplete`, `renderPlaying`, `renderCourtCard`, `renderStandingsCard`, `renderFormatChooser`, `renderHistory`, `openScheduleModal`, `openHowItWorksModal`, `rulesForActiveFormat`, `renderPodium`, `computeAwards`, `renderDoneScreen`, `openSettings`
@@ -81,13 +81,13 @@ git commit -m "feat: add kingRounds and gauntletRounds to state"
 
 ---
 
-## Task 2: Engine Functions (Non-UI)
+## Task 2: RULES Constants
 
 **Files:**
-- Modify: `pickleball.html` — insert constants and two engine blocks, update three dispatch functions
+- Modify: `pickleball.html` — insert `RULES_KING` and `RULES_GAUNTLET` constants after `RULES_STACK`
 
 ### Context
-`RULES_STACK` ends around line 2894. The King and Gauntlet engine blocks go after `buildNextStackRound` (which ends around line 2397) and before the `// ---------- Crown Court logic ----------` comment. `totalRegularRounds()` is around line 2840. `rankPlayersForFormat()` is around line 2699. `nextPartnerInfo()` is around line 2714.
+`RULES_STACK` ends around line 2894, followed immediately by `function rulesForActiveFormat()`. Insert the two new constants between them.
 
 - [ ] **Step 1: Add `RULES_KING` and `RULES_GAUNTLET` constants**
 
@@ -97,8 +97,7 @@ Find `const RULES_STACK = [` and locate its closing `];`. Insert the two new con
 const RULES_KING = [
   "8 players, 2 courts. Court 1 is the 👑 King's Court; Court 2 is the Bottom Court.",
   "All 8 players play every round.",
-  "After each round: Court 1 winners stay on Court 1, Court 2 winners climb to Court 1. Court 1 losers drop to Court 2, Court 2 losers stay on Court 2.",
-  "After movement, players on each court are randomly re-paired into two new teams.",
+  "After each round: Court 1 winners stay on Court 1, Court 2 winners climb to Court 1. Court 1 losers drop to Court 2, Court 2 losers stay on Court 2. All players on each court are then randomly re-paired into two new teams.",
   "Ranking: King Score = wins + points scored + Court 1 wins. Highest King Score after all rounds = #1 seed.",
   "After regular rounds, top 4 by King Score play the 🏆 Championship (#1+#4 vs #2+#3); bottom 4 play the 🥈 Consolation.",
   "Tiebreaker: the initial random seed drawn at tournament start.",
@@ -113,7 +112,34 @@ const RULES_GAUNTLET = [
 ];
 ```
 
-- [ ] **Step 2: Insert the King engine block**
+- [ ] **Step 2: Verify in browser console**
+
+Open `pickleball.html` in a browser. In DevTools Console:
+```js
+console.log(RULES_KING[0]);
+// Expected: "8 players, 2 courts. Court 1 is the 👑 King's Court; Court 2 is the Bottom Court."
+console.log(RULES_GAUNTLET.length);
+// Expected: 6
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add pickleball.html
+git commit -m "feat: add RULES_KING and RULES_GAUNTLET constants"
+```
+
+---
+
+## Task 3: King Engine Block
+
+**Files:**
+- Modify: `pickleball.html` — insert King engine block after `buildNextStackRound`
+
+### Context
+`buildNextStackRound` ends around line 2397. After it there is a blank line then `// ---------- Crown Court logic ----------`. Insert the King block in that gap. All helper functions (`shuffle`, `nameOf`, `teamName`, `isGameComplete`, `isRoundDecided`) are JS function declarations so they are hoisted and available regardless of definition order in the file.
+
+- [ ] **Step 1: Insert the King engine block**
 
 Find the closing brace of `buildNextStackRound` — it's followed by a blank line and then `// ---------- Crown Court logic ----------`. Insert the entire King block in that gap:
 
@@ -202,14 +228,71 @@ function kingMovementToastText(prevRound) {
 }
 ```
 
-- [ ] **Step 3: Insert the Gauntlet engine block**
+- [ ] **Step 2: Verify in browser console**
+
+Open the file in a browser. In DevTools Console:
+
+```js
+// Set up test state
+state.format = "king";
+state.slots = ["A","B","C","D","E","F","G","H"];
+state.tiebreakRandom = [0,1,2,3,4,5,6,7];
+state.rounds = [{
+  round: 1,
+  court1: { team1: [1,2], team2: [3,4], score1: 11, score2: 5 },
+  court2: { team1: [5,6], team2: [7,8], score1: 8, score2: 11 }
+}];
+const ks = computeKingStats(1);
+console.log(ks.map(s => s.name + ": wins=" + s.wins + " pts=" + s.pointsScored + " kCW=" + s.kingCourtWins + " KS=" + s.kingScore));
+// Expected per player:
+// A: wins=1, pts=11, kCW=1, KS=13   (won Court 1, scored 11)
+// B: wins=1, pts=11, kCW=1, KS=13   (won Court 1, scored 11)
+// G: wins=1, pts=11, kCW=0, KS=12   (won Court 2, scored 11)
+// H: wins=1, pts=11, kCW=0, KS=12   (won Court 2, scored 11)
+// C: wins=0, pts=5,  kCW=0, KS=5    (lost Court 1, scored 5)
+// D: wins=0, pts=5,  kCW=0, KS=5    (same)
+// E: wins=0, pts=8,  kCW=0, KS=8    (lost Court 2, scored 8)
+// F: wins=0, pts=8,  kCW=0, KS=8    (same)
+
+// Test movement
+const r2 = buildNextKingRound(state.rounds[0]);
+// Court 1 of r2 should contain slots 1,2,7,8 (winners pool)
+// Court 2 of r2 should contain slots 3,4,5,6 (losers pool)
+console.log("R2 C1 pool:", [...r2.court1.team1, ...r2.court1.team2].sort());
+// Expected: [1, 2, 7, 8]
+console.log("R2 C2 pool:", [...r2.court2.team1, ...r2.court2.team2].sort());
+// Expected: [3, 4, 5, 6]
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add pickleball.html
+git commit -m "feat: add King engine functions"
+```
+
+---
+
+## Task 4: Gauntlet Engine Block + Dispatch Updates
+
+**Files:**
+- Modify: `pickleball.html` — insert Gauntlet engine block, update `totalRegularRounds()`, `rankPlayersForFormat()`, `nextPartnerInfo()`
+
+### Context
+The Gauntlet block goes immediately after the King engine block (still before `// ---------- Crown Court logic ----------`). `totalRegularRounds()` is at line ~2840. `rankPlayersForFormat()` is at line ~2699. `nextPartnerInfo()` is at line ~2714.
+
+Note on Gauntlet ranking: `rankPlayers(throughRound)` uses `computeStats()` which tracks `points` = raw points scored (not a separate "ranking points" metric). This matches the Gauntlet rule of re-ranking by points scored → wins → differential → head-to-head.
+
+Note on Gauntlet initial assignment: `rankPlayers(0)` with throughRound=0 returns all players with 0 stats, sorted only by `tiebreakRandom` (which is set in `startTournament()` before `assignInitialGauntletCourts()` is called). This produces a stable random seed order for Round 1.
+
+- [ ] **Step 1: Insert the Gauntlet engine block**
 
 Insert immediately after the King engine block (still before `// ---------- Crown Court logic ----------`):
 
 ```js
 // === GAUNTLET FORMAT ===
 // Re-rank all 8 after every round. Court 1: #1+#4 vs #2+#3; Court 2: #5+#8 vs #6+#7.
-// Reuses existing rankPlayers() (points → wins → diff → h2h) — no new stats needed.
+// Reuses existing rankPlayers() (points scored → wins → diff → h2h) — no new stats needed.
 
 function buildGauntletPairing(ranked, roundNum) {
   return {
@@ -231,7 +314,7 @@ function buildNextGauntletRound(prevRound) {
 }
 ```
 
-- [ ] **Step 4: Update `totalRegularRounds()`**
+- [ ] **Step 2: Update `totalRegularRounds()`**
 
 Find `function totalRegularRounds()`. Replace the entire function body:
 
@@ -245,7 +328,7 @@ function totalRegularRounds() {
 }
 ```
 
-- [ ] **Step 5: Update `rankPlayersForFormat()`**
+- [ ] **Step 3: Update `rankPlayersForFormat()`**
 
 Find `function rankPlayersForFormat(throughRound)`. Replace:
 
@@ -253,11 +336,11 @@ Find `function rankPlayersForFormat(throughRound)`. Replace:
 function rankPlayersForFormat(throughRound) {
   if (state.format === "stack") return rankPlayersStack(throughRound);
   if (state.format === "king")  return rankPlayersKing(throughRound);
-  return rankPlayers(throughRound); // rr, gauntlet: same RR ranking
+  return rankPlayers(throughRound); // rr, gauntlet: same ranking
 }
 ```
 
-- [ ] **Step 6: Update `nextPartnerInfo()`**
+- [ ] **Step 4: Update `nextPartnerInfo()`**
 
 Find `if (state.format === "stack") return null;` inside `nextPartnerInfo()`. Replace with:
 
@@ -265,44 +348,43 @@ Find `if (state.format === "stack") return null;` inside `nextPartnerInfo()`. Re
 if (state.format === "stack" || state.format === "king" || state.format === "gauntlet") return null;
 ```
 
-- [ ] **Step 7: Verify in browser console**
+This disables next-partner chips for both new formats (partners aren't known ahead of time for incremental formats).
+
+- [ ] **Step 5: Verify in browser console**
 
 Open the file in a browser. In DevTools Console:
 
 ```js
-// Test King engine
-state.format = "king";
-state.slots = ["A","B","C","D","E","F","G","H"];
-state.tiebreakRandom = [0,1,2,3,4,5,6,7];
-state.rounds = [{
-  round: 1,
-  court1: { team1: [1,2], team2: [3,4], score1: 11, score2: 5 },
-  court2: { team1: [5,6], team2: [7,8], score1: 8, score2: 11 }
-}];
-const ks = computeKingStats(1);
-console.log(ks.map(s => s.name + ": " + s.kingScore));
-// Expected: A and B each have kingScore = 1 win + 11 pts + 1 kingCourtWin = 13
-// G and H each have kingScore = 1 win + 11 pts + 0 kingCourtWins = 12
-// C,D,E,F have scores from losses only (5 pts each)
+// Verify totalRegularRounds
+state.format = "king"; state.kingRounds = 9;
+console.log(totalRegularRounds()); // Expected: 9
 
-// Test Gauntlet engine
-state.format = "gauntlet";
+state.format = "gauntlet"; state.gauntletRounds = 8;
+console.log(totalRegularRounds()); // Expected: 8
+
+// Test Gauntlet initial assignment
+state.tiebreakRandom = [2,5,0,7,3,1,6,4]; // arbitrary shuffle
+state.slots = ["A","B","C","D","E","F","G","H"];
 state.rounds = [];
 const g1 = assignInitialGauntletCourts();
-console.log("Gauntlet R1 court1 team1:", g1.court1.team1, "team2:", g1.court1.team2);
-// Expected: 4 slot numbers per team, all unique
+console.log("Court 1:", g1.court1.team1, "vs", g1.court1.team2);
+console.log("Court 2:", g1.court2.team1, "vs", g1.court2.team2);
+// Each team should have 2 slot numbers; 4 unique slots per court; 8 total unique slots
+const allSlots = [...g1.court1.team1, ...g1.court1.team2, ...g1.court2.team1, ...g1.court2.team2];
+console.log("All slots:", allSlots.sort(), "unique:", new Set(allSlots).size);
+// Expected: [1,2,3,4,5,6,7,8], unique: 8
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add pickleball.html
-git commit -m "feat: add King and Gauntlet engine functions"
+git commit -m "feat: add Gauntlet engine and update dispatch functions"
 ```
 
 ---
 
-## Task 3: Format Chooser UI + How It Works Modal
+## Task 5: Format Chooser UI + How It Works Modal
 
 **Files:**
 - Modify: `pickleball.html` — `renderFormatChooser()`, `rulesForActiveFormat()`, `openHowItWorksModal()`
@@ -429,7 +511,7 @@ git commit -m "feat: add King and Gauntlet to format chooser and How It Works mo
 
 ---
 
-## Task 4: Tournament Start
+## Task 6: Tournament Start
 
 **Files:**
 - Modify: `pickleball.html` — `startTournament()`
@@ -437,9 +519,11 @@ git commit -m "feat: add King and Gauntlet to format chooser and How It Works mo
 ### Context
 `startTournament()` is around line 2565. It has an `if (isCrown)` branch, an `else if (state.format === "stack")` branch, and a final `else` (RR). Add King and Gauntlet branches between Stack and the final else.
 
+`state.tiebreakRandom` is set at the TOP of `startTournament()` (before any format branches), so it's already set when `assignInitialGauntletCourts()` is called.
+
 - [ ] **Step 1: Add King and Gauntlet branches in `startTournament()`**
 
-Find the Stack branch and the final RR `else` block:
+Find the Stack branch end and the final RR `else`:
 ```js
   } else if (state.format === "stack") {
     state.slots = shuffled;
@@ -494,7 +578,7 @@ Insert two new `else if` branches between Stack and the final `else`:
 
 1. Select "King of the Court" format, enter 8 names, click Start.
 2. The shuffle reveal should show two labeled groups: "👑 King's Court" and "Bottom Court", each with 4 names.
-3. After reveal, the playing screen should attempt to render (it may look wrong until Task 5/6 are done — that's OK).
+3. After reveal, the playing screen should attempt to render (it may look wrong until Tasks 7/8 are done — that's OK).
 4. Reload, select "Gauntlet", enter 8 names, click Start.
 5. The shuffle reveal should show "Court 1 (Top)" and "Court 2" groups.
 
@@ -507,13 +591,15 @@ git commit -m "feat: add startTournament branches for King and Gauntlet"
 
 ---
 
-## Task 5: Round Advancement (`renderPlaying` + `maybeFireRoundComplete`)
+## Task 7: Round Advancement — Format Booleans + Readiness
 
 **Files:**
-- Modify: `pickleball.html` — `renderPlaying()` and `maybeFireRoundComplete()`
+- Modify: `pickleball.html` — top of `renderPlaying()`: add booleans, update `advanceReady` and `allRoundsAdvanceable`
 
 ### Context
-`renderPlaying()` is around line 3873. It begins with `if (state.format === "crown") return renderCrownPlaying();`. The function currently defines `const isStack = state.format === "stack";` and uses it throughout for advancement logic. `maybeFireRoundComplete()` is around line 2745.
+`renderPlaying()` is around line 3873. It begins with `if (state.format === "crown") return renderCrownPlaying();`. Just after that, it defines `const isStack = state.format === "stack";`. We add new booleans here and update the two readiness constants. The advance button handlers are updated in the next task.
+
+Adding the booleans is a non-breaking intermediate state: `isStack` still exists and is still used by the unmodified handlers below.
 
 - [ ] **Step 1: Add format booleans at the top of `renderPlaying()`**
 
@@ -557,7 +643,34 @@ Replace with:
       : state.rounds.every(isRoundComplete);
 ```
 
-- [ ] **Step 3: Update the "Next Round" advance button click handler**
+- [ ] **Step 3: Verify in browser console**
+
+Open the file in a browser. Start a King tournament (or temporarily set `state.format = "king"` in console). In DevTools Console:
+```js
+// After renderPlaying() renders:
+// The "Round 2 →" button should be disabled initially.
+// Enter a tied score on court 1 (e.g., 11-11) — button should stay disabled for King.
+// Enter a decided score on both courts — button should enable.
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add pickleball.html
+git commit -m "feat: renderPlaying format booleans and readiness predicates for King/Gauntlet"
+```
+
+---
+
+## Task 8: Round Advancement — Advance Handlers + `maybeFireRoundComplete`
+
+**Files:**
+- Modify: `pickleball.html` — advance button onclick, Build Finals onclick, `refreshes.push` callback, `maybeFireRoundComplete()`
+
+### Context
+Still in `renderPlaying()` (line ~3873). The three handler replacements are separate finds within the same function. `maybeFireRoundComplete()` is at line ~2745.
+
+- [ ] **Step 1: Update the "Next Round" advance button click handler**
 
 Find the advance button's onclick — it currently has this structure:
 ```js
@@ -617,7 +730,7 @@ Replace with:
       }
 ```
 
-- [ ] **Step 4: Update the "Build Finals" button `onclick` re-evaluation**
+- [ ] **Step 2: Update the "Build Finals" button `onclick` re-evaluation**
 
 Find the "Build Finals" button's onclick (it re-evaluates readiness at click time):
 ```js
@@ -641,7 +754,7 @@ Replace with:
       }
 ```
 
-- [ ] **Step 5: Update the `refreshes.push` callback for primary button state**
+- [ ] **Step 3: Update the `refreshes.push` callback for primary button state**
 
 Find the `refreshes.push(() => {` callback that updates `primaryBtn.disabled`. It currently has:
 ```js
@@ -667,7 +780,7 @@ Replace those lines (keep the rest of the callback unchanged):
     }
 ```
 
-- [ ] **Step 6: Update `maybeFireRoundComplete()`**
+- [ ] **Step 4: Update `maybeFireRoundComplete()`**
 
 Find:
 ```js
@@ -681,25 +794,25 @@ Replace with:
     : isRoundComplete(round);
 ```
 
-- [ ] **Step 7: Verify in browser**
+- [ ] **Step 5: Verify in browser**
 
 1. Start a King tournament with 8 names.
 2. Enter scores for both courts (one team wins each — no ties for King).
 3. The "Round 2 →" button should become enabled.
 4. Clicking advance should show a toast: "X & Y climb to King's Court · A & B drop to Bottom".
-5. Round 2 should appear with new matchups.
+5. Round 2 should appear with new matchups. Winners from both courts should be on Court 1.
 6. Start a Gauntlet tournament. Enter scores (ties allowed). Button enables on complete scores (tied ok). Advancing builds next round silently (no toast).
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add pickleball.html
-git commit -m "feat: round advancement for King and Gauntlet formats"
+git commit -m "feat: round advancement handlers for King and Gauntlet"
 ```
 
 ---
 
-## Task 6: Court Labels, History, Schedule
+## Task 9: Court Labels, History, Schedule
 
 **Files:**
 - Modify: `pickleball.html` — `renderCourtCard()`, `renderHistory()`, `openScheduleModal()`
@@ -779,7 +892,7 @@ git commit -m "feat: court labels for King and Gauntlet in cards, history, sched
 
 ---
 
-## Task 7: Standings
+## Task 10: Standings
 
 **Files:**
 - Modify: `pickleball.html` — insert `renderKingStandingsCard()`, update `renderStandingsCard()`
@@ -863,7 +976,7 @@ function renderStandingsCard(throughRound, opts) {
   const stats = rankPlayers(throughRound);
 ```
 
-The `hidePartners: true` hides the "N partners left" badge (which counts `7 - partnersUsed.size` — meaningless for Gauntlet where partners rotate dynamically). The badge is already conditional on `opts.hidePartners` in the existing RR standings code.
+The `hidePartners: true` hides the "N partners left" badge (which counts `7 - partnersUsed.size` — meaningless for Gauntlet). The next-partner chips are already suppressed by `nextPartnerInfo()` returning null for Gauntlet (Task 4 Step 4).
 
 - [ ] **Step 3: Verify in browser**
 
@@ -879,13 +992,13 @@ git commit -m "feat: King standings card, Gauntlet standings (hidePartners)"
 
 ---
 
-## Task 8: Done Screen, Podium, and Awards
+## Task 11: Podium and Awards
 
 **Files:**
-- Modify: `pickleball.html` — `renderPodium()`, `computeAwards()`, `renderDoneScreen()`
+- Modify: `pickleball.html` — `renderPodium()`, `computeAwards()`
 
 ### Context
-`renderPodium()` is around line 4355. `computeAwards()` is around line 4394. `renderDoneScreen()` is around line 5029 — its final standings table has a `if (isStack) { ... } else { computeStats(7, true) ... }` branch.
+`renderPodium()` is around line 4355. `computeAwards()` is around line 4394. Both currently call `computeStats(7, true)` with a hardcoded 7. For King and Gauntlet with different round counts this truncates stats — fix to use `computeStats(totalRegularRounds(), true)`.
 
 - [ ] **Step 1: Update `renderPodium()` — add King branch and fix hardcoded `7`**
 
@@ -949,7 +1062,31 @@ Replace with:
   const c2Tag = { stack: "Court 2", king: "Bottom Court", gauntlet: "Court 2" }[state.format] || "North";
 ```
 
-- [ ] **Step 3: Update `renderDoneScreen()` — add King branch and fix Gauntlet**
+- [ ] **Step 3: Verify in browser**
+
+1. Play a complete King tournament (all rounds → Build Finals → enter final scores) through to the done screen.
+2. The podium should show "N KS" labels for King players.
+3. The awards strip should show a King Score-based MVP (highest KS wins).
+4. Repeat for Gauntlet: podium shows "N pts", MVP shows highest point scorer.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add pickleball.html
+git commit -m "feat: podium and awards for King and Gauntlet"
+```
+
+---
+
+## Task 12: Done Screen — Final Standings Table
+
+**Files:**
+- Modify: `pickleball.html` — `renderDoneScreen()` final standings table branch
+
+### Context
+`renderDoneScreen()` is around line 5029. It has a `if (isStack) { ... } else { computeStats(7, true) ... }` branch for the final standings table. Add a King branch and fix the Gauntlet hardcoded `7`.
+
+- [ ] **Step 1: Add `isKing` boolean and update `colSpan`**
 
 Find these lines in `renderDoneScreen()`:
 ```js
@@ -964,7 +1101,9 @@ Replace with:
   const colSpan = (isStack || isKing) ? 6 : 5;
 ```
 
-Then find the final standings `else` block:
+- [ ] **Step 2: Replace the final standings `else` block**
+
+Find the final standings `else` block (starts with `} else {` and ends with `finalCard.appendChild(el("p", ...`):
 ```js
   } else {
     const allStats = computeStats(7, true);
@@ -1078,30 +1217,33 @@ Replace with:
   finalCard.appendChild(el("p", { class: "standings-footer" }, footerText));
 ```
 
-- [ ] **Step 4: Verify in browser**
+- [ ] **Step 3: Verify in browser**
 
-1. Play a complete King tournament (all rounds → Build Finals → enter final scores) through to the done screen.
-2. The podium should show "N KS" labels. The final standings should show Score/W/👑W/PTS columns with tier dividers.
+1. Play a complete King tournament through to the done screen.
+2. The final standings should show Score/W/👑W/PTS columns with tier dividers.
 3. The footer text should say "Within each tier, King Score (wins + points + Court 1 wins) breaks ties."
-4. The awards strip should show a King Score-based MVP.
-5. Repeat for Gauntlet: podium shows "N pts", standings show PTS/W/+/– (no partner badge).
+4. Repeat for Gauntlet: done screen shows PTS/W/+/– columns, no partner badge, and `totalRegularRounds()` worth of stats.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add pickleball.html
-git commit -m "feat: done screen, podium, and awards for King and Gauntlet"
+git commit -m "feat: done screen final standings for King and Gauntlet"
 ```
 
 ---
 
-## Task 9: Settings Integration
+## Task 13: Settings Integration
 
 **Files:**
 - Modify: `pickleball.html` — `openSettings()`
 
 ### Context
-`openSettings()` is around line 5295. It has: (1) an in-game "Stack rounds" config block, (2) an `allFormats` array for the switch-format buttons, (3) a format-switch `onclick` handler that preserves settings, (4) a Reset Tournament handler.
+`openSettings()` is around line 5295. It has:
+1. A Stack rounds config block (shown when `state.phase !== "setup"`)
+2. An `allFormats` array for the switch-format buttons
+3. A format-switch `onclick` handler that preserves settings
+4. A Reset Tournament handler that has two branches: `if (isCrown) { ... } else { ... }`. The Crown branch is NOT modified — only the `else` branch's round-builder dispatch line is updated.
 
 - [ ] **Step 1: Add rounds config for King and Gauntlet in Settings**
 
@@ -1178,67 +1320,73 @@ Replace with:
 
 Inside the format-switch button's `onclick`, find the block that saves and restores settings:
 ```js
-        const keptNames = state.rawNames.slice();
-        const keptWinScore = state.winScore;
+          const keptNames = state.rawNames.slice();
+          const keptWinScore = state.winScore;
+          const keptStackRounds = state.stackRounds;
+          const keptKeepAwake = state.keepAwake;
+          const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+          state = newState();
+          state.rawNames = keptNames;
+          state.winScore = keptWinScore;
+          state.format = f.id;
+          state.stackRounds = keptStackRounds;
+          state.keepAwake = keptKeepAwake;
+          state.keepAwakeAggressive = keptKeepAwakeAggressive;
+```
+
+Replace with:
+```js
+          const keptNames = state.rawNames.slice();
+          const keptWinScore = state.winScore;
+          const keptStackRounds = state.stackRounds;
+          const keptKingRounds = state.kingRounds;
+          const keptGauntletRounds = state.gauntletRounds;
+          const keptKeepAwake = state.keepAwake;
+          const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+          state = newState();
+          state.rawNames = keptNames;
+          state.winScore = keptWinScore;
+          state.format = f.id;
+          state.stackRounds = keptStackRounds;
+          state.kingRounds = keptKingRounds;
+          state.gauntletRounds = keptGauntletRounds;
+          state.keepAwake = keptKeepAwake;
+          state.keepAwakeAggressive = keptKeepAwakeAggressive;
+```
+
+- [ ] **Step 4: Preserve `kingRounds`/`gauntletRounds` in Reset Tournament and update its round builder**
+
+In the Reset Tournament handler's `else` branch (non-Crown), find the save/restore block and the rounds dispatch:
+```js
         const keptStackRounds = state.stackRounds;
         const keptKeepAwake = state.keepAwake;
         const keptKeepAwakeAggressive = state.keepAwakeAggressive;
         state = newState();
-        state.rawNames = keptNames;
-        state.winScore = keptWinScore;
-        state.format = f.id;
+        state.format = keptFormat;
         state.stackRounds = keptStackRounds;
+        state.winScore = keptWinScore;
         state.keepAwake = keptKeepAwake;
         state.keepAwakeAggressive = keptKeepAwakeAggressive;
 ```
 
 Replace with:
 ```js
-        const keptNames = state.rawNames.slice();
-        const keptWinScore = state.winScore;
         const keptStackRounds = state.stackRounds;
         const keptKingRounds = state.kingRounds;
         const keptGauntletRounds = state.gauntletRounds;
         const keptKeepAwake = state.keepAwake;
         const keptKeepAwakeAggressive = state.keepAwakeAggressive;
         state = newState();
-        state.rawNames = keptNames;
-        state.winScore = keptWinScore;
-        state.format = f.id;
+        state.format = keptFormat;
         state.stackRounds = keptStackRounds;
         state.kingRounds = keptKingRounds;
         state.gauntletRounds = keptGauntletRounds;
+        state.winScore = keptWinScore;
         state.keepAwake = keptKeepAwake;
         state.keepAwakeAggressive = keptKeepAwakeAggressive;
 ```
 
-- [ ] **Step 4: Preserve `kingRounds` and `gauntletRounds` in Reset Tournament and update its round builder**
-
-Find the Reset Tournament `onclick` — it has a block that saves and restores settings:
-```js
-        const keptStackRounds = state.stackRounds;
-        const keptKeepAwake = state.keepAwake;
-        const keptKeepAwakeAggressive = state.keepAwakeAggressive;
-        state = newState();
-        // ...
-        state.stackRounds = keptStackRounds;
-```
-
-Update to also preserve King and Gauntlet rounds:
-```js
-        const keptStackRounds = state.stackRounds;
-        const keptKingRounds = state.kingRounds;
-        const keptGauntletRounds = state.gauntletRounds;
-        const keptKeepAwake = state.keepAwake;
-        const keptKeepAwakeAggressive = state.keepAwakeAggressive;
-        state = newState();
-        // ...
-        state.stackRounds = keptStackRounds;
-        state.kingRounds = keptKingRounds;
-        state.gauntletRounds = keptGauntletRounds;
-```
-
-Then find the Reset Tournament's round builder dispatch:
+Then find the round builder dispatch line (still in the `else` branch, a few lines below):
 ```js
           state.rounds = keptFormat === "stack" ? [assignInitialStackCourts()] : generateRounds();
 ```
@@ -1268,10 +1416,10 @@ git commit -m "feat: settings integration for King and Gauntlet (rounds config, 
 
 ---
 
-## Task 10: End-to-End Verification
+## Task 14: End-to-End Verification
 
 **Files:**
-- Read-only verification. No code changes unless a bug is found.
+- Read-only verification. Only commit if a bug fix is required.
 
 - [ ] **Step 1: Full King of the Court tournament playthrough**
 
@@ -1281,8 +1429,9 @@ git commit -m "feat: settings integration for King and Gauntlet (rounds config, 
    - Movement toast appears naming who climbed / dropped.
    - Court 1 shows "👑 KING'S COURT", Court 2 shows "BOTTOM COURT".
    - Standings show Score/W/👑W/PTS columns. Values increase each round.
+   - Winners from both courts in the previous round appear on Court 1 in the next round.
 4. After round 6, click "Build Finals →".
-5. Enter finals scores (Championship and Consolation). Click "Done" (or advance to done screen).
+5. Enter finals scores (Championship and Consolation). Advance to done screen.
 6. Verify done screen: podium shows "N KS" labels, final standings shows Score/W/👑W/PTS, footer says King Score formula, awards show King Score-based MVP.
 7. Open History and Full Schedule modals — all rounds listed with King's Court/Bottom labels.
 
@@ -1293,14 +1442,15 @@ git commit -m "feat: settings integration for King and Gauntlet (rounds config, 
 3. Play all 6 rounds. Verify:
    - No movement toast (Gauntlet is silent on advance).
    - Court 1 shows "COURT 1 (TOP)", Court 2 shows "COURT 2".
-   - Standings show PTS/W/+/– (no partner badge). No trajectory arrows on first advance.
+   - Standings show PTS/W/+/– (no "X left" partner badge). No trajectory arrows on first advance.
    - After round 2+, trajectory arrows appear (▲▼) based on prior-round rankings.
    - Enter a tied score — the advance button should still enable (ties are allowed).
-4. Build and complete finals. Verify done screen shows PTS/W/+/– columns, "pts" labels on podium.
+   - Top-ranked player from previous round should be on Court 1 in next round.
+4. Build and complete finals. Verify done screen shows PTS/W/+/– columns, "N pts" labels on podium.
 
 - [ ] **Step 3: Verify existing formats are unaffected**
 
-1. Select Round Robin. Enter 8 names. Play 2 rounds. Verify: "SOUTH COURT" / "NORTH COURT" labels, partner badges shown ("N left"), partner chips ("→ Name") on standings. 
+1. Select Round Robin. Enter 8 names. Play 2 rounds. Verify: "SOUTH COURT" / "NORTH COURT" labels, partner badges shown ("N left"), partner chips ("→ Name") on standings.
 2. Select Stack. Play 2 rounds. Verify: "🏆 COURT 1" / "COURT 2" labels, Stack Score standings, climber toast on advance.
 3. Select Crown Court. Enter 4 names. Play through all 3 matches + Crown Match. Verify Crown done screen.
 
@@ -1310,11 +1460,11 @@ git commit -m "feat: settings integration for King and Gauntlet (rounds config, 
 2. Reopen the file — the King tournament should resume from round 3.
 3. Open settings, switch to Gauntlet. Reload. Verify the format is Gauntlet and `kingRounds`/`gauntletRounds` are preserved.
 
-- [ ] **Step 5: Commit final verification**
+- [ ] **Step 5: Commit only if bugs were fixed**
 
+If verification found and fixed bugs, commit with a specific message:
 ```bash
-git add pickleball.html
-git commit -m "feat: King of the Court and Gauntlet formats complete"
+git diff --quiet && echo "No code changes — verification complete." || git commit -m "fix: <describe the specific bug found>"
 ```
 
 ---
@@ -1325,20 +1475,21 @@ git commit -m "feat: King of the Court and Gauntlet formats complete"
 - ✅ State fields (`kingRounds`, `gauntletRounds`) — Task 1
 - ✅ `backfillStateDefaults` with `Number.isInteger` + range clamp — Task 1
 - ✅ `RULES_KING`, `RULES_GAUNTLET` constants — Task 2
-- ✅ King engine (`assignInitialKingCourts`, `computeKingStats`, `rankPlayersKing`, `buildNextKingRound`, `kingMovementToastText`) — Task 2
-- ✅ Gauntlet engine (`buildGauntletPairing`, `assignInitialGauntletCourts`, `buildNextGauntletRound`) — Task 2
-- ✅ `totalRegularRounds()`, `rankPlayersForFormat()`, `nextPartnerInfo()` dispatch — Task 2
-- ✅ Format chooser UI + rounds sub-selector — Task 3
-- ✅ `rulesForActiveFormat()`, `openHowItWorksModal()` sections — Task 3
-- ✅ `startTournament()` King and Gauntlet branches with grouped shuffle reveal — Task 4
-- ✅ `renderPlaying()` booleans, advance handler, `maybeFireRoundComplete()` — Task 5
-- ✅ `buildNextKingRound` tie guard (`throw new Error`) — included in Task 2 engine code
-- ✅ Court labels in `renderCourtCard()`, `renderHistory()`, `openScheduleModal()` — Task 6
-- ✅ `renderKingStandingsCard()` with Score/W/👑W/PTS columns — Task 7
-- ✅ `renderStandingsCard()` dispatch with Gauntlet `hidePartners: true` — Task 7
-- ✅ `renderPodium()` King branch + `computeStats(totalRegularRounds())` fix — Task 8
-- ✅ `computeAwards()` King MVP + court tag labels — Task 8
-- ✅ `renderDoneScreen()` King branch + Gauntlet `totalRegularRounds()` fix + footer text — Task 8
-- ✅ Settings: rounds config, `allFormats`, format-switch preservation, Reset dispatch — Task 9
+- ✅ King engine (`assignInitialKingCourts`, `computeKingStats`, `rankPlayersKing`, `buildNextKingRound`, `kingMovementToastText`) — Task 3
+- ✅ Gauntlet engine (`buildGauntletPairing`, `assignInitialGauntletCourts`, `buildNextGauntletRound`) — Task 4
+- ✅ `totalRegularRounds()`, `rankPlayersForFormat()`, `nextPartnerInfo()` dispatch — Task 4
+- ✅ Format chooser UI + rounds sub-selector — Task 5
+- ✅ `rulesForActiveFormat()`, `openHowItWorksModal()` sections — Task 5
+- ✅ `startTournament()` King and Gauntlet branches with grouped shuffle reveal — Task 6
+- ✅ `renderPlaying()` booleans + readiness predicates — Task 7
+- ✅ `renderPlaying()` advance handlers, `maybeFireRoundComplete()` — Task 8
+- ✅ `buildNextKingRound` tie guard (`throw new Error`) — included in Task 3 engine code
+- ✅ Court labels in `renderCourtCard()`, `renderHistory()`, `openScheduleModal()` — Task 9
+- ✅ `renderKingStandingsCard()` with Score/W/👑W/PTS columns — Task 10
+- ✅ `renderStandingsCard()` dispatch with Gauntlet `hidePartners: true` — Task 10
+- ✅ `renderPodium()` King branch + `computeStats(totalRegularRounds())` fix — Task 11
+- ✅ `computeAwards()` King MVP + court tag labels — Task 11
+- ✅ `renderDoneScreen()` King branch + Gauntlet `totalRegularRounds()` fix + footer text — Task 12
+- ✅ Settings: rounds config, `allFormats`, format-switch preservation, Reset dispatch — Task 13
 - ✅ `buildFinals()` / `finalRanking()` — format-agnostic, no changes needed
 - ✅ Crown format — untouched throughout
