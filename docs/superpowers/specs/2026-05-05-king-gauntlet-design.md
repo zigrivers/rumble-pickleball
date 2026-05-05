@@ -31,8 +31,9 @@ if (!["stack","crown"].includes(obj.format)) obj.format = "rr";
 // New:
 if (!["rr","stack","crown","king","gauntlet"].includes(obj.format)) obj.format = "rr";
 
-if (typeof obj.kingRounds     !== "number") obj.kingRounds     = 9;
-if (typeof obj.gauntletRounds !== "number") obj.gauntletRounds = 8;
+// Use Number.isInteger + range clamp — typeof check alone allows NaN, Infinity, decimals
+if (!Number.isInteger(obj.kingRounds)     || obj.kingRounds     < 6 || obj.kingRounds     > 12) obj.kingRounds     = 9;
+if (!Number.isInteger(obj.gauntletRounds) || obj.gauntletRounds < 6 || obj.gauntletRounds > 12) obj.gauntletRounds = 8;
 ```
 
 ### Format-switch & Reset preservation
@@ -102,10 +103,11 @@ function rankPlayersKing(throughRound) {
 
 ### `buildNextKingRound(prevRound)`
 
-Requires `isRoundDecided(prevRound)` (both courts have a clear winner).
+Requires `isRoundDecided(prevRound)` (both courts have a clear winner). The function guards explicitly — movement rules are undefined on a tie, so calling with a tied round is a programming error.
 
 ```js
 function buildNextKingRound(prevRound) {
+  if (!isRoundDecided(prevRound)) throw new Error("buildNextKingRound called with undecided round");
   const c1 = prevRound.court1, c2 = prevRound.court2;
   const c1Win  = c1.score1 > c1.score2 ? c1.team1 : c1.team2;
   const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
@@ -241,9 +243,18 @@ Gauntlet, Court 2: "COURT 2"
 
 ### `renderStandingsCard()`
 
-Dispatches to new `renderKingStandingsCard()` for `"king"`. Gauntlet falls through to existing RR standings unchanged.
+Dispatches to new `renderKingStandingsCard()` for `"king"`. Gauntlet routes to the existing RR standings renderer but with `hidePartners: true` injected — the RR standings show a "N partners left" badge computed as `7 - partnersUsed.size`, which is nonsensical for Gauntlet (rounds don't rotate everyone through every partner).
 
-King standings columns: # | Player | Score | W | 👑W (Court 1 wins)
+```js
+// Inside renderStandingsCard dispatch:
+if (state.format === "king")     return renderKingStandingsCard(throughRound, opts);
+if (state.format === "gauntlet") return renderRRStandingsCard(throughRound, { ...opts, hidePartners: true });
+// else falls through to RR
+```
+
+King standings columns: # | Player | Score | W | 👑W (Court 1 wins) | PTS
+
+The PTS column shows raw `pointsScored`, letting players audit why two players with the same wins and Court 1 wins are ranked differently.
 
 ### `renderFormatChooser()` — two new option buttons
 
@@ -286,6 +297,25 @@ const advanceable = (state.format === "stack" || state.format === "king")
   : isRoundComplete(round);
 ```
 
+### `renderPodium()` and `computeAwards()`
+
+Both currently call `computeStats(7, true)` with a hardcoded `7`. For King and Gauntlet this truncates stats if rounds > 7. Change to `computeStats(totalRegularRounds(), true)` in both functions. No other changes needed — the award categories (MVP, Biggest Win, Hot Streak, etc.) are game-outcome-based and work correctly for all formats.
+
+### `renderDoneScreen()` — final standings table
+
+The non-Stack else branch at the done screen also hardcodes `computeStats(7, true)` and shows PTS/W/+/– columns. Two fixes:
+
+1. **Gauntlet:** Change `computeStats(7, true)` to `computeStats(totalRegularRounds(), true)`. Columns stay as PTS/W/+/– (correct for Gauntlet). Footer text stays as-is.
+
+2. **King:** Add a new `isKing` branch (parallel to the existing `isStack` branch) that calls `computeKingStats(state.rounds.length)` and renders columns Score/W/👑W/PTS. Footer text should read "Within each tier, King Score (wins + points + Court 1 wins) breaks ties."
+
+The `isStack` local variable in `renderDoneScreen` expands to:
+```js
+const isStack = state.format === "stack";
+const isKing  = state.format === "king";
+const colSpan = (isStack || isKing) ? 6 : 5;
+```
+
 ### History & Schedule modal
 
 Court labels extended with King and Gauntlet cases (same label map as `renderCourtCard()`).
@@ -304,7 +334,7 @@ Court labels extended with King and Gauntlet cases (same label map as `renderCou
 
 **`RULES_GAUNTLET` bullets:**
 1. 8 players, 2 courts, doubles.
-2. After every round, all 8 players are re-ranked by performance (wins → point differential → head-to-head).
+2. After every round, all 8 players are re-ranked by performance (points scored → wins → point differential → head-to-head).
 3. Pairing rule: Court 1 gets #1+#4 vs #2+#3; Court 2 gets #5+#8 vs #6+#7 — the best play the best, the rest play the rest.
 4. Round 1 uses a random seed order.
 5. Standard scoring (default first to 11, win by 2). Standings use the same points/wins/differential ranking as Round Robin.
@@ -321,7 +351,7 @@ New code blocks inserted in order:
 2. `// === KING FORMAT ===` block: `assignInitialKingCourts`, `computeKingStats`, `rankPlayersKing`, `buildNextKingRound`, `kingMovementToastText`, `renderKingStandingsCard`
 3. `// === GAUNTLET FORMAT ===` block: `buildGauntletPairing`, `assignInitialGauntletCourts`, `buildNextGauntletRound`
 
-Existing functions modified (dispatch layer): `newState`, `backfillStateDefaults`, `totalRegularRounds`, `rankPlayersForFormat`, `nextPartnerInfo`, `startTournament`, `maybeFireRoundComplete`, `renderPlaying`, `renderCourtCard`, `renderStandingsCard`, `renderFormatChooser`, `renderHistory`, `openScheduleModal`, `openSettings`, `openHowItWorksModal`, `rulesForActiveFormat`
+Existing functions modified (dispatch layer): `newState`, `backfillStateDefaults`, `totalRegularRounds`, `rankPlayersForFormat`, `nextPartnerInfo`, `startTournament`, `maybeFireRoundComplete`, `renderPlaying`, `renderCourtCard`, `renderStandingsCard`, `renderFormatChooser`, `renderHistory`, `openScheduleModal`, `openSettings`, `openHowItWorksModal`, `rulesForActiveFormat`, `renderPodium`, `computeAwards`, `renderDoneScreen`
 
 ---
 
@@ -331,5 +361,6 @@ Existing functions modified (dispatch layer): `newState`, `backfillStateDefaults
 - `finalRanking()` — already format-agnostic
 - `computeStats()` / `rankPlayers()` — Gauntlet reuses unchanged
 - Crown format code — untouched
-- All rendering helpers: `renderCourtCard`, `renderTeamRow`, `renderRoundCourts`, `renderFinalsScreen`, `renderDoneScreen` — modified only at the dispatch/label points, core logic unchanged
+- All rendering helpers: `renderCourtCard`, `renderTeamRow`, `renderRoundCourts`, `renderFinalsScreen` — modified only at the dispatch/label points, core logic unchanged
+- `renderDoneScreen` — modified (King branch in final standings table, `computeStats(7)` → `computeStats(totalRegularRounds())` for Gauntlet)
 - All confetti, animations, keep-awake, awards, localStorage persistence
