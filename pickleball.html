@@ -1894,6 +1894,81 @@ function runSelfTests() {
     if (savedV2 !== null) localStorage.setItem(STORAGE_KEY_V2, savedV2);
   }
 
+  // Group B — time-budget algorithm
+  {
+    // estimateGameMinutes: spec table values ±1
+    const [egLo, egHi] = estimateGameMinutes(11, 2, "sideout", null);
+    console.assert(Math.abs(egLo - 15) <= 1, "estimateGameMinutes SO/11/wb2 low≈15", egLo);
+    console.assert(Math.abs(egHi - 28) <= 1, "estimateGameMinutes SO/11/wb2 high≈28", egHi);
+    const [r7Lo, r7Hi] = estimateGameMinutes(7, 2, "rally", null);
+    console.assert(Math.abs(r7Lo - 4) <= 1, "estimateGameMinutes RA/7/wb2 low≈4", r7Lo);
+    console.assert(Math.abs(r7Hi - 8) <= 1, "estimateGameMinutes RA/7/wb2 high≈8", r7Hi);
+    const [wb1Lo] = estimateGameMinutes(11, 1, "sideout", null);
+    console.assert(wb1Lo < egLo, "estimateGameMinutes wb1 shorter than wb2");
+    const [calLo] = estimateGameMinutes(11, 2, "sideout", { pointsPerMinute: { sideout: 1.2, rally: 2.0 } });
+    console.assert(calLo < egLo, "estimateGameMinutes calibration: faster ppm → shorter");
+
+    // estimateRoundMinutes: spec verify ≈ [20, 34] (inherits ±1 from T6)
+    const [rmLo, rmHi] = estimateRoundMinutes(11, 2, "sideout", 2, null);
+    console.assert(Math.abs(rmLo - 20) <= 2, "estimateRoundMinutes SO/11/wb2 low≈20", rmLo);
+    console.assert(Math.abs(rmHi - 34) <= 2, "estimateRoundMinutes SO/11/wb2 high≈34", rmHi);
+    const [rm1Lo] = estimateRoundMinutes(11, 2, "sideout", 1, null);
+    console.assert(rm1Lo < rmLo, "estimateRoundMinutes courtCount=1 skips 1.15× variance");
+
+    // solveWinCondition: error cases
+    const nofit = solveWinCondition("rr", 7, 30, null);
+    console.assert(nofit.error === "no_fit", "solveWinCondition budget=30 → no_fit", nofit);
+    console.assert(nofit.suggestion && nofit.suggestion.includes("RR"), "solveWinCondition RR suggestion");
+    const nofit2 = solveWinCondition("stack", 8, 10, null);
+    console.assert(nofit2.error === "no_fit_finals", "solveWinCondition budget=10 → no_fit_finals");
+    const stackNofit = solveWinCondition("stack", 8, 30, null);
+    console.assert(stackNofit.error === "no_fit" && stackNofit.suggestion.includes("Stack"),
+      "solveWinCondition stack no_fit suggestion", stackNofit);
+    // Lex: sideout > rally, higher target, wb2 > wb1
+    const rich = solveWinCondition("rr", 7, 500, null);
+    console.assert(rich.scoring === "sideout" && rich.target === 21 && rich.winBy === 2,
+      "solveWinCondition lex: SO/21/wb2 wins large budget", rich);
+    // Lex edge: sideout/9 must beat rally/21 (sideout primacy)
+    const lexMid = solveWinCondition("rr", 7, 180, null);
+    console.assert(lexMid.scoring === "sideout", "solveWinCondition lex: sideout beats rally", lexMid);
+
+    // pickCrownPreset: spec verify cases
+    console.assert(pickCrownPreset(60, null).error === "crown_floor", "pickCrownPreset(60)→crown_floor");
+    console.assert(pickCrownPreset(89, null).error === "crown_floor", "pickCrownPreset(89)→crown_floor");
+    console.assert(pickCrownPreset(105, null) === "Sprint",   "pickCrownPreset(105)→Sprint");
+    console.assert(pickCrownPreset(170, null) === "Standard", "pickCrownPreset(170)→Standard");
+    // Ordering: richest that fits wins
+    const p115 = pickCrownPreset(115, null);
+    console.assert(p115 === "Quick" || p115 === "Sprint", "pickCrownPreset(115)→Quick or Sprint", p115);
+
+    // projectFinishTime: fresh and mid-tournament
+    const T = 1700000000000, msMin = 60000;
+    const mkState = (completedCount, totalRounds) => ({
+      format: "stack", phase: "playing",
+      timeBudget: { enabled: true, plannedConfig: { target: 11, winBy: 2, scoring: "sideout" } },
+      rounds: [
+        ...Array(completedCount).fill(null).map(() => ({
+          court1: { score1: 11, score2: 7 }, court2: { score1: 11, score2: 5 }
+        })),
+        ...Array(totalRounds - completedCount).fill(null).map(() => ({
+          court1: { score1: null, score2: null }, court2: { score1: null, score2: null }
+        })),
+      ]
+    });
+    const [pfLo, pfHi] = projectFinishTime(mkState(0, 8), null, T);
+    console.assert(pfLo === T + (8 * rmLo + rmLo) * msMin, "projectFinishTime fresh low", pfLo);
+    console.assert(pfHi === T + (8 * rmHi + rmHi) * msMin, "projectFinishTime fresh high", pfHi);
+    const [pfLo1, pfHi1] = projectFinishTime(mkState(1, 8), null, T);
+    console.assert(pfLo1 < pfLo && pfHi1 < pfHi, "projectFinishTime mid: window shrinks after 1 round");
+    console.assert(projectFinishTime({ ...mkState(0, 8), phase: "done" }, null, T) === null,
+      "projectFinishTime phase=done → null");
+    console.assert(projectFinishTime({ ...mkState(0, 8), format: "crown" }, null, T) === null,
+      "projectFinishTime crown → null");
+    console.assert(projectFinishTime({ ...mkState(0, 8),
+      timeBudget: { enabled: false, plannedConfig: null } }, null, T) === null,
+      "projectFinishTime disabled → null");
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
