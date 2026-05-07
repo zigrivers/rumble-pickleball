@@ -6038,6 +6038,25 @@ if (state.keepAwake) {
   KeepAwake.enable();
   // Do not show toast on boot — only show when user explicitly enables via settings.
 }
+// Heartbeat: write lastSeenAt once/sec; detect idle gaps > 5 min and credit to pauseSec.
+setInterval(() => {
+  if (!state.timeBudget || state.phase === "setup" || state.phase === "done") return;
+  const now = Date.now();
+  const lastSeen = state.timeBudget.lastSeenAt || 0;
+  if (lastSeen > 0 && now - lastSeen > 5 * 60 * 1000) {
+    const gapSec = Math.round((now - lastSeen) / 1000);
+    for (const r of state.rounds) {
+      for (const court of [r.court1, r.court2]) {
+        if (court.gameStartedAt != null && court.gameEndedAt == null) {
+          court.pauseSec = (court.pauseSec || 0) + gapSec;
+        }
+      }
+    }
+    save();
+  }
+  state.timeBudget.lastSeenAt = now;
+}, 1000);
+
 render();
 </script>
 </body>
