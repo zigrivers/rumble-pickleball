@@ -134,7 +134,13 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--muted);
-    margin-bottom: 12px;
+    margin-bottom: 3px;
+  }
+  .court-score-desc {
+    font-size: 11px;
+    color: #888;
+    margin: 0 0 9px;
+    letter-spacing: 0.01em;
   }
   .court-card.c1 .court-label { color: var(--court1); }
   .court-card.c2 .court-label { color: var(--court2); }
@@ -3675,17 +3681,24 @@ function timeBudgetStripEl() {
   }
 
   const ratio = mid / budgetEnd;
-  let paceText, paceColor;
-  if (ratio < 0.90) { paceText = "ahead of pace"; paceColor = "var(--accent)"; }
-  else if (ratio <= 1.05) { paceText = "on pace"; paceColor = "#88cc88"; }
-  else if (ratio <= 1.10) { paceText = "behind"; paceColor = "#ccaa44"; }
-  else { paceText = "running long"; paceColor = "#cc7744"; }
+  let paceText, paceFg, paceBg;
+  if (ratio < 0.90) {
+    paceText = "ahead of pace"; paceFg = "#34d399"; paceBg = "rgba(52,211,153,0.15)";
+  } else if (ratio <= 1.05) {
+    paceText = "on pace";       paceFg = "#88cc88"; paceBg = "rgba(136,204,136,0.15)";
+  } else if (ratio <= 1.10) {
+    paceText = "behind";        paceFg = "#ccaa44"; paceBg = "rgba(204,170,68,0.18)";
+  } else {
+    paceText = "running long";  paceFg = "#e87c3e"; paceBg = "rgba(232,124,62,0.18)";
+  }
 
   return el("div", { class: "tb-header-strip" },
     el("span", null, "🕐 Likely done: "),
     el("strong", null, fmtTs(projLow) + "–" + fmtTs(projHigh)),
-    el("span", null, " · "),
-    el("span", { style: "color:" + paceColor + ";" }, paceText)
+    el("span", {
+      style: "margin-left:6px; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600;" +
+             "color:" + paceFg + "; background:" + paceBg + "; border:1px solid " + paceFg + "33;"
+    }, paceText)
   );
 }
 
@@ -5335,6 +5348,12 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
 
   const card = el("div", { class: className });
   card.appendChild(el("div", { class: "court-label" }, labelText));
+  if (courtKey !== "champ" && courtKey !== "cons") {
+    const scoringWord = state.scoringSystem === "rally" ? "Rally" : "First";
+    const winByWord = state.winBy === 1 ? "win by 1" : "win by 2";
+    card.appendChild(el("div", { class: "court-score-desc" },
+      scoringWord + " to " + state.winScore + " · " + winByWord));
+  }
   if (courtKey === "champ") {
     card.appendChild(el("div", { class: "pairing-caption" },
       "Balanced pairing — top seed + 4th vs 2nd + 3rd"));
