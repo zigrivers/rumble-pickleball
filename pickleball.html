@@ -1033,6 +1033,56 @@
     font-size: 12px;
     margin-left: 6px;
   }
+  /* Time Budget block */
+  .tb-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    min-height: 52px;
+    gap: 12px;
+  }
+  .tb-row label { font-weight: 700; }
+  .tb-row select {
+    min-height: 44px;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 16px;
+    font-family: inherit;
+  }
+  .tb-readout {
+    padding: 10px 12px;
+    margin-top: 6px;
+    background: var(--panel-2);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .tb-toggle-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    font-size: 15px;
+  }
+  .tb-toggle-row input[type="checkbox"] {
+    margin-top: 3px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+  }
+  .tb-toggle-row .tb-subtext {
+    display: block;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
 </style>
 </head>
 <body>
@@ -3486,10 +3536,97 @@ function renderFormatChooser() {
   return wrap;
 }
 
+function renderTimeBudgetBlock() {
+  const enabled = !!(state.timeBudget && state.timeBudget.enabled);
+
+  // Header
+  const card = el("div", { class: "card" });
+  card.appendChild(el("h3", null, "Time Budget"));
+
+  // Toggle row
+  const toggleLabel = el("label", { class: "tb-toggle-row", style: "cursor:pointer;font-size:16px;min-height:44px;" });
+  const toggleChk = el("input", {
+    type: "checkbox",
+    id: "tb-enabled",
+    style: "width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;",
+  });
+  if (enabled) toggleChk.setAttribute("checked", "checked");
+  toggleLabel.appendChild(toggleChk);
+  toggleLabel.appendChild(document.createTextNode("Set a time budget"));
+  card.appendChild(toggleLabel);
+
+  // Detail section (hidden by default unless already enabled)
+  const details = el("div", {
+    id: "tb-details",
+    style: "display:" + (enabled ? "block" : "none") + ";margin-top:8px;",
+  });
+
+  // Time row
+  const timeRow = el("div", { class: "tb-row" });
+  timeRow.appendChild(el("label", { for: "tb-minutes" }, "Event time:"));
+  const minutesSel = el("select", { id: "tb-minutes" });
+  const isCrown = state.format === "crown";
+  const timeOptions = isCrown
+    ? [90, 105, 120, 150, 180]
+    : [
+        { value: 60,  label: "60 min (very tight)" },
+        { value: 75,  label: "75 min (very tight)" },
+        { value: 90,  label: "90 min" },
+        { value: 105, label: "105 min" },
+        { value: 120, label: "120 min" },
+        { value: 150, label: "150 min" },
+        { value: 180, label: "180 min" },
+      ];
+  const savedMinutes = (state.timeBudget && state.timeBudget.minutes) || 90;
+  timeOptions.forEach(opt => {
+    const val = typeof opt === "number" ? opt : opt.value;
+    const text = typeof opt === "number" ? val + " min" : opt.label;
+    const o = el("option", { value: String(val) }, text);
+    if (val === savedMinutes) o.setAttribute("selected", "selected");
+    minutesSel.appendChild(o);
+  });
+  timeRow.appendChild(minutesSel);
+  details.appendChild(timeRow);
+
+  // Read-out row
+  const readout = el("div", { class: "tb-readout" });
+  readout.appendChild(el("div", null,
+    "Will play: ", el("span", { id: "tb-will-play" }, "—")
+  ));
+  readout.appendChild(el("div", null,
+    "Likely done: ", el("span", { id: "tb-likely-done" }, "—")
+  ));
+  readout.appendChild(el("div", null,
+    "Confidence: ", el("span", { id: "tb-confidence" }, "using defaults (no history)")
+  ));
+  details.appendChild(readout);
+
+  // Auto-tighten row
+  const autoRow = el("div", { class: "tb-toggle-row" });
+  const autoChk = el("input", { type: "checkbox", id: "tb-auto-tighten" });
+  if (state.timeBudget && state.timeBudget.autoTighten) autoChk.setAttribute("checked", "checked");
+  autoRow.appendChild(autoChk);
+  const autoLabelText = el("div");
+  autoLabelText.appendChild(document.createTextNode("Auto-tighten if running long"));
+  autoLabelText.appendChild(el("span", { class: "tb-subtext" }, "(default: prompt before tightening)"));
+  autoRow.appendChild(autoLabelText);
+  details.appendChild(autoRow);
+
+  card.appendChild(details);
+
+  // Toggle show/hide for tb-details
+  toggleChk.addEventListener("change", () => {
+    details.style.display = toggleChk.checked ? "block" : "none";
+  });
+
+  return card;
+}
+
 function renderSetup() {
   const playerCount = state.format === "crown" ? 4 : 8;
   const wrap = el("div");
   wrap.appendChild(renderRulesBlock());
+  wrap.appendChild(renderTimeBudgetBlock());
   wrap.appendChild(renderFormatChooser());
   const subtitleMap = {
     stack: "Names are randomly assigned to Court 1 and Court 2 when the tournament starts.",
