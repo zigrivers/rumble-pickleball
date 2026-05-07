@@ -3515,19 +3515,6 @@ function timeBudgetStripEl() {
   const mid = (projLow + projHigh) / 2;
   const budgetEnd = (state.timeBudget.startedAt || Date.now()) + state.timeBudget.minutes * 60000;
 
-  // Pace classification
-  let paceText, paceColor;
-  const adjCount = state.timeBudget.adjustmentCount || 0;
-  if (adjCount >= 3) {
-    paceText = "adjustments exhausted"; paceColor = "#888";
-  } else {
-    const ratio = mid / budgetEnd;
-    if (ratio < 0.90) { paceText = "ahead of pace"; paceColor = "var(--accent)"; }
-    else if (ratio <= 1.05) { paceText = "on pace"; paceColor = "#88cc88"; }
-    else if (ratio <= 1.10) { paceText = "behind"; paceColor = "#ccaa44"; }
-    else { paceText = "running long"; paceColor = "#cc7744"; }
-  }
-
   const fmtTs = ts => {
     const d = new Date(ts);
     let h = d.getHours(), m = d.getMinutes();
@@ -3535,6 +3522,26 @@ function timeBudgetStripEl() {
     h = h % 12 || 12;
     return h + ":" + String(m).padStart(2, "0") + " " + ampm;
   };
+
+  const adjCount = (state.timeBudget.adjustments || []).length;
+  if (adjCount >= 3) {
+    const overMin = Math.max(0, Math.round((mid - budgetEnd) / 60000));
+    const leftText = overMin > 0 ? "🕐 ~" + overMin + " min over" : "🕐 Likely done: " + fmtTs(projLow) + "–" + fmtTs(projHigh);
+    return el("div", { class: "tb-header-strip" },
+      el("span", null, leftText + " · "),
+      el("span", {
+        style: "color:#888;",
+        title: "Re-solver hit the 3-adjustment cap. Consider ending early or playing through.",
+      }, "adjustments exhausted")
+    );
+  }
+
+  const ratio = mid / budgetEnd;
+  let paceText, paceColor;
+  if (ratio < 0.90) { paceText = "ahead of pace"; paceColor = "var(--accent)"; }
+  else if (ratio <= 1.05) { paceText = "on pace"; paceColor = "#88cc88"; }
+  else if (ratio <= 1.10) { paceText = "behind"; paceColor = "#ccaa44"; }
+  else { paceText = "running long"; paceColor = "#cc7744"; }
 
   return el("div", { class: "tb-header-strip" },
     el("span", null, "🕐 Likely done: "),
