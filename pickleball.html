@@ -6145,6 +6145,83 @@ function openSettings() {
     }
   }
 
+  // ---- Time Budget ----
+  modal.appendChild(el("div", { class: "ka-section-title" }, "Time Budget"));
+
+  // Toggle row: "Set a time budget"
+  const tbToggleRow = el("div", { class: "ka-row" });
+  const tbToggleText = el("div", { class: "ka-text" });
+  tbToggleText.appendChild(el("div", { class: "ka-title" }, "Set a time budget"));
+  tbToggleText.appendChild(el("div", { class: "ka-sub" }, "Back-solves a win condition to fit your time."));
+  const tbToggleSwitch = el("label", { class: "ka-switch" });
+  const tbToggleInput = el("input", { type: "checkbox", id: "tb-s-enabled" });
+  if (state.timeBudget.enabled) tbToggleInput.setAttribute("checked", "checked");
+  if (state.phase !== "setup") tbToggleInput.disabled = true;
+  tbToggleSwitch.appendChild(tbToggleInput);
+  tbToggleSwitch.appendChild(el("span", { class: "slider" }));
+  tbToggleRow.appendChild(tbToggleText);
+  tbToggleRow.appendChild(tbToggleSwitch);
+  modal.appendChild(tbToggleRow);
+
+  // Detail section
+  const tbDetails = el("div", {
+    id: "tb-s-details",
+    style: "display:" + (state.timeBudget.enabled ? "block" : "none") + ";",
+  });
+
+  // Time row
+  const tbTimeRow = el("div", { class: "settings-row" });
+  tbTimeRow.appendChild(el("label", { for: "tb-s-minutes" }, "Event time"));
+  const tbMinutesSel = el("select", { id: "tb-s-minutes" });
+  if (state.phase !== "setup") tbMinutesSel.disabled = true;
+  const tbIsCrown = state.format === "crown";
+  const tbTimeOptions = tbIsCrown
+    ? [90, 105, 120, 150, 180]
+    : [
+        { value: 60,  label: "60 min (very tight)" },
+        { value: 75,  label: "75 min (very tight)" },
+        { value: 90,  label: "90 min" },
+        { value: 105, label: "105 min" },
+        { value: 120, label: "120 min" },
+        { value: 150, label: "150 min" },
+        { value: 180, label: "180 min" },
+      ];
+  const tbSavedMinutes = state.timeBudget.minutes || 90;
+  tbTimeOptions.forEach(opt => {
+    const val = typeof opt === "number" ? opt : opt.value;
+    const text = typeof opt === "number" ? val + " min" : opt.label;
+    const o = el("option", { value: String(val) }, text);
+    if (val === tbSavedMinutes) o.setAttribute("selected", "selected");
+    tbMinutesSel.appendChild(o);
+  });
+  tbTimeRow.appendChild(tbMinutesSel);
+  tbDetails.appendChild(tbTimeRow);
+
+  // Read-out block
+  const tbReadout = el("div", { class: "muted", style: "font-size:13px;margin:6px 0;" });
+  tbReadout.appendChild(el("div", null, "Will play: ", el("span", { id: "tb-s-will-play" }, "—")));
+  tbReadout.appendChild(el("div", null, "Likely done: ", el("span", { id: "tb-s-likely-done" }, "—")));
+  tbReadout.appendChild(el("div", null, "Confidence: ", el("span", { id: "tb-s-confidence" }, "using defaults (no history)")));
+  tbDetails.appendChild(tbReadout);
+
+  // Auto-tighten row
+  const tbAutoRow = el("div", { class: "settings-row" });
+  const tbAutoChk = el("input", { type: "checkbox", id: "tb-s-auto-tighten" });
+  if (state.timeBudget.autoTighten) tbAutoChk.setAttribute("checked", "checked");
+  const tbAutoLabel = el("label", { for: "tb-s-auto-tighten" });
+  tbAutoLabel.appendChild(document.createTextNode("Auto-tighten if running long"));
+  tbAutoLabel.appendChild(el("span", { class: "muted", style: "font-size:11px;margin-left:6px;" }, "(default: prompt before tightening)"));
+  tbAutoRow.appendChild(tbAutoChk);
+  tbAutoRow.appendChild(tbAutoLabel);
+  tbDetails.appendChild(tbAutoRow);
+
+  modal.appendChild(tbDetails);
+
+  // Toggle show/hide for tb-s-details
+  tbToggleInput.addEventListener("change", () => {
+    tbDetails.style.display = tbToggleInput.checked ? "block" : "none";
+  });
+
   // ---- Display & TV ----
   modal.appendChild(el("div", { class: "ka-section-title" }, "Display & TV"));
 
