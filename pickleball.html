@@ -4352,6 +4352,23 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
     }
     if (game.gameEndedAt == null && Number.isInteger(game.score1) && Number.isInteger(game.score2)) {
       game.gameEndedAt = Date.now();
+      let roundIdx = -1, courtIdx = -1;
+      for (let ri = 0; ri < state.rounds.length; ri++) {
+        if (state.rounds[ri].court1 === game) { roundIdx = ri; courtIdx = 0; break; }
+        if (state.rounds[ri].court2 === game) { roundIdx = ri; courtIdx = 1; break; }
+      }
+      if (roundIdx !== -1 && game.gameStartedAt > 0) {
+        const durSec = Math.max(0, Math.round((game.gameEndedAt - game.gameStartedAt) / 1000) - (game.pauseSec || 0));
+        const winnerScore = Math.max(game.score1, game.score2), loserScore = Math.min(game.score1, game.score2);
+        try {
+          const durLog = JSON.parse(localStorage.getItem("pb_durations_v1") || "[]");
+          durLog.push({ ts: game.gameEndedAt, format: state.format, target: state.winScore,
+            winBy: state.winBy, scoring: state.scoringSystem, courtIndex: courtIdx,
+            durationSec: durSec, winnerScore, loserScore, roundIndex: roundIdx });
+          if (durLog.length > 200) durLog.splice(0, durLog.length - 200);
+          localStorage.setItem("pb_durations_v1", JSON.stringify(durLog));
+        } catch (e) {}
+      }
     }
     save();
     refreshes.forEach(fn => fn());
