@@ -1068,6 +1068,20 @@ const CROWN_THEMES = {
   "Crown":       { winScore: 11, winBy: 2, scoring: "sideout", matchPointMultiplier: 2 },
 };
 
+// -------- Group B: time-budget algorithm (pure functions) --------
+
+// Returns [low, high] game-duration estimate in minutes.
+// calibration: {pointsPerMinute: {sideout, rally}} from pb_calibration_v1, or null.
+function estimateGameMinutes(target, winBy, scoring, calibration) {
+  const ppmSideout = calibration?.pointsPerMinute?.sideout ?? 0.85;
+  const ppmRally   = calibration?.pointsPerMinute?.rally   ?? 2.0;
+  // loser scores ~60-65% of winner, so avg total points ≈ 1.6-1.65× target
+  const pointsRatio = scoring === "rally" ? 1.65 : 1.6;
+  const ppm         = scoring === "rally" ? ppmRally : ppmSideout;
+  const mid         = pointsRatio * target / ppm * (winBy === 1 ? 0.85 : 1.0);
+  return [Math.round(mid * 0.7), Math.round(mid * 1.3)];
+}
+
 // -------- self-tests (gated by ?test URL param) --------
 function runSelfTests() {
   let failures = 0;
