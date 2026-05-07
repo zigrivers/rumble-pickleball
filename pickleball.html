@@ -3229,6 +3229,91 @@ function showToast(text) {
   setTimeout(() => t.remove(), 2700);
 }
 
+function maybeFireSlippagePrompt() {
+  const tb = state.timeBudget;
+  if (!tb || !tb.enabled) return;
+  if (state.format === "crown") return;
+
+  const completedRounds = state.notifiedRounds.length;
+  const totalRounds = totalRegularRounds();
+  const warmupThreshold = Math.max(2, Math.ceil(0.25 * totalRounds));
+  if (completedRounds < warmupThreshold) return;
+
+  if ((tb.adjustments || []).length >= 3) return;
+
+  const remainingRounds = totalRounds - completedRounds;
+  if (remainingRounds === 0) return;
+
+  // Sum completed game durations in minutes
+  let elapsedSec = 0;
+  let gamesFound = 0;
+  for (const r of state.rounds) {
+    for (const key of ["court1", "court2"]) {
+      const g = r[key];
+      if (!g) continue;
+      if (Number.isInteger(g.score1) && Number.isInteger(g.score2) && g.gameEndedAt && g.gameStartedAt) {
+        elapsedSec += Math.max(0, (g.gameEndedAt - g.gameStartedAt) / 1000 - (g.pauseSec || 0));
+        gamesFound++;
+      }
+    }
+  }
+  if (gamesFound === 0) return;
+  const elapsedMin = elapsedSec / 60;
+
+  const avgRoundActual = elapsedMin / completedRounds;
+  const cal = readCalibration();
+  const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", 2, cal);
+  const projectedTotal = elapsedMin + remainingRounds * avgRoundActual + finalsLo + 5;
+
+  if (projectedTotal <= tb.minutes * 1.10) return;
+
+  const remainingBudget = tb.minutes - elapsedMin;
+  const newCombo = solveWinCondition(state.format, remainingRounds, remainingBudget, cal);
+  if (newCombo.error) return;
+
+  const currentConfig = tb.plannedConfig;
+  if (!currentConfig) return;
+
+  const [curLo, curHi] = estimateRoundMinutes(currentConfig.target, currentConfig.winBy, currentConfig.scoring, 2, cal);
+  const curMid = (curLo + curHi) / 2;
+  const [newLo, newHi] = estimateRoundMinutes(newCombo.target, newCombo.winBy, newCombo.scoring, 2, cal);
+  const newMid = (newLo + newHi) / 2;
+  if (newMid >= curMid) return;
+
+  const overMin = Math.round(projectedTotal - tb.minutes);
+  const currentDesc = (currentConfig.scoring === "sideout" ? "side-out" : "rally") + " to " + currentConfig.target;
+  const newDesc = (newCombo.scoring === "sideout" ? "side-out" : "rally") + " to " + newCombo.target;
+
+  showSlippageModal(overMin, currentDesc, newDesc, function() {
+    tb.plannedConfig = newCombo;
+    state.winScore = newCombo.target;
+    state.winBy = newCombo.winBy;
+    state.scoringSystem = newCombo.scoring;
+    if (!tb.adjustments) tb.adjustments = [];
+    tb.adjustments.push({ from: currentConfig, to: newCombo, roundAfter: completedRounds, ts: Date.now() });
+    save();
+    render();
+  });
+}
+
+function showSlippageModal(overMin, currentDesc, newDesc, onTighten) {
+  const minuteWord = overMin === 1 ? "minute" : "minutes";
+  const bg = el("div", { class: "modal-bg" });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Running about " + overMin + " " + minuteWord + " long"));
+  modal.appendChild(el("p", null, "Currently: " + currentDesc + "."));
+  modal.appendChild(el("p", null, "To finish on time, switch remaining rounds to " + newDesc + "?"));
+  const tightenBtn = el("button", { class: "primary", style: "width:100%;margin-bottom:8px;" }, "Tighten remaining");
+  const stayBtn = el("button", { style: "width:100%;" }, "Stay the course");
+  tightenBtn.addEventListener("click", function() { bg.remove(); onTighten(); });
+  stayBtn.addEventListener("click", function() { bg.remove(); });
+  modal.appendChild(tightenBtn);
+  modal.appendChild(stayBtn);
+  bg.appendChild(modal);
+  document.body.appendChild(bg);
+  tightenBtn.focus();
+}
+
 function maybeFireRoundComplete(primaryBtn) {
   if (state.phase !== "playing") return;
   const idx = state.currentRound - 1;
@@ -3250,6 +3335,7 @@ function maybeFireRoundComplete(primaryBtn) {
     primaryBtn.classList.add("shimmering");
     setTimeout(() => primaryBtn.classList.remove("shimmering"), 1600);
   }
+  maybeFireSlippagePrompt();
 }
 
 // rank: 1-based seed number; kind: "gold" (championship) or "silver" (consolation)
