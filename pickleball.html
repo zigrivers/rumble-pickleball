@@ -2281,8 +2281,8 @@ function generateRounds() {
     const c2 = flip ? roundDef[1] : roundDef[0];
     return {
       round: idx + 1,
-      court1: { team1: c1[0].slice(), team2: c1[1].slice(), score1: null, score2: null },
-      court2: { team1: c2[0].slice(), team2: c2[1].slice(), score1: null, score2: null },
+      court1: { team1: c1[0].slice(), team2: c1[1].slice(), score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
+      court2: { team1: c2[0].slice(), team2: c2[1].slice(), score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
     };
   });
 }
@@ -2298,8 +2298,8 @@ function assignInitialStackCourts() {
   const c2 = shuffle(slots.slice(4));
   return {
     round: 1,
-    court1: { team1: [c1[0], c1[1]], team2: [c1[2], c1[3]], score1: null, score2: null },
-    court2: { team1: [c2[0], c2[1]], team2: [c2[2], c2[3]], score1: null, score2: null },
+    court1: { team1: [c1[0], c1[1]], team2: [c1[2], c1[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
+    court2: { team1: [c2[0], c2[1]], team2: [c2[2], c2[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
   };
 }
 
@@ -2449,8 +2449,8 @@ function buildNextStackRound(prevRound) {
 
   return {
     round: prevRound.round + 1,
-    court1: { team1: c1A, team2: c1B, score1: null, score2: null },
-    court2: { team1: c2A, team2: c2B, score1: null, score2: null },
+    court1: { team1: c1A, team2: c1B, score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
+    court2: { team1: c2A, team2: c2B, score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
   };
 }
 
@@ -2464,8 +2464,8 @@ function assignInitialKingCourts() {
   const c2 = shuffle(slots.slice(4));
   return {
     round: 1,
-    court1: { team1: [c1[0], c1[1]], team2: [c1[2], c1[3]], score1: null, score2: null },
-    court2: { team1: [c2[0], c2[1]], team2: [c2[2], c2[3]], score1: null, score2: null },
+    court1: { team1: [c1[0], c1[1]], team2: [c1[2], c1[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
+    court2: { team1: [c2[0], c2[1]], team2: [c2[2], c2[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
   };
 }
 
@@ -2524,8 +2524,8 @@ function buildNextKingRound(prevRound) {
   const newC2 = shuffle([...c1Lose, ...c2Lose]);
   return {
     round: prevRound.round + 1,
-    court1: { team1: [newC1[0], newC1[1]], team2: [newC1[2], newC1[3]], score1: null, score2: null },
-    court2: { team1: [newC2[0], newC2[1]], team2: [newC2[2], newC2[3]], score1: null, score2: null },
+    court1: { team1: [newC1[0], newC1[1]], team2: [newC1[2], newC1[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
+    court2: { team1: [newC2[0], newC2[1]], team2: [newC2[2], newC2[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
   };
 }
 
@@ -2544,8 +2544,8 @@ function kingMovementToastText(prevRound) {
 function buildGauntletPairing(ranked, roundNum) {
   return {
     round: roundNum,
-    court1: { team1: [ranked[0], ranked[3]], team2: [ranked[1], ranked[2]], score1: null, score2: null },
-    court2: { team1: [ranked[4], ranked[7]], team2: [ranked[5], ranked[6]], score1: null, score2: null },
+    court1: { team1: [ranked[0], ranked[3]], team2: [ranked[1], ranked[2]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
+    court2: { team1: [ranked[4], ranked[7]], team2: [ranked[5], ranked[6]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
   };
 }
 
@@ -4349,6 +4349,9 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
     } else {
       const n = parseInt(v, 10);
       if (!Number.isNaN(n) && n >= 0) game[scoreKey] = n;
+    }
+    if (game.gameEndedAt == null && Number.isInteger(game.score1) && Number.isInteger(game.score2)) {
+      game.gameEndedAt = Date.now();
     }
     save();
     refreshes.forEach(fn => fn());
