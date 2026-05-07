@@ -2869,23 +2869,24 @@ function matchPointsForMatch(gamesWonWinner, gamesWonLoser, theme) {
   return { perWinner: 0, perLoser: 0 };
 }
 
-function isValidCrownGameScore(s1, s2, theme) {
+function isValidCrownGameScore(s1, s2, theme, matchIdx) {
   if (s1 < 0 || s2 < 0) return false;
-  const cfg = CROWN_THEMES[theme];
+  const cfg = (matchIdx != null && state.timeBudget?.crownActiveThemes?.[matchIdx])
+    || CROWN_THEMES[theme];
   if (!cfg) return true; // unknown theme: advisory only
   const winner = Math.max(s1, s2);
   const diff = Math.abs(s1 - s2);
   return winner >= cfg.winScore && diff >= cfg.winBy;
 }
 
-function crownGamesWon(match, maxGames) {
+function crownGamesWon(match, maxGames, matchIdx) {
   const theme = match.theme; // set on match objects; undefined for test fixtures (no validation)
   let w1 = 0, w2 = 0;
   const games = maxGames != null ? match.games.slice(0, maxGames) : match.games;
   for (const g of games) {
     if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
     if (g.score1 === g.score2) break;
-    if (theme && !isValidCrownGameScore(g.score1, g.score2, theme)) break;
+    if (theme && !isValidCrownGameScore(g.score1, g.score2, theme, matchIdx)) break;
     if (g.score1 > g.score2) w1++;
     else w2++;
     if (w1 === 2 || w2 === 2) break;
@@ -2896,13 +2897,15 @@ function crownGamesWon(match, maxGames) {
 function isCrownMatchComplete(match) {
   // Rely solely on crownGamesWon reaching 2 wins — this enforces theme winScore/winBy via
   // isValidCrownGameScore. A 1-1 tie resolves only when game 3 produces a valid, non-equal score.
-  const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+  const mi = state.crownMatches ? state.crownMatches.indexOf(match) : -1;
+  const { gamesWon1, gamesWon2 } = crownGamesWon(match, undefined, mi >= 0 ? mi : undefined);
   return gamesWon1 === 2 || gamesWon2 === 2;
 }
 
 function crownMatchWinner(match) {
   if (!isCrownMatchComplete(match)) return null;
-  const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+  const mi = state.crownMatches ? state.crownMatches.indexOf(match) : -1;
+  const { gamesWon1, gamesWon2 } = crownGamesWon(match, undefined, mi >= 0 ? mi : undefined);
   if (gamesWon1 === gamesWon2) return null;
   return gamesWon1 > gamesWon2 ? "team1" : "team2";
 }
@@ -2916,7 +2919,7 @@ function crownPlayerStats() {
   }));
   state.crownMatches.forEach((match, mi) => {
     if (!isCrownMatchComplete(match)) return;
-    const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+    const { gamesWon1, gamesWon2 } = crownGamesWon(match, undefined, mi);
     const theme = CROWN_SCHEDULE[mi].theme;
     const winner = crownMatchWinner(match);
     if (!winner) return; // defensive: complete match always has a winner, but guard null explicitly
@@ -2933,7 +2936,7 @@ function crownPlayerStats() {
     for (const g of match.games) {
       if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
       if (g.score1 === g.score2) break;
-      if (match.theme && !isValidCrownGameScore(g.score1, g.score2, match.theme)) break;
+      if (match.theme && !isValidCrownGameScore(g.score1, g.score2, match.theme, mi)) break;
       games.push(g);
       if (g.score1 > g.score2) _w1++; else if (g.score2 > g.score1) _w2++;
       if (_w1 === 2 || _w2 === 2) break;
@@ -3400,6 +3403,42 @@ function showAutoTightenToast(newDesc, onUndo, onCollapse) {
     _activeAutoTightenToast = null;
     onCollapse();
   }, 30000);
+}
+
+// Runs after a Crown regular match completes. If projected total > 110% of budget and
+// the active preset is not already Sprint, tightens un-played match indices to the next preset.
+function maybeTightenCrownPreset(completedMatchIdx) {
+  const tb = state.timeBudget;
+  if (!tb?.enabled || !tb.crownActiveThemes) return;
+  const currentPresetName = tb.plannedConfig?.preset;
+  if (!currentPresetName) return;
+  const currentPresetIdx = CROWN_PRESETS.findIndex(p => p.name === currentPresetName);
+  // Already at tightest or not found
+  if (currentPresetIdx < 0 || currentPresetIdx >= CROWN_PRESETS.length - 1) return;
+
+  const elapsedMin = (Date.now() - tb.startedAt) / 60000;
+  // Estimate remaining: matches completedMatchIdx+1 through 3 (Crown Final = index 3)
+  const cal = null;
+  let remainingMin = 0;
+  for (let i = completedMatchIdx + 1; i <= 3; i++) {
+    // For indices 0-2 use crownActiveThemes; for Crown Final (3) use preset's Crown Match config
+    const matchCfg = (i <= 2 && tb.crownActiveThemes[i])
+      || CROWN_PRESETS[currentPresetIdx].matches[i];
+    const [lo, hi] = estimateGameMinutes(matchCfg.winScore ?? matchCfg.target, matchCfg.winBy, matchCfg.scoring, cal);
+    remainingMin += 2.3 * (lo + hi) / 2 + 3;
+  }
+
+  if (elapsedMin + remainingMin <= tb.minutes * 1.10) return;
+
+  const nextPreset = CROWN_PRESETS[currentPresetIdx + 1];
+  for (let i = completedMatchIdx + 1; i <= 2; i++) {
+    tb.crownActiveThemes[i] = {
+      winScore: nextPreset.matches[i].target,
+      winBy:    nextPreset.matches[i].winBy,
+      scoring:  nextPreset.matches[i].scoring,
+    };
+  }
+  tb.plannedConfig.preset = nextPreset.name;
 }
 
 function maybeFireRoundComplete(primaryBtn) {
@@ -4480,13 +4519,14 @@ function buildSideOutScoringHelp() {
   return det;
 }
 
-function renderCrownMatchCard(match, sched, externalRefreshes) {
+function renderCrownMatchCard(match, sched, externalRefreshes, matchIdx) {
   const refreshes = externalRefreshes || [];
-  const themeConfig = CROWN_THEMES[sched.theme] || CROWN_THEMES["Opening"];
-  const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+  const themeConfig = (matchIdx != null && state.timeBudget?.crownActiveThemes?.[matchIdx])
+    || CROWN_THEMES[sched.theme] || CROWN_THEMES["Opening"];
+  const { gamesWon1, gamesWon2 } = crownGamesWon(match, undefined, matchIdx);
   const matchComplete = isCrownMatchComplete(match);
   // Game 3 enablement is based only on games 1-2, not the final result — keeps Game 3 editable after a 2-1 match.
-  const { gamesWon1: g12w1, gamesWon2: g12w2 } = crownGamesWon(match, 2);
+  const { gamesWon1: g12w1, gamesWon2: g12w2 } = crownGamesWon(match, 2, matchIdx);
 
   const card = el("div", { class: "court-card crown c1", style: "max-width:560px;margin:0 auto 14px;" });
   card.appendChild(el("div", { class: "court-label" }, "👑 " + sched.name.toUpperCase()));
@@ -4498,7 +4538,7 @@ function renderCrownMatchCard(match, sched, externalRefreshes) {
 
   if (sched.theme === "Sudden Death") card.appendChild(renderRallyScoringHelp());
 
-  const crownOpts = { winScore: themeConfig.winScore, winBy: themeConfig.winBy, theme: sched.theme };
+  const crownOpts = { winScore: themeConfig.winScore, winBy: themeConfig.winBy, theme: sched.theme, matchIdx };
   const gamesWrap = el("div");
 
   for (let gi = 0; gi < 3; gi++) {
@@ -4537,7 +4577,7 @@ function renderCrownMatchCard(match, sched, externalRefreshes) {
       if (Number.isInteger(s1) && Number.isInteger(s2)) {
         if (s1 === s2) {
           summary.className = "court-summary tiemsg"; summary.textContent = "Tied — enter a tiebreaker";
-        } else if (!isValidCrownGameScore(s1, s2, sched.theme)) {
+        } else if (!isValidCrownGameScore(s1, s2, sched.theme, matchIdx)) {
           summary.className = "court-summary tiemsg";
           summary.textContent = "Need " + themeConfig.winScore + "+ pts, win by " + themeConfig.winBy;
         } else if (s1 > s2) {
@@ -4551,7 +4591,7 @@ function renderCrownMatchCard(match, sched, externalRefreshes) {
       }
       t1Wrap.applyWinnerStyle();
       t2Wrap.applyWinnerStyle();
-      const { gamesWon1: w1, gamesWon2: w2 } = crownGamesWon(match);
+      const { gamesWon1: w1, gamesWon2: w2 } = crownGamesWon(match, undefined, matchIdx);
       scoreIndicator.textContent = "Match score: " + w1 + "–" + w2;
     };
     updateSummary();
@@ -4563,7 +4603,7 @@ function renderCrownMatchCard(match, sched, externalRefreshes) {
       const capturedCard = gameCard;
       const capturedGame3 = game;
       refreshes.push(() => {
-        const { gamesWon1: cw1, gamesWon2: cw2 } = crownGamesWon(match, 2);
+        const { gamesWon1: cw1, gamesWon2: cw2 } = crownGamesWon(match, 2, matchIdx);
         const nowSweep = (cw1 === 2 && cw2 === 0) || (cw2 === 2 && cw1 === 0);
         const nowNeeded = cw1 === 1 && cw2 === 1;
         const nowDisabled = !nowNeeded;
@@ -4659,7 +4699,7 @@ function renderCrownPlaying() {
     }, "🔥 Sudden Death — rally scoring to 7, win by 2"));
   }
 
-  wrap.appendChild(renderCrownMatchCard(match, sched, refreshes));
+  wrap.appendChild(renderCrownMatchCard(match, sched, refreshes, state.currentMatch));
 
   // Navigation buttons
   const actions = el("div", { class: "row-actions" });
@@ -4680,6 +4720,7 @@ function renderCrownPlaying() {
       disabled: !matchComplete,
       onclick: () => {
         if (!isCrownMatchComplete(state.crownMatches[state.currentMatch])) return;
+        maybeTightenCrownPreset(state.currentMatch);
         state.currentMatch++;
         save();
         render();
@@ -4813,7 +4854,7 @@ function renderCrownHistory() {
   state.crownMatches.forEach((match, mi) => {
     if (!isCrownMatchComplete(match)) return;
     const sched = CROWN_SCHEDULE[mi];
-    const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+    const { gamesWon1, gamesWon2 } = crownGamesWon(match, undefined, mi);
     const winner = crownMatchWinner(match);
     const section = el("div", { style: "margin-bottom:12px;" });
     section.appendChild(el("div", { style: "font-weight:700;margin-bottom:4px;" }, sched.name));
@@ -4823,7 +4864,7 @@ function renderCrownHistory() {
     for (const g of match.games) {
       if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
       if (g.score1 === g.score2) break;
-      if (!isValidCrownGameScore(g.score1, g.score2, sched.theme)) break;
+      if (!isValidCrownGameScore(g.score1, g.score2, sched.theme, mi)) break;
       games.push(g);
       if (g.score1 > g.score2) _w1++; else if (g.score2 > g.score1) _w2++;
       if (_w1 === 2 || _w2 === 2) break;
@@ -5228,6 +5269,7 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
   const kind = opts && opts.kind != null ? opts.kind : null;
   const quickFillTarget = (opts && opts.winScore != null) ? opts.winScore : state.winScore;
   const crownTheme = opts && opts.theme ? opts.theme : null;
+  const crownMatchIdx = opts && opts.matchIdx != null ? opts.matchIdx : null;
 
   const node = el("div", { class: "team-row" });
   if (seeds) {
@@ -5292,7 +5334,7 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
   function applyWinnerStyle() {
     const a = game[scoreKey], b = game[otherScoreKey];
     let isWinner = Number.isInteger(a) && Number.isInteger(b) && a > b;
-    if (isWinner && crownTheme) isWinner = isValidCrownGameScore(a, b, crownTheme);
+    if (isWinner && crownTheme) isWinner = isValidCrownGameScore(a, b, crownTheme, crownMatchIdx);
     node.classList.toggle("winner", isWinner);
     input.classList.toggle("winner", isWinner);
   }
@@ -6056,14 +6098,14 @@ function computeCrownMatchAwards(allGames, allMatches) {
     }
   }
   const sweepCount = new Map([1, 2, 3, 4].map(s => [s, 0]));
-  for (const match of allMatches) {
-    const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+  allMatches.forEach((match, mi) => {
+    const { gamesWon1, gamesWon2 } = crownGamesWon(match, undefined, mi);
     if (gamesWon1 === 2 && gamesWon2 === 0) {
       for (const slot of match.team1) sweepCount.set(slot, sweepCount.get(slot) + 1);
     } else if (gamesWon2 === 2 && gamesWon1 === 0) {
       for (const slot of match.team2) sweepCount.set(slot, sweepCount.get(slot) + 1);
     }
-  }
+  });
   const maxSweeps = Math.max(...sweepCount.values());
   const theSweeper = maxSweeps > 0
     ? { names: [...sweepCount.entries()].filter(([, v]) => v === maxSweeps).map(([s]) => nameOf(s)), detail: maxSweeps + " sweep" + (maxSweeps > 1 ? "s" : "") }
@@ -6087,16 +6129,16 @@ function computeCrownMatchAwards(allGames, allMatches) {
     : { names: [], detail: null };
   const partnerWR = new Map([1, 2, 3, 4].map(s => [s, { won: 0, played: 0 }]));
   for (let s = 1; s <= 4; s++) {
-    for (const match of allMatches) {
-      if (!isCrownMatchComplete(match)) continue;
+    allMatches.forEach((match, mi) => {
+      if (!isCrownMatchComplete(match)) return;
       const teamIsTeam1 = match.team1.includes(s);
       const teamIsTeam2 = match.team2.includes(s);
-      if (!teamIsTeam1 && !teamIsTeam2) continue;
-      const { gamesWon1, gamesWon2 } = crownGamesWon(match);
+      if (!teamIsTeam1 && !teamIsTeam2) return;
+      const { gamesWon1, gamesWon2 } = crownGamesWon(match, undefined, mi);
       const e = partnerWR.get(s);
       e.won += teamIsTeam1 ? gamesWon1 : gamesWon2;
       e.played += gamesWon1 + gamesWon2;
-    }
+    });
   }
   const partnerRatio = (e) => e.played > 0 ? e.won / e.played : 0;
   const maxPWR = Math.max(...[...partnerWR.values()].map(partnerRatio));
@@ -6135,7 +6177,7 @@ function computeCrownAwards() {
       const g = match.games[gi];
       if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) break;
       if (g.score1 === g.score2) break;
-      if (theme && !isValidCrownGameScore(g.score1, g.score2, theme)) break;
+      if (theme && !isValidCrownGameScore(g.score1, g.score2, theme, mi)) break;
       allGames.push({ score1: g.score1, score2: g.score2, team1: match.team1, team2: match.team2, matchIdx: mi, gameIdx: gi });
       if (g.score1 > g.score2) _w1++; else _w2++;
       if (_w1 === 2 || _w2 === 2) break;
@@ -6507,8 +6549,8 @@ function openScheduleModal() {
       const block = el("div", { class: "schedule-round" });
       block.appendChild(el("div", { class: "schedule-round-title" }, sched ? sched.name : "Match " + (mi + 1)));
       const g = { team1: match.team1, team2: match.team2,
-        score1: isCrownMatchComplete(match) ? crownGamesWon(match).gamesWon1 : null,
-        score2: isCrownMatchComplete(match) ? crownGamesWon(match).gamesWon2 : null };
+        score1: isCrownMatchComplete(match) ? crownGamesWon(match, undefined, mi).gamesWon1 : null,
+        score2: isCrownMatchComplete(match) ? crownGamesWon(match, undefined, mi).gamesWon2 : null };
       block.appendChild(gameRow(g, "👑", "c1"));
       list.appendChild(block);
     });
