@@ -46,6 +46,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 14px;
     padding: 4px 0 10px;
@@ -1091,6 +1092,14 @@
     font-size: 13px;
     margin: 8px 0 4px;
   }
+  .tb-header-strip {
+    width: 100%;
+    text-align: center;
+    font-size: 13px;
+    padding: 4px 12px 6px;
+    border-top: 1px solid var(--border);
+    color: var(--text);
+  }
 </style>
 </head>
 <body>
@@ -2066,6 +2075,7 @@ function newState() {
       rallyAcknowledged: false,
       crownActiveThemes: null,
       lastSeenAt: 0,
+      startedAt: 0,
     },
   };
 }
@@ -2114,6 +2124,7 @@ function backfillStateDefaults(obj) {
       rallyAcknowledged: false,
       crownActiveThemes: null,
       lastSeenAt: 0,
+      startedAt: 0,
     };
   } else {
     const tb = obj.timeBudget;
@@ -2126,6 +2137,7 @@ function backfillStateDefaults(obj) {
     if (typeof tb.rallyAcknowledged !== "boolean")  tb.rallyAcknowledged = false;
     if (tb.crownActiveThemes === undefined)         tb.crownActiveThemes = null;
     if (typeof tb.lastSeenAt !== "number")          tb.lastSeenAt = 0;
+    if (typeof tb.startedAt !== "number")           tb.startedAt = 0;
   }
   return obj;
 }
@@ -3004,6 +3016,9 @@ function startTournament() {
 
   state.tiebreakRandom = shuffle(isCrown ? [0,1,2,3] : [0,1,2,3,4,5,6,7]);
   state.currentRound = 1;
+  if (state.timeBudget && state.timeBudget.enabled) {
+    state.timeBudget.startedAt = Date.now();
+  }
   state.notifiedRounds = [];
   state.awardsShown = false;
   state.previousRanks = [];
@@ -3312,6 +3327,48 @@ function totalRegularRounds() {
   return 7;
 }
 
+function timeBudgetStripEl() {
+  if (!state.timeBudget || !state.timeBudget.enabled) return null;
+  const phase = state.phase;
+  if (phase === "setup" || phase === "done") return null;
+
+  const cal = readCalibration();
+  const proj = projectFinishTime(state, cal, Date.now());
+  if (!proj) return null;  // Crown returns null here
+
+  const [projLow, projHigh] = proj;
+  const mid = (projLow + projHigh) / 2;
+  const budgetEnd = (state.timeBudget.startedAt || Date.now()) + state.timeBudget.minutes * 60000;
+
+  // Pace classification
+  let paceText, paceColor;
+  const adjCount = state.timeBudget.adjustmentCount || 0;
+  if (adjCount >= 3) {
+    paceText = "adjustments exhausted"; paceColor = "#888";
+  } else {
+    const ratio = mid / budgetEnd;
+    if (ratio < 0.90) { paceText = "ahead of pace"; paceColor = "var(--accent)"; }
+    else if (ratio <= 1.05) { paceText = "on pace"; paceColor = "#88cc88"; }
+    else if (ratio <= 1.10) { paceText = "behind"; paceColor = "#ccaa44"; }
+    else { paceText = "running long"; paceColor = "#cc7744"; }
+  }
+
+  const fmtTs = ts => {
+    const d = new Date(ts);
+    let h = d.getHours(), m = d.getMinutes();
+    const ampm = h >= 12 ? "pm" : "am";
+    h = h % 12 || 12;
+    return h + ":" + String(m).padStart(2, "0") + " " + ampm;
+  };
+
+  return el("div", { class: "tb-header-strip" },
+    el("span", null, "🕐 Likely done: "),
+    el("strong", null, fmtTs(projLow) + "–" + fmtTs(projHigh)),
+    el("span", null, " · "),
+    el("span", { style: "color:" + paceColor + ";" }, paceText)
+  );
+}
+
 function renderHeader() {
   let progressText = "Setup";
   if (state.phase === "playing") {
@@ -3321,11 +3378,13 @@ function renderHeader() {
   } else if (state.phase === "finals") progressText = "Finals";
   else if (state.phase === "crown")   progressText = "👑 Crown Match";
   else if (state.phase === "done")    progressText = "🏆 Champions";
-  return el("header", { class: "top" },
-    el("div", { class: "title" }, "🏓 Rumble Pickleball"),
-    el("div", { class: "progress" }, progressText),
-    el("button", { class: "icon-btn", onclick: openSettings, "aria-label": "Settings" }, "⚙")
-  );
+  const header = el("header", { class: "top" });
+  header.appendChild(el("div", { class: "title" }, "🏓 Rumble Pickleball"));
+  header.appendChild(el("div", { class: "progress" }, progressText));
+  header.appendChild(el("button", { class: "icon-btn", onclick: openSettings, "aria-label": "Settings" }, "⚙"));
+  const strip = timeBudgetStripEl();
+  if (strip) header.appendChild(strip);
+  return header;
 }
 
 function canStart() {
