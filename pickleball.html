@@ -2471,7 +2471,8 @@ if (typeof location !== "undefined" && location.search.includes("test")) {
 }
 
 let _keepAwakeToastShown = false;
-let _undoChipAdjIdx = -1;  // ≥0 means show undo chip in header for that adjustment index
+let _undoChipAdjIdx = -1;         // ≥0 means show undo chip in header for that adjustment index
+let _activeAutoTightenToast = null; // reference to live auto-tighten toast DOM node
 function showKeepAwakeActivationToast() {
   if (_keepAwakeToastShown) return;
   _keepAwakeToastShown = true;
@@ -3310,13 +3311,14 @@ function maybeFireSlippagePrompt() {
     state.winBy = newCombo.winBy;
     state.scoringSystem = newCombo.scoring;
     tb.adjustments.push({ from: prevConfig, to: newCombo, roundAfter: completedRounds, ts: Date.now() });
+    const adjIdx = tb.adjustments.length - 1;  // capture before any future pushes
     save();
     render();
     showAutoTightenToast(newDesc, function() {
       _undoChipAdjIdx = -1;
       undoLastTightening();
     }, function() {
-      _undoChipAdjIdx = tb.adjustments.length - 1;
+      _undoChipAdjIdx = adjIdx;
       render();
     });
     return;
@@ -3366,24 +3368,28 @@ function undoLastTightening() {
 }
 
 function showAutoTightenToast(newDesc, onUndo, onCollapse) {
+  if (_activeAutoTightenToast) { _activeAutoTightenToast.remove(); _activeAutoTightenToast = null; }
   const wrapper = el("div", {
     style: "position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:80;" +
            "display:flex;align-items:center;gap:8px;background:var(--panel);" +
            "border:1px solid var(--accent);border-radius:999px;padding:12px 22px;" +
            "box-shadow:0 8px 32px rgba(0,0,0,0.4);font-weight:700;font-size:15px;"
   });
+  _activeAutoTightenToast = wrapper;
   wrapper.appendChild(document.createTextNode("Tightened to " + newDesc + ". "));
   const undoBtn = el("button", { style: "font-size:13px;padding:2px 10px;border-radius:999px;" }, "Undo");
   let timer;
   undoBtn.addEventListener("click", function() {
     clearTimeout(timer);
     wrapper.remove();
+    _activeAutoTightenToast = null;
     onUndo();
   });
   wrapper.appendChild(undoBtn);
   document.body.appendChild(wrapper);
   timer = setTimeout(function() {
     wrapper.remove();
+    _activeAutoTightenToast = null;
     onCollapse();
   }, 30000);
 }
@@ -3400,6 +3406,7 @@ function maybeFireRoundComplete(primaryBtn) {
   if (!advanceable) return;
   if (state.notifiedRounds.includes(state.currentRound)) return;
   _undoChipAdjIdx = -1;
+  if (_activeAutoTightenToast) { _activeAutoTightenToast.remove(); _activeAutoTightenToast = null; }
   state.notifiedRounds.push(state.currentRound);
   save();
   showToast("🎉 Round " + state.currentRound + " complete!");
