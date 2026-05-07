@@ -1173,6 +1173,35 @@ function pickCrownPreset(budgetMin, calibration) {
   return { error: "no_fit", preset: "Sprint" };
 }
 
+// Projects when the tournament will finish. Returns [tsLow, tsHigh] ms timestamps, or null.
+// Projects remaining rounds + finals from nowTs. T_setup_overhead is excluded because
+// by the time this is called (phase="playing"), setup overhead is already underway.
+// Crown not supported here (Crown projection is preset-based, handled by T22/T23).
+function projectFinishTime(state, calibration, nowTs) {
+  if (!state.timeBudget?.enabled || state.format === "crown") return null;
+  if (state.phase === "done") return null;
+  const config = state.timeBudget.plannedConfig;
+  if (!config || !Array.isArray(state.rounds)) return null;
+
+  let completedRounds = 0;
+  for (const r of state.rounds) {
+    if (Number.isInteger(r.court1?.score1) && Number.isInteger(r.court1?.score2) &&
+        Number.isInteger(r.court2?.score1) && Number.isInteger(r.court2?.score2)) {
+      completedRounds++;
+    }
+  }
+
+  const remainingRounds = Math.max(0, state.rounds.length - completedRounds);
+  const [rndLo, rndHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, 2, calibration);
+  const [finLo, finHi] = estimateRoundMinutes(11, 2, "sideout", 2, calibration);
+  const msPerMin = 60 * 1000;
+
+  return [
+    nowTs + (remainingRounds * rndLo + finLo) * msPerMin,
+    nowTs + (remainingRounds * rndHi + finHi) * msPerMin,
+  ];
+}
+
 // -------- self-tests (gated by ?test URL param) --------
 function runSelfTests() {
   let failures = 0;
