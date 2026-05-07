@@ -3740,6 +3740,11 @@ function renderTimeBudgetBlock() {
   toggleLabel.appendChild(document.createTextNode("Set a time budget"));
   card.appendChild(toggleLabel);
 
+  if (state.format === "crown") {
+    card.appendChild(el("p", { class: "muted", style: "font-size:13px;margin:4px 0 8px;" },
+      "Crown events typically run 100–165 minutes."));
+  }
+
   // Detail section (hidden by default unless already enabled)
   const details = el("div", {
     id: "tb-details",
@@ -6426,7 +6431,7 @@ function openSettings() {
   const tbToggleSwitch = el("label", { class: "ka-switch" });
   const tbToggleInput = el("input", { type: "checkbox", id: "tb-s-enabled" });
   if (state.timeBudget.enabled) tbToggleInput.setAttribute("checked", "checked");
-  if (state.phase !== "setup") tbToggleInput.disabled = true;
+  if (state.phase !== "setup") { tbToggleInput.disabled = true; tbToggleInput.title = "Locked — set before starting"; }
   tbToggleSwitch.appendChild(tbToggleInput);
   tbToggleSwitch.appendChild(el("span", { class: "slider" }));
   tbToggleRow.appendChild(tbToggleText);
@@ -6443,7 +6448,7 @@ function openSettings() {
   const tbTimeRow = el("div", { class: "settings-row" });
   tbTimeRow.appendChild(el("label", { for: "tb-s-minutes" }, "Event time"));
   const tbMinutesSel = el("select", { id: "tb-s-minutes" });
-  if (state.phase !== "setup") tbMinutesSel.disabled = true;
+  if (state.phase !== "setup") { tbMinutesSel.disabled = true; tbMinutesSel.title = "Locked — set before starting"; }
   const tbIsCrown = state.format === "crown";
   const tbTimeOptions = tbIsCrown
     ? [90, 105, 120, 150, 180]
