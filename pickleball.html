@@ -1040,7 +1040,8 @@
 <script>
 "use strict";
 
-const STORAGE_KEY    = "pb_tourney_v3";
+const STORAGE_KEY    = "pb_tourney_v4";
+const STORAGE_KEY_V3 = "pb_tourney_v3";
 const STORAGE_KEY_V2 = "pb_tourney_v2";
 const STORAGE_KEY_V1 = "pb_tourney_v1";
 
@@ -1786,6 +1787,17 @@ function newState() {
     crownMatches: [],                                // crown: 3 themed round-robin matches
     currentMatch: 0,                                 // crown: 0-based index into crownMatches
     crownFinal: null,                                // crown: { team1, team2, games } for the Crown Match
+    timeBudget: {
+      enabled: false,
+      minutes: 90,
+      autoTighten: false,
+      plannedConfig: null,
+      plannedFinishWindow: null,
+      adjustments: [],
+      rallyAcknowledged: false,
+      crownActiveThemes: null,
+      lastSeenAt: 0,
+    },
   };
 }
 // Apply field defaults to any persisted state (used by both v2 load and v1 migration).
@@ -1819,6 +1831,31 @@ function backfillStateDefaults(obj) {
     if (!m.theme && CROWN_SCHEDULE[mi]) m.theme = CROWN_SCHEDULE[mi].theme;
   });
   if (obj.crownFinal && !obj.crownFinal.theme) obj.crownFinal.theme = "Crown";
+  // timeBudget backfill
+  if (!obj.timeBudget || typeof obj.timeBudget !== "object") {
+    obj.timeBudget = {
+      enabled: false,
+      minutes: 90,
+      autoTighten: false,
+      plannedConfig: null,
+      plannedFinishWindow: null,
+      adjustments: [],
+      rallyAcknowledged: false,
+      crownActiveThemes: null,
+      lastSeenAt: 0,
+    };
+  } else {
+    const tb = obj.timeBudget;
+    if (typeof tb.enabled !== "boolean")            tb.enabled = false;
+    if (typeof tb.minutes !== "number")             tb.minutes = 90;
+    if (typeof tb.autoTighten !== "boolean")        tb.autoTighten = false;
+    if (tb.plannedConfig === undefined)             tb.plannedConfig = null;
+    if (tb.plannedFinishWindow === undefined)       tb.plannedFinishWindow = null;
+    if (!Array.isArray(tb.adjustments))             tb.adjustments = [];
+    if (typeof tb.rallyAcknowledged !== "boolean")  tb.rallyAcknowledged = false;
+    if (tb.crownActiveThemes === undefined)         tb.crownActiveThemes = null;
+    if (typeof tb.lastSeenAt !== "number")          tb.lastSeenAt = 0;
+  }
   return obj;
 }
 function load() {
@@ -1827,6 +1864,19 @@ function load() {
     if (raw) {
       const obj = JSON.parse(raw);
       if (obj && obj.phase) return backfillStateDefaults(obj);
+    }
+    // v3 migration: copy fields verbatim, backfill adds timeBudget
+    const v3raw = localStorage.getItem(STORAGE_KEY_V3);
+    if (v3raw) {
+      const v3 = JSON.parse(v3raw);
+      if (v3 && v3.phase) {
+        const migrated = backfillStateDefaults(v3);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          localStorage.removeItem(STORAGE_KEY_V3);
+        } catch (e) {}
+        return migrated;
+      }
     }
     // v2 migration: load as-is (backfill handles missing crown fields)
     const v2raw = localStorage.getItem(STORAGE_KEY_V2);
