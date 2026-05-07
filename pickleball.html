@@ -2054,6 +2054,65 @@ function runSelfTests() {
       "projectFinishTime disabled → null");
   }
 
+  // Task 24 — updateCalibration blending
+  {
+    const origDur = localStorage.getItem("pb_durations_v1");
+    const origCal = localStorage.getItem("pb_calibration_v1");
+    const makeEntry = (scoring, durationSec, winnerScore, loserScore, ts) => ({
+      ts, format: "rr", target: 11, winBy: 2, scoring,
+      durationSec, winnerScore, loserScore, courtIndex: 0, roundIndex: 0,
+    });
+
+    // < 5 samples → calibration not persisted
+    localStorage.setItem("pb_durations_v1", JSON.stringify(
+      [0,1,2,3].map(i => makeEntry("sideout", 1200, 11, 7, i))
+    ));
+    localStorage.removeItem("pb_calibration_v1");
+    updateCalibration();
+    console.assert(localStorage.getItem("pb_calibration_v1") === null,
+      "updateCalibration: <5 samples → no calibration stored");
+
+    // 5 samples at 18 pts / 20 min = 0.9 ppm → stored
+    localStorage.setItem("pb_durations_v1", JSON.stringify(
+      [0,1,2,3,4].map(i => makeEntry("sideout", 1200, 11, 7, i))
+    ));
+    localStorage.removeItem("pb_calibration_v1");
+    updateCalibration();
+    const calStored = JSON.parse(localStorage.getItem("pb_calibration_v1") || "null");
+    console.assert(calStored !== null, "updateCalibration: 5 samples → calibration stored");
+    console.assert(typeof calStored.pointsPerMinute?.sideout === "number",
+      "updateCalibration: stored cal has sideout ppm");
+    console.assert(Math.abs(calStored.pointsPerMinute.sideout - 0.9) < 0.01,
+      "updateCalibration: 5 SO samples → avg ≈0.9", calStored.pointsPerMinute.sideout);
+
+    // solveWinCondition result differs with faster calibration
+    const fastCal = { pointsPerMinute: { sideout: 1.5, rally: 2.0 } };
+    const withFast = solveWinCondition("rr", 7, 120, fastCal);
+    const withNull = solveWinCondition("rr", 7, 120, null);
+    console.assert(!withFast?.error, "solveWinCondition with fast cal returns result");
+    console.assert(!withNull?.error, "solveWinCondition with null cal returns result");
+    // faster ppm → higher or equal richness (mid estimate smaller → more room for rich config)
+    const richness = r => (r.scoring === "rally" ? 0 : 100) + r.target;
+    console.assert(richness(withFast) >= richness(withNull),
+      "solveWinCondition: faster cal ≥ richness of default", withFast, withNull);
+
+    // Extreme ppm capped at +50% of default (0.85 * 1.5 = 1.275)
+    localStorage.setItem("pb_durations_v1", JSON.stringify(
+      [0,1,2,3,4].map(i => makeEntry("sideout", 60, 11, 7, i)) // 18 pts / 1 min = 18 ppm
+    ));
+    localStorage.removeItem("pb_calibration_v1");
+    updateCalibration();
+    const calCapped = JSON.parse(localStorage.getItem("pb_calibration_v1") || "null");
+    console.assert(calCapped?.pointsPerMinute.sideout <= 0.85 * 1.5 + 0.001,
+      "updateCalibration: extreme ppm capped at +50%", calCapped?.pointsPerMinute?.sideout);
+
+    // Restore original localStorage state
+    if (origDur !== null) localStorage.setItem("pb_durations_v1", origDur);
+    else localStorage.removeItem("pb_durations_v1");
+    if (origCal !== null) localStorage.setItem("pb_calibration_v1", origCal);
+    else localStorage.removeItem("pb_calibration_v1");
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -3418,7 +3477,7 @@ function maybeTightenCrownPreset(completedMatchIdx) {
 
   const elapsedMin = (Date.now() - tb.startedAt) / 60000;
   // Estimate remaining: matches completedMatchIdx+1 through 3 (Crown Final = index 3)
-  const cal = null;
+  const cal = readCalibration();
   let remainingMin = 0;
   for (let i = completedMatchIdx + 1; i <= 3; i++) {
     // For indices 0-2 use crownActiveThemes; for Crown Final (3) use preset's Crown Match config
@@ -3876,6 +3935,42 @@ function readCalibration() {
     const raw = localStorage.getItem("pb_calibration_v1");
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
+}
+
+// Reads pb_durations_v1, computes blended pointsPerMinute per scoring system,
+// and persists to pb_calibration_v1. Call after each game completion.
+// Algorithm: simple avg for first 5 samples per system, then EMA α=0.15.
+// Caps result within ±50% of defaults (sideout=0.85, rally=2.0).
+function updateCalibration() {
+  const DEFAULT_PPM = { sideout: 0.85, rally: 2.0 };
+  const MIN_SAMPLES = 5;
+  const EMA_ALPHA   = 0.15;
+  try {
+    const log = JSON.parse(localStorage.getItem("pb_durations_v1") || "[]");
+    // Sort chronologically; entries are appended in order but sort defensively
+    log.sort((a, b) => a.ts - b.ts);
+    const groups = { sideout: [], rally: [] };
+    for (const e of log) {
+      if (e.durationSec > 0 && (e.scoring === "sideout" || e.scoring === "rally")) {
+        groups[e.scoring].push((e.winnerScore + e.loserScore) / (e.durationSec / 60));
+      }
+    }
+    let anyEnough = false;
+    const blended = {};
+    for (const scoring of ["sideout", "rally"]) {
+      const vals = groups[scoring];
+      if (vals.length < MIN_SAMPLES) { blended[scoring] = DEFAULT_PPM[scoring]; continue; }
+      anyEnough = true;
+      let est = vals.slice(0, MIN_SAMPLES).reduce((a, b) => a + b, 0) / MIN_SAMPLES;
+      for (let i = MIN_SAMPLES; i < vals.length; i++) {
+        est = (1 - EMA_ALPHA) * est + EMA_ALPHA * vals[i];
+      }
+      const def = DEFAULT_PPM[scoring];
+      blended[scoring] = Math.max(def * 0.5, Math.min(def * 1.5, est));
+    }
+    if (!anyEnough) return;
+    localStorage.setItem("pb_calibration_v1", JSON.stringify({ pointsPerMinute: blended }));
+  } catch (e) {}
 }
 
 function applyTimeBudgetSolve() {
@@ -5323,6 +5418,7 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
             durationSec: durSec, winnerScore, loserScore, roundIndex: roundIdx });
           if (durLog.length > 200) durLog.splice(0, durLog.length - 200);
           localStorage.setItem("pb_durations_v1", JSON.stringify(durLog));
+          updateCalibration();
         } catch (e) {}
       }
     }
