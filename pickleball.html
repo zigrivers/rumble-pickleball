@@ -2113,6 +2113,38 @@ function runSelfTests() {
     else localStorage.removeItem("pb_calibration_v1");
   }
 
+  // Task 25 — calibrationReadout strings
+  {
+    const origDur = localStorage.getItem("pb_durations_v1");
+    const makeEntry = n => Array.from({ length: n }, (_, i) => ({
+      ts: i, format: "rr", target: 11, winBy: 2, scoring: "sideout",
+      durationSec: 600, winnerScore: 11, loserScore: 5, courtIndex: 0, roundIndex: 0,
+    }));
+
+    localStorage.removeItem("pb_durations_v1");
+    console.assert(calibrationReadout() === "using defaults (no history)",
+      "calibrationReadout: 0 games → 'using defaults (no history)'");
+
+    localStorage.setItem("pb_durations_v1", JSON.stringify(makeEntry(1)));
+    console.assert(calibrationReadout() === "Using defaults — 1 game logged (need 5)",
+      "calibrationReadout: 1 game → singular", calibrationReadout());
+
+    localStorage.setItem("pb_durations_v1", JSON.stringify(makeEntry(3)));
+    console.assert(calibrationReadout() === "Using defaults — 3 games logged (need 5)",
+      "calibrationReadout: 3 games", calibrationReadout());
+
+    localStorage.setItem("pb_durations_v1", JSON.stringify(makeEntry(5)));
+    console.assert(calibrationReadout() === "Using your last 5 games.",
+      "calibrationReadout: 5 games", calibrationReadout());
+
+    localStorage.setItem("pb_durations_v1", JSON.stringify(makeEntry(12)));
+    console.assert(calibrationReadout() === "Using your last 12 games.",
+      "calibrationReadout: 12 games", calibrationReadout());
+
+    if (origDur !== null) localStorage.setItem("pb_durations_v1", origDur);
+    else localStorage.removeItem("pb_durations_v1");
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -4016,6 +4048,18 @@ function applyTimeBudgetSolve() {
   return { config, error, isTight, suggestion };
 }
 
+// Returns a human-readable calibration confidence string for the UI.
+function calibrationReadout() {
+  try {
+    const log = JSON.parse(localStorage.getItem("pb_durations_v1") || "[]");
+    const n = log.filter(e => e.durationSec > 0 &&
+      (e.scoring === "sideout" || e.scoring === "rally")).length;
+    if (n === 0) return "using defaults (no history)";
+    if (n < 5)   return `Using defaults — ${n} game${n !== 1 ? "s" : ""} logged (need 5)`;
+    return `Using your last ${n} game${n !== 1 ? "s" : ""}.`;
+  } catch { return "using defaults"; }
+}
+
 function formatTimeBudgetReadout(config, minutes, suggestion) {
   const cal = readCalibration();
 
@@ -4076,7 +4120,7 @@ function formatTimeBudgetReadout(config, minutes, suggestion) {
   }
 
   // confidence
-  const confidence = cal ? "using calibrated data" : "using defaults (no history)";
+  const confidence = calibrationReadout();
 
   return { willPlay, likelyDone, confidence };
 }
