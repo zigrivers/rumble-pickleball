@@ -1780,6 +1780,8 @@ function newState() {
     tiebreakRandom: [],                              // stable per-tournament random for final tiebreak
     awardsShown: false,
     winScore: 11,
+    winBy: 2,
+    scoringSystem: "sideout",
     notifiedRounds: [],
     previousRanks: [],                               // stack: prior-round rank order (slots), drives trajectory arrows
     keepAwake: true,                                 // prevents Mac/AirPlay TVs from sleeping during a tournament
@@ -1804,6 +1806,8 @@ function newState() {
 function backfillStateDefaults(obj) {
   if (typeof obj.awardsShown !== "boolean") obj.awardsShown = false;
   if (typeof obj.winScore !== "number") obj.winScore = 11;
+  if (typeof obj.winBy !== "number") obj.winBy = 2;
+  if (obj.scoringSystem !== "sideout" && obj.scoringSystem !== "rally") obj.scoringSystem = "sideout";
   if (!Array.isArray(obj.notifiedRounds)) obj.notifiedRounds = [];
   if (!["rr","stack","crown","king","gauntlet"].includes(obj.format)) obj.format = "rr";
   if (typeof obj.stackRounds !== "number") obj.stackRounds = 8;
@@ -5897,6 +5901,8 @@ function openSettings() {
         } else {
           const keptNames = state.rawNames.slice();
           const keptWinScore = state.winScore;
+          const keptWinBy = state.winBy;
+          const keptScoringSystem = state.scoringSystem;
           const keptStackRounds = state.stackRounds;
           const keptKingRounds = state.kingRounds;
           const keptGauntletRounds = state.gauntletRounds;
@@ -5905,6 +5911,8 @@ function openSettings() {
           state = newState();
           state.rawNames = keptNames;
           state.winScore = keptWinScore;
+          state.winBy = keptWinBy;
+          state.scoringSystem = keptScoringSystem;
           state.format = f.id;
           state.stackRounds = keptStackRounds;
           state.kingRounds = keptKingRounds;
@@ -5930,6 +5938,8 @@ function openSettings() {
         if (!confirm("Reset scores and re-shuffle the schedule? Your " + playerCount + " names will be kept.")) return;
         const keptNames = state.slots.slice();
         const keptWinScore = state.winScore;
+        const keptWinBy = state.winBy;
+        const keptScoringSystem = state.scoringSystem;
         const keptFormat = state.format;
         const keptStackRounds = state.stackRounds;
         const keptKingRounds = state.kingRounds;
@@ -5942,6 +5952,8 @@ function openSettings() {
         state.kingRounds = keptKingRounds;
         state.gauntletRounds = keptGauntletRounds;
         state.winScore = keptWinScore;
+        state.winBy = keptWinBy;
+        state.scoringSystem = keptScoringSystem;
         state.keepAwake = keptKeepAwake;
         state.keepAwakeAggressive = keptKeepAwakeAggressive;
         state.phase = "playing";
