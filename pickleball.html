@@ -3246,21 +3246,28 @@ function maybeFireSlippagePrompt() {
 
   // Sum completed game durations in minutes
   let elapsedSec = 0;
-  let gamesFound = 0;
+  let roundsFound = 0;
   for (const r of state.rounds) {
+    let roundSec = 0;
+    let courtsInRound = 0;
     for (const key of ["court1", "court2"]) {
       const g = r[key];
       if (!g) continue;
       if (Number.isInteger(g.score1) && Number.isInteger(g.score2) && g.gameEndedAt && g.gameStartedAt) {
-        elapsedSec += Math.max(0, (g.gameEndedAt - g.gameStartedAt) / 1000 - (g.pauseSec || 0));
-        gamesFound++;
+        const dur = Math.max(0, (g.gameEndedAt - g.gameStartedAt) / 1000 - (g.pauseSec || 0));
+        roundSec = Math.max(roundSec, dur);
+        courtsInRound++;
       }
     }
+    if (courtsInRound > 0) {
+      elapsedSec += roundSec;
+      roundsFound++;
+    }
   }
-  if (gamesFound === 0) return;
+  if (roundsFound === 0) return;
   const elapsedMin = elapsedSec / 60;
 
-  const avgRoundActual = elapsedMin / completedRounds;
+  const avgRoundActual = elapsedMin / roundsFound;
   const cal = readCalibration();
   const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", 2, cal);
   const projectedTotal = elapsedMin + remainingRounds * avgRoundActual + finalsLo + 5;
