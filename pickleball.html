@@ -1093,6 +1093,42 @@ function estimateRoundMinutes(target, winBy, scoring, courtCount, calibration) {
   ];
 }
 
+// Picks the richest win condition (target/winBy/scoring) that fits the time budget.
+// Returns {target, winBy, scoring} or {error, suggestion}.
+// T_finals uses low estimate (optimistic) so tight budgets aren't prematurely rejected.
+// Round comparison uses midpoint (expected) — optimistic for rounds would bias toward overruns.
+function solveWinCondition(format, rounds, budgetMin, calibration) {
+  const SETUP_OVERHEAD = 5;
+  const TARGETS = [21, 15, 11, 9, 7];  // richest first in each scoring system
+
+  const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", 2, calibration);
+  const budgetForRounds = budgetMin - SETUP_OVERHEAD - finalsLo;
+  if (budgetForRounds <= 0) return { error: "no_fit_finals" };
+
+  const targetTRound = budgetForRounds / rounds;
+
+  // Iterate in lexicographic richness order: sideout > rally, higher target, winBy 2 > 1
+  for (const scoring of ["sideout", "rally"]) {
+    for (const target of TARGETS) {
+      for (const winBy of [2, 1]) {
+        const [lo, hi] = estimateRoundMinutes(target, winBy, scoring, 2, calibration);
+        if ((lo + hi) / 2 <= targetTRound) return { target, winBy, scoring };
+      }
+    }
+  }
+
+  let suggestion;
+  if (format === "rr") {
+    suggestion = "RR is fixed at 7 rounds — increase time, or switch to a different format.";
+  } else if (format === "crown") {
+    suggestion = "Increase time to at least 90 minutes.";
+  } else {
+    const fmt = format.charAt(0).toUpperCase() + format.slice(1);
+    suggestion = `Reduce ${fmt} rounds (currently ${rounds}) or increase time.`;
+  }
+  return { error: "no_fit", suggestion };
+}
+
 // -------- self-tests (gated by ?test URL param) --------
 function runSelfTests() {
   let failures = 0;
