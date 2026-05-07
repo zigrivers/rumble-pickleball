@@ -219,6 +219,13 @@
   }
   .court-summary.winmsg { color: var(--good); font-weight: 700; }
   .court-summary.tiemsg { color: var(--accent); font-weight: 700; }
+  .elapsed-badge {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 16px;
+    margin: 2px 0 0;
+  }
 
   table.standings { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.standings col.c-rank { width: 56px; }
@@ -4962,8 +4969,39 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   matchup.appendChild(team2Wrap.node);
   card.appendChild(matchup);
 
+  const elapsedBadge = el("div", { class: "elapsed-badge" });
+  card.appendChild(elapsedBadge);
+
   const summary = el("div", { class: "court-summary" });
   card.appendChild(summary);
+
+  function updateElapsed() {
+    if (Number.isInteger(game.score1) && Number.isInteger(game.score2)) {
+      elapsedBadge.textContent = "";
+      return;
+    }
+    if (!game.gameStartedAt) {
+      elapsedBadge.textContent = "0:00";
+      return;
+    }
+    const elapsedMs = Math.max(0, Date.now() - game.gameStartedAt - (game.pauseSec || 0) * 1000);
+    const totalSec = Math.floor(elapsedMs / 1000);
+    const mm = Math.floor(totalSec / 60);
+    const ss = String(totalSec % 60).padStart(2, "0");
+    elapsedBadge.textContent = mm + ":" + ss;
+  }
+  updateElapsed();
+
+  const elapsedTimer = setInterval(() => {
+    if (!document.body.contains(card)) {
+      clearInterval(elapsedTimer);
+      return;
+    }
+    updateElapsed();
+    if (Number.isInteger(game.score1) && Number.isInteger(game.score2)) {
+      clearInterval(elapsedTimer);
+    }
+  }, 1000);
 
   const updateSummary = () => {
     const s1 = game.score1, s2 = game.score2;
