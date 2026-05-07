@@ -3057,6 +3057,14 @@ function startTournament() {
     }));
     state.currentMatch = 0;
     state.crownFinal = null;
+    if (state.timeBudget?.enabled && state.timeBudget.plannedConfig?.preset) {
+      const presetObj = CROWN_PRESETS.find(p => p.name === state.timeBudget.plannedConfig.preset);
+      if (presetObj) {
+        state.timeBudget.crownActiveThemes = presetObj.matches.map(m => ({
+          winScore: m.target, winBy: m.winBy, scoring: m.scoring,
+        }));
+      }
+    }
     // slots always stays 8 elements so nameOf()/format-switching never breaks
     state.slots = [...shuffled, "", "", "", ""];
     state.phase = "playing";
@@ -3887,9 +3895,13 @@ function formatTimeBudgetReadout(config, minutes, suggestion) {
     };
   }
   if (config) {
-    const scoringLabel = config.scoring === "sideout" ? "side-out" : "rally";
-    const winByLabel   = config.winBy === 1 ? "win by 1" : "win by 2";
-    willPlay = scoringLabel + " to " + config.target + ", " + winByLabel;
+    if (config.preset) {
+      willPlay = config.preset + " preset";
+    } else {
+      const scoringLabel = config.scoring === "sideout" ? "side-out" : "rally";
+      const winByLabel   = config.winBy === 1 ? "win by 1" : "win by 2";
+      willPlay = scoringLabel + " to " + config.target + ", " + winByLabel;
+    }
   }
 
   // likelyDone — setup-time projection of full event
