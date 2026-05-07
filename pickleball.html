@@ -1129,6 +1129,50 @@ function solveWinCondition(format, rounds, budgetMin, calibration) {
   return { error: "no_fit", suggestion };
 }
 
+// Crown preset configs ordered richest → tightest.
+// matches[] = [Opening, Power Round, Sudden Death, Crown Match].
+// Crown Match is always SO/11 (never compressed, spec rule 7).
+const CROWN_PRESETS = [
+  { name: "Standard", matches: [
+    { target:11, winBy:2, scoring:"sideout" },
+    { target:11, winBy:2, scoring:"sideout" },
+    { target:7,  winBy:2, scoring:"rally"   },
+    { target:11, winBy:2, scoring:"sideout" },
+  ]},
+  { name: "Compact", matches: [
+    { target:9,  winBy:2, scoring:"sideout" },
+    { target:9,  winBy:2, scoring:"sideout" },
+    { target:5,  winBy:2, scoring:"rally"   },
+    { target:11, winBy:2, scoring:"sideout" },
+  ]},
+  { name: "Quick", matches: [
+    { target:11, winBy:2, scoring:"rally"   },
+    { target:11, winBy:2, scoring:"rally"   },
+    { target:5,  winBy:2, scoring:"rally"   },
+    { target:11, winBy:2, scoring:"sideout" },
+  ]},
+  { name: "Sprint", matches: [
+    { target:9,  winBy:2, scoring:"rally"   },
+    { target:9,  winBy:2, scoring:"rally"   },
+    { target:5,  winBy:2, scoring:"rally"   },
+    { target:11, winBy:2, scoring:"sideout" },
+  ]},
+];
+
+// Returns preset name or {error} for Crown format time-budget selection.
+// 2.3 = expected games per best-of-3 match (evenly matched rec); 3 min = match changeover.
+function pickCrownPreset(budgetMin, calibration) {
+  if (budgetMin < 90) return { error: "crown_floor" };
+  for (const preset of CROWN_PRESETS) {
+    const est = preset.matches.reduce((sum, m) => {
+      const [lo, hi] = estimateGameMinutes(m.target, m.winBy, m.scoring, calibration);
+      return sum + 2.3 * (lo + hi) / 2 + 3;
+    }, 0);
+    if (est <= budgetMin) return preset.name;
+  }
+  return { error: "no_fit", preset: "Sprint" };
+}
+
 // -------- self-tests (gated by ?test URL param) --------
 function runSelfTests() {
   let failures = 0;
