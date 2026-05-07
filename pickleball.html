@@ -1083,6 +1083,14 @@
     color: var(--muted);
     margin-top: 2px;
   }
+  .tb-tight-banner {
+    background: #7a5a00;
+    color: #ffe58f;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    margin: 8px 0 4px;
+  }
 </style>
 </head>
 <body>
@@ -3324,7 +3332,9 @@ function canStart() {
   const count = state.format === "crown" ? 4 : 8;
   const trimmed = (state.rawNames || []).slice(0, count).map(n => (n || "").trim());
   if (trimmed.length < count || trimmed.some(n => !n)) return false;
-  return new Set(trimmed.map(n => n.toLowerCase())).size === count;
+  if (new Set(trimmed.map(n => n.toLowerCase())).size !== count) return false;
+  if (state.timeBudget && state.timeBudget.enabled && !state.timeBudget.plannedConfig) return false;
+  return true;
 }
 
 const RULES_RR = [
@@ -3504,8 +3514,8 @@ function renderFormatChooser() {
       state.stackRounds = parseInt(sel.value, 10);
       save();
       if (state.timeBudget.enabled) {
-        const { config } = applyTimeBudgetSolve();
-        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+        const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
       }
     });
     sub.appendChild(sel);
@@ -3524,8 +3534,8 @@ function renderFormatChooser() {
       state.kingRounds = parseInt(sel.value, 10);
       save();
       if (state.timeBudget.enabled) {
-        const { config } = applyTimeBudgetSolve();
-        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+        const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
       }
     });
     sub.appendChild(sel);
@@ -3544,8 +3554,8 @@ function renderFormatChooser() {
       state.gauntletRounds = parseInt(sel.value, 10);
       save();
       if (state.timeBudget.enabled) {
-        const { config } = applyTimeBudgetSolve();
-        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+        const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
       }
     });
     sub.appendChild(sel);
@@ -3572,7 +3582,7 @@ function readCalibration() {
 function applyTimeBudgetSolve() {
   const minutes = state.timeBudget.minutes;
   const cal = readCalibration();
-  let config = null, error = null;
+  let config = null, error = null, suggestion = null;
 
   if (state.format === "crown") {
     const preset = pickCrownPreset(minutes, cal);
@@ -3582,6 +3592,7 @@ function applyTimeBudgetSolve() {
       config = { target: crownMatch.target, winBy: crownMatch.winBy, scoring: crownMatch.scoring, preset };
     } else {
       error = preset.error;
+      suggestion = "Increase time to at least 90 minutes.";
     }
   } else {
     const rounds = getTimeBudgetRounds();
@@ -3590,6 +3601,7 @@ function applyTimeBudgetSolve() {
       config = result;
     } else {
       error = result.error;
+      suggestion = result.suggestion || null;
     }
   }
 
@@ -3599,14 +3611,29 @@ function applyTimeBudgetSolve() {
     state.winBy    = config.winBy;
     state.scoringSystem = config.scoring;
   }
-  return { config, error };
+
+  let isTight = false;
+  if (config && state.format !== "crown") {
+    isTight = config.target === 7 && config.winBy === 1 && config.scoring === "rally";
+  } else if (config && state.format === "crown") {
+    isTight = config.preset === "Sprint";
+  }
+
+  return { config, error, isTight, suggestion };
 }
 
-function formatTimeBudgetReadout(config, minutes) {
+function formatTimeBudgetReadout(config, minutes, suggestion) {
   const cal = readCalibration();
 
   // willPlay
   let willPlay = "—";
+  if (!config) {
+    return {
+      willPlay: suggestion || "Budget too tight — increase time or reduce rounds.",
+      likelyDone: "",
+      confidence: "",
+    };
+  }
   if (config) {
     const scoringLabel = config.scoring === "sideout" ? "side-out" : "rally";
     const winByLabel   = config.winBy === 1 ? "win by 1" : "win by 2";
@@ -3656,7 +3683,7 @@ function formatTimeBudgetReadout(config, minutes) {
   return { willPlay, likelyDone, confidence };
 }
 
-function updateTimeBudgetReadoutDOM(readout) {
+function updateTimeBudgetReadoutDOM(readout, isTight, hasError) {
   ["tb-will-play", "tb-likely-done", "tb-confidence",
    "tb-s-will-play", "tb-s-likely-done", "tb-s-confidence"].forEach((id, i) => {
     const domEl = document.getElementById(id);
@@ -3664,6 +3691,34 @@ function updateTimeBudgetReadoutDOM(readout) {
     const vals = [readout.willPlay, readout.likelyDone, readout.confidence];
     domEl.textContent = vals[i % 3];
   });
+
+  // tight banners
+  ["tb-tight-banner", "tb-s-tight-banner"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (isTight && !hasError) ? "block" : "none";
+  });
+
+  // Start button — disable on error, enable on success
+  const startBtn = document.getElementById("start-btn");
+  if (startBtn) startBtn.disabled = hasError || !canStart();
+}
+
+function showRallyAckDialog(onConfirm, onCancel) {
+  const bg = el("div", { class: "modal-bg" });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Rally scoring is faster"));
+  modal.appendChild(el("p", null,
+    "Rally scoring means every rally scores a point — there's no waiting to be the server. " +
+    "Games are typically 2–3× faster. Confirm for this event?"));
+  const confirmBtn = el("button", { class: "primary", style: "width:100%;margin-bottom:8px;" },
+    "Confirm rally scoring");
+  const cancelBtn = el("button", { style: "width:100%;" }, "Keep current setting");
+  confirmBtn.addEventListener("click", () => { bg.remove(); onConfirm(); });
+  cancelBtn.addEventListener("click", () => { bg.remove(); onCancel(); });
+  modal.appendChild(confirmBtn);
+  modal.appendChild(cancelBtn);
+  bg.appendChild(modal);
+  document.body.appendChild(bg);
 }
 
 function renderTimeBudgetBlock() {
@@ -3731,6 +3786,14 @@ function renderTimeBudgetBlock() {
   ));
   details.appendChild(readout);
 
+  // Tight-budget banner (shown when solver picks the tightest config)
+  const tightBanner = el("div", {
+    id: "tb-tight-banner",
+    class: "tb-tight-banner",
+    style: "display:none;",
+  }, "This budget is tight — even our shortest games may run over.");
+  details.appendChild(tightBanner);
+
   // Auto-tighten row
   const autoRow = el("div", { class: "tb-toggle-row" });
   const autoChk = el("input", { type: "checkbox", id: "tb-auto-tighten" });
@@ -3747,9 +3810,31 @@ function renderTimeBudgetBlock() {
   // Wire time minutes dropdown
   minutesSel.addEventListener("change", () => {
     state.timeBudget.minutes = parseInt(minutesSel.value, 10);
-    const { config } = applyTimeBudgetSolve();
-    save();
-    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+    const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+    if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+      showRallyAckDialog(
+        () => {
+          state.timeBudget.rallyAcknowledged = true;
+          save();
+          updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+        },
+        () => {
+          const STEPS = [60, 75, 90, 105, 120, 150, 180];
+          const idx = STEPS.indexOf(state.timeBudget.minutes);
+          if (idx < STEPS.length - 1) {
+            state.timeBudget.minutes = STEPS[idx + 1];
+            const sel = document.getElementById("tb-minutes") || document.getElementById("tb-s-minutes");
+            if (sel) sel.value = String(state.timeBudget.minutes);
+            const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
+            save();
+            updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+          }
+        }
+      );
+    } else {
+      save();
+      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+    }
   });
 
   // Wire auto-tighten checkbox
@@ -3763,9 +3848,31 @@ function renderTimeBudgetBlock() {
     state.timeBudget.enabled = toggleChk.checked;
     details.style.display = toggleChk.checked ? "block" : "none";
     if (toggleChk.checked) {
-      const { config } = applyTimeBudgetSolve();
-      save();
-      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+      const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+      if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+        showRallyAckDialog(
+          () => {
+            state.timeBudget.rallyAcknowledged = true;
+            save();
+            updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+          },
+          () => {
+            const STEPS = [60, 75, 90, 105, 120, 150, 180];
+            const idx = STEPS.indexOf(state.timeBudget.minutes);
+            if (idx < STEPS.length - 1) {
+              state.timeBudget.minutes = STEPS[idx + 1];
+              const sel = document.getElementById("tb-minutes") || document.getElementById("tb-s-minutes");
+              if (sel) sel.value = String(state.timeBudget.minutes);
+              const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
+              save();
+              updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+            }
+          }
+        );
+      } else {
+        save();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+      }
     } else {
       state.timeBudget.plannedConfig = null;
       save();
@@ -3775,8 +3882,8 @@ function renderTimeBudgetBlock() {
   // Populate read-out on initial render if already enabled (deferred so card is in DOM first)
   if (enabled) {
     requestAnimationFrame(() => {
-      const { config } = applyTimeBudgetSolve();
-      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+      const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
     });
   }
 
@@ -6367,6 +6474,14 @@ function openSettings() {
   tbReadout.appendChild(el("div", null, "Confidence: ", el("span", { id: "tb-s-confidence" }, "using defaults (no history)")));
   tbDetails.appendChild(tbReadout);
 
+  // Tight-budget banner (shown when solver picks the tightest config)
+  const tbTightBanner = el("div", {
+    id: "tb-s-tight-banner",
+    class: "tb-tight-banner",
+    style: "display:none;",
+  }, "This budget is tight — even our shortest games may run over.");
+  tbDetails.appendChild(tbTightBanner);
+
   // Auto-tighten row
   const tbAutoRow = el("div", { class: "settings-row" });
   const tbAutoChk = el("input", { type: "checkbox", id: "tb-s-auto-tighten" });
@@ -6386,9 +6501,31 @@ function openSettings() {
     tbDetails.style.display = tbToggleInput.checked ? "block" : "none";
     if (winScoreRow) winScoreRow.style.display = (tbToggleInput.checked && state.format !== "crown") ? "none" : "";
     if (tbToggleInput.checked) {
-      const { config } = applyTimeBudgetSolve();
-      save();
-      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+      const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+      if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+        showRallyAckDialog(
+          () => {
+            state.timeBudget.rallyAcknowledged = true;
+            save();
+            updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+          },
+          () => {
+            const STEPS = [60, 75, 90, 105, 120, 150, 180];
+            const idx = STEPS.indexOf(state.timeBudget.minutes);
+            if (idx < STEPS.length - 1) {
+              state.timeBudget.minutes = STEPS[idx + 1];
+              const sel = document.getElementById("tb-minutes") || document.getElementById("tb-s-minutes");
+              if (sel) sel.value = String(state.timeBudget.minutes);
+              const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
+              save();
+              updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+            }
+          }
+        );
+      } else {
+        save();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+      }
     } else {
       state.timeBudget.plannedConfig = null;
       save();
@@ -6396,9 +6533,31 @@ function openSettings() {
   });
   tbMinutesSel.addEventListener("change", () => {
     state.timeBudget.minutes = parseInt(tbMinutesSel.value, 10);
-    const { config } = applyTimeBudgetSolve();
-    save();
-    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+    const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+    if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+      showRallyAckDialog(
+        () => {
+          state.timeBudget.rallyAcknowledged = true;
+          save();
+          updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+        },
+        () => {
+          const STEPS = [60, 75, 90, 105, 120, 150, 180];
+          const idx = STEPS.indexOf(state.timeBudget.minutes);
+          if (idx < STEPS.length - 1) {
+            state.timeBudget.minutes = STEPS[idx + 1];
+            const sel = document.getElementById("tb-minutes") || document.getElementById("tb-s-minutes");
+            if (sel) sel.value = String(state.timeBudget.minutes);
+            const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
+            save();
+            updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+          }
+        }
+      );
+    } else {
+      save();
+      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+    }
   });
   tbAutoChk.addEventListener("change", () => {
     state.timeBudget.autoTighten = tbAutoChk.checked;
@@ -6635,8 +6794,8 @@ function openSettings() {
 
   // Populate read-out if already enabled when modal opens (must run after modal is in DOM)
   if (state.timeBudget.enabled) {
-    const { config } = applyTimeBudgetSolve();
-    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+    const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
   }
 }
 
