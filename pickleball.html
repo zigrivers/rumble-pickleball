@@ -3503,6 +3503,10 @@ function renderFormatChooser() {
     sel.addEventListener("change", () => {
       state.stackRounds = parseInt(sel.value, 10);
       save();
+      if (state.timeBudget.enabled) {
+        const { config } = applyTimeBudgetSolve();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+      }
     });
     sub.appendChild(sel);
     wrap.appendChild(sub);
@@ -3516,7 +3520,14 @@ function renderFormatChooser() {
       if (state.kingRounds === v) opt.setAttribute("selected", "selected");
       sel.appendChild(opt);
     });
-    sel.addEventListener("change", () => { state.kingRounds = parseInt(sel.value, 10); save(); });
+    sel.addEventListener("change", () => {
+      state.kingRounds = parseInt(sel.value, 10);
+      save();
+      if (state.timeBudget.enabled) {
+        const { config } = applyTimeBudgetSolve();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+      }
+    });
     sub.appendChild(sel);
     wrap.appendChild(sub);
   }
@@ -3529,11 +3540,130 @@ function renderFormatChooser() {
       if (state.gauntletRounds === v) opt.setAttribute("selected", "selected");
       sel.appendChild(opt);
     });
-    sel.addEventListener("change", () => { state.gauntletRounds = parseInt(sel.value, 10); save(); });
+    sel.addEventListener("change", () => {
+      state.gauntletRounds = parseInt(sel.value, 10);
+      save();
+      if (state.timeBudget.enabled) {
+        const { config } = applyTimeBudgetSolve();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+      }
+    });
     sub.appendChild(sel);
     wrap.appendChild(sub);
   }
   return wrap;
+}
+
+function getTimeBudgetRounds() {
+  if (state.format === "rr")       return 7;
+  if (state.format === "stack")    return state.stackRounds;
+  if (state.format === "king")     return state.kingRounds;
+  if (state.format === "gauntlet") return state.gauntletRounds;
+  return 3; // crown: 3 rounds + crown match
+}
+
+function readCalibration() {
+  try {
+    const raw = localStorage.getItem("pb_calibration_v1");
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function applyTimeBudgetSolve() {
+  const minutes = state.timeBudget.minutes;
+  const cal = readCalibration();
+  let config = null, error = null;
+
+  if (state.format === "crown") {
+    const preset = pickCrownPreset(minutes, cal);
+    if (typeof preset === "string") {
+      const presetObj = CROWN_PRESETS.find(p => p.name === preset);
+      const crownMatch = presetObj ? presetObj.matches[3] : { target: 11, winBy: 2, scoring: "sideout" };
+      config = { target: crownMatch.target, winBy: crownMatch.winBy, scoring: crownMatch.scoring, preset };
+    } else {
+      error = preset.error;
+    }
+  } else {
+    const rounds = getTimeBudgetRounds();
+    const result = solveWinCondition(state.format, rounds, minutes, cal);
+    if (!result.error) {
+      config = result;
+    } else {
+      error = result.error;
+    }
+  }
+
+  state.timeBudget.plannedConfig = config;
+  if (config) {
+    state.winScore = config.target;
+    state.winBy    = config.winBy;
+    state.scoringSystem = config.scoring;
+  }
+  return { config, error };
+}
+
+function formatTimeBudgetReadout(config, minutes) {
+  const cal = readCalibration();
+
+  // willPlay
+  let willPlay = "—";
+  if (config) {
+    const scoringLabel = config.scoring === "sideout" ? "side-out" : "rally";
+    const winByLabel   = config.winBy === 1 ? "win by 1" : "win by 2";
+    willPlay = scoringLabel + " to " + config.target + ", " + winByLabel;
+  }
+
+  // likelyDone — setup-time projection of full event
+  let likelyDone = "—";
+  if (config) {
+    let loMin, hiMin;
+    if (state.format === "crown") {
+      const presetName = config.preset;
+      const presetObj = presetName ? CROWN_PRESETS.find(p => p.name === presetName) : null;
+      if (presetObj) {
+        let lo = 0, hi = 0;
+        presetObj.matches.forEach(m => {
+          const [glo, ghi] = estimateGameMinutes(m.target, m.winBy, m.scoring, cal);
+          lo += 2.3 * glo + 3;
+          hi += 2.3 * ghi + 3;
+        });
+        loMin = Math.round(lo);
+        hiMin = Math.round(hi);
+      }
+    } else {
+      const rounds = getTimeBudgetRounds();
+      const [roundLo, roundHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, 2, cal);
+      const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", 2, cal);
+      loMin = rounds * roundLo + finLo + 5;
+      hiMin = rounds * roundHi + finHi + 5;
+    }
+    if (loMin != null) {
+      const fmtTs = ts => {
+        const d = new Date(ts);
+        let h = d.getHours(), m = d.getMinutes();
+        const ampm = h >= 12 ? "pm" : "am";
+        h = h % 12 || 12;
+        return h + ":" + String(m).padStart(2, "0") + " " + ampm;
+      };
+      const now = Date.now();
+      likelyDone = "~" + fmtTs(now + loMin * 60000) + "–" + fmtTs(now + hiMin * 60000);
+    }
+  }
+
+  // confidence
+  const confidence = cal ? "using calibrated data" : "using defaults (no history)";
+
+  return { willPlay, likelyDone, confidence };
+}
+
+function updateTimeBudgetReadoutDOM(readout) {
+  ["tb-will-play", "tb-likely-done", "tb-confidence",
+   "tb-s-will-play", "tb-s-likely-done", "tb-s-confidence"].forEach((id, i) => {
+    const domEl = document.getElementById(id);
+    if (!domEl) return;
+    const vals = [readout.willPlay, readout.likelyDone, readout.confidence];
+    domEl.textContent = vals[i % 3];
+  });
 }
 
 function renderTimeBudgetBlock() {
@@ -3614,10 +3744,41 @@ function renderTimeBudgetBlock() {
 
   card.appendChild(details);
 
-  // Toggle show/hide for tb-details
-  toggleChk.addEventListener("change", () => {
-    details.style.display = toggleChk.checked ? "block" : "none";
+  // Wire time minutes dropdown
+  minutesSel.addEventListener("change", () => {
+    state.timeBudget.minutes = parseInt(minutesSel.value, 10);
+    const { config } = applyTimeBudgetSolve();
+    save();
+    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
   });
+
+  // Wire auto-tighten checkbox
+  autoChk.addEventListener("change", () => {
+    state.timeBudget.autoTighten = autoChk.checked;
+    save();
+  });
+
+  // Wire toggle
+  toggleChk.addEventListener("change", () => {
+    state.timeBudget.enabled = toggleChk.checked;
+    details.style.display = toggleChk.checked ? "block" : "none";
+    if (toggleChk.checked) {
+      const { config } = applyTimeBudgetSolve();
+      save();
+      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+    } else {
+      state.timeBudget.plannedConfig = null;
+      save();
+    }
+  });
+
+  // Populate read-out on initial render if already enabled (deferred so card is in DOM first)
+  if (enabled) {
+    requestAnimationFrame(() => {
+      const { config } = applyTimeBudgetSolve();
+      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+    });
+  }
 
   return card;
 }
@@ -6048,6 +6209,7 @@ function openSettings() {
     }, "View full schedule"));
   }
 
+  let winScoreRow = null;
   if (state.phase === "setup") {
     modal.appendChild(el("p", { class: "muted" },
       "Tournament hasn't started yet. Edit names directly on the setup screen."));
@@ -6078,7 +6240,7 @@ function openSettings() {
       modal.appendChild(el("p", { class: "muted", style: "margin: 8px 0 0;" },
         "Win scores are fixed by Crown Court format — Opening to 11, Power Round to 11 (1.5×), Sudden Death to 7."));
     }
-    const winScoreRow = el("div", { class: "settings-row", style: state.format === "crown" ? "display:none;" : "" });
+    winScoreRow = el("div", { class: "settings-row", style: state.format === "crown" ? "display:none;" : "" });
     winScoreRow.appendChild(el("label", null, "Win score"));
     const winSelect = el("select");
     [11, 15, 21].forEach(v => {
@@ -6092,6 +6254,7 @@ function openSettings() {
     });
     winScoreRow.appendChild(winSelect);
     modal.appendChild(winScoreRow);
+    if (state.timeBudget.enabled && state.format !== "crown") winScoreRow.style.display = "none";
 
     if (state.format === "stack") {
       const noGamesPlayed = !state.rounds.some(r =>
@@ -6217,11 +6380,30 @@ function openSettings() {
 
   modal.appendChild(tbDetails);
 
-  // Toggle show/hide for tb-s-details
+  // Wire settings modal time budget controls
   tbToggleInput.addEventListener("change", () => {
+    state.timeBudget.enabled = tbToggleInput.checked;
     tbDetails.style.display = tbToggleInput.checked ? "block" : "none";
+    if (winScoreRow) winScoreRow.style.display = (tbToggleInput.checked && state.format !== "crown") ? "none" : "";
+    if (tbToggleInput.checked) {
+      const { config } = applyTimeBudgetSolve();
+      save();
+      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+    } else {
+      state.timeBudget.plannedConfig = null;
+      save();
+    }
   });
-
+  tbMinutesSel.addEventListener("change", () => {
+    state.timeBudget.minutes = parseInt(tbMinutesSel.value, 10);
+    const { config } = applyTimeBudgetSolve();
+    save();
+    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+  });
+  tbAutoChk.addEventListener("change", () => {
+    state.timeBudget.autoTighten = tbAutoChk.checked;
+    save();
+  });
   // ---- Display & TV ----
   modal.appendChild(el("div", { class: "ka-section-title" }, "Display & TV"));
 
@@ -6450,6 +6632,12 @@ function openSettings() {
 
   bg.appendChild(modal);
   document.body.appendChild(bg);
+
+  // Populate read-out if already enabled when modal opens (must run after modal is in DOM)
+  if (state.timeBudget.enabled) {
+    const { config } = applyTimeBudgetSolve();
+    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes));
+  }
 }
 
 // ---------- boot ----------
