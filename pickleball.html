@@ -2226,6 +2226,12 @@ function runSelfTests() {
     console.assert(badConsecutive === 0, "whist: no foursome repeats on consecutive rounds", { badConsecutive });
   }
 
+  // Diagnostics button path — runSimulation must return its failure count (0 on
+  // correct code). Its internal asserts chain through this suite's counter too.
+  {
+    console.assert(runSimulation() === 0, "runSimulation returns 0 failures");
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -2382,6 +2388,7 @@ function runSimulation() {
   state = savedState;
   console.log(`[simulate] complete — ${failures} failure(s) across ${TOURNAMENTS} tournaments`);
   console.assert = _origAssert;
+  return failures;
 }
 let state = load() || newState();
 
@@ -7393,6 +7400,27 @@ function openSettings() {
     save();
     refreshKaStatus();
   });
+
+  // ---- Diagnostics ----
+  modal.appendChild(el("div", { class: "ka-section-title" }, "Diagnostics"));
+  const simBtn = el("button", { style: "width: 100%;" }, "🧪 Verify Scoreboard");
+  const simResult = el("div", { class: "ka-sub", style: "margin-top: 6px; min-height: 1em;" }, "");
+  simBtn.addEventListener("click", () => {
+    simBtn.disabled = true;
+    simBtn.textContent = "Running 3 simulated tournaments…";
+    simResult.textContent = "";
+    // Defer so the button label paints before the synchronous simulation runs.
+    setTimeout(() => {
+      const fails = runSimulation();
+      simBtn.disabled = false;
+      simBtn.textContent = "🧪 Verify Scoreboard";
+      simResult.textContent = fails === 0
+        ? "✅ Verified — 3 simulated tournaments, every round's standings correct."
+        : "❌ " + fails + " error(s) found — open the browser console for details.";
+    }, 50);
+  });
+  modal.appendChild(simBtn);
+  modal.appendChild(simResult);
 
   const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { syncKeepAwakeToState(); close(); render(); } }, "Done");
   modal.appendChild(closeBtn);
