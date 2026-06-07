@@ -1136,14 +1136,18 @@ const STORAGE_KEY_V3 = "pb_tourney_v3";
 const STORAGE_KEY_V2 = "pb_tourney_v2";
 const STORAGE_KEY_V1 = "pb_tourney_v1";
 
-// Round-robin partner schedule (1-factorization of K8) — every pair appears exactly once across 7 rounds.
+// Round-robin partner schedule — a balanced whist design Wh(8): every pair
+// partners exactly once AND opposes exactly twice across the 7 rounds, and all
+// 14 court foursomes are distinct (the same four players never share a court
+// twice, so no clique can rotate among themselves). Found by exhaustive search;
+// invariants are enforced by the whist self-tests in runSelfTests().
 const SCHEDULE = [
   [[[1,2],[3,4]], [[5,6],[7,8]]],
-  [[[1,3],[2,4]], [[5,7],[6,8]]],
-  [[[1,4],[2,3]], [[5,8],[6,7]]],
+  [[[1,3],[5,7]], [[2,4],[6,8]]],
+  [[[1,4],[5,8]], [[2,3],[6,7]]],
   [[[1,5],[2,6]], [[3,7],[4,8]]],
-  [[[1,6],[2,5]], [[3,8],[4,7]]],
-  [[[1,7],[2,8]], [[3,5],[4,6]]],
+  [[[1,6],[3,8]], [[2,5],[4,7]]],
+  [[[1,7],[4,6]], [[2,8],[3,5]]],
   [[[1,8],[2,7]], [[3,6],[4,5]]],
 ];
 
@@ -2180,6 +2184,48 @@ function runSelfTests() {
     state = saved;
   }
 
+  // Whist invariants — the RR schedule must mix players fairly:
+  //   (1) all 8 players appear in every round
+  //   (2) every pair partners exactly once across the 7 rounds
+  //   (3) every pair opposes exactly twice (balanced whist design)
+  //   (4) no foursome shares a court in consecutive rounds
+  // Run generateRounds() repeatedly since it randomizes round order / courts.
+  {
+    const pkey = (a, b) => Math.min(a, b) + "-" + Math.max(a, b);
+    let badRoster = 0, badPartner = 0, badOppose = 0, badConsecutive = 0;
+    for (let trial = 0; trial < 50; trial++) {
+      const rounds = generateRounds();
+      const partnerCount = new Map(), opposeCount = new Map();
+      let prevFoursomes = null;
+      for (const r of rounds) {
+        const roster = new Set();
+        const foursomes = [];
+        for (const g of [r.court1, r.court2]) {
+          const four = [...g.team1, ...g.team2];
+          four.forEach(s => roster.add(s));
+          foursomes.push(four.slice().sort().join(","));
+          for (const t of [g.team1, g.team2]) {
+            const k = pkey(t[0], t[1]);
+            partnerCount.set(k, (partnerCount.get(k) || 0) + 1);
+          }
+          for (const a of g.team1) for (const b of g.team2) {
+            const k = pkey(a, b);
+            opposeCount.set(k, (opposeCount.get(k) || 0) + 1);
+          }
+        }
+        if (roster.size !== 8) badRoster++;
+        if (prevFoursomes && foursomes.some(f => prevFoursomes.includes(f))) badConsecutive++;
+        prevFoursomes = foursomes;
+      }
+      if (partnerCount.size !== 28 || [...partnerCount.values()].some(v => v !== 1)) badPartner++;
+      if (opposeCount.size !== 28 || [...opposeCount.values()].some(v => v !== 2)) badOppose++;
+    }
+    console.assert(badRoster === 0, "whist: all 8 players in every round", { badRoster });
+    console.assert(badPartner === 0, "whist: every pair partners exactly once", { badPartner });
+    console.assert(badOppose === 0, "whist: every pair opposes exactly twice", { badOppose });
+    console.assert(badConsecutive === 0, "whist: no foursome repeats on consecutive rounds", { badConsecutive });
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -2700,7 +2746,11 @@ function runShuffleReveal(finalSlots, onDone, opts) {
 
 // Returns a fresh array of 7 round objects with randomized court 1/2 flip.
 function generateRounds() {
-  return SCHEDULE.map((roundDef, idx) => {
+  // Random round order + per-round court flip, on top of the name→slot shuffle
+  // in startTournament, so every session plays out differently. Safe because the
+  // whist SCHEDULE's invariants (partner-once, oppose-twice, distinct foursomes)
+  // are order-independent.
+  return shuffle(SCHEDULE).map((roundDef, idx) => {
     const flip = Math.random() < 0.5;
     const c1 = flip ? roundDef[0] : roundDef[1];
     const c2 = flip ? roundDef[1] : roundDef[0];
@@ -3771,7 +3821,7 @@ function canStart() {
 
 const RULES_RR = [
   "8 players, 2 courts, doubles. Every round, all 8 play.",
-  "7 rounds, one per partner — by the end, you'll have partnered with every other player exactly once.",
+  "7 rounds, one per partner — you'll partner every other player exactly once and face every player exactly twice, with a fresh foursome on your court every round.",
   "Score games however you normally would (typically first to 11, win by 2). Type any final score.",
   "After round 7, points decide the seeds. Top 4 play the 🏆 Championship, bottom 4 play the 🥈 Consolation.",
   "Championship is #1 + #4 vs #2 + #3 — a balanced pairing so the top players don't stomp.",
