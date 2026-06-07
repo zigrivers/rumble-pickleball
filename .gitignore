@@ -6,6 +6,11 @@
 
 # Test screenshots
 *.png
+# …but PWA icon assets are shipped
+!icon-192.png
+!icon-512.png
+!icon-512-maskable.png
+!apple-touch-icon.png
 
 # Verification screenshots from subagent runs
 verify-screenshots/
