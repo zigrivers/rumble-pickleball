@@ -2151,6 +2151,35 @@ function runSelfTests() {
     else localStorage.removeItem("pb_durations_v1");
   }
 
+  // Regression — Live Standings include ALL completed rounds even when the user
+  // has navigated back to an earlier round (currentRound < rounds played).
+  // Before the fix, renderPlaying passed state.currentRound as throughRound, so
+  // wins/points from later, already-played rounds vanished from the table.
+  {
+    const saved = state;
+    const rounds = SCHEDULE.map((rd, i) => ({
+      round: i + 1,
+      court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 5, gameStartedAt: 1, gameEndedAt: 2, pauseSec: 0 },
+      court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 5, gameStartedAt: 1, gameEndedAt: 2, pauseSec: 0 },
+    }));
+    state = {
+      phase: "playing", format: "rr",
+      slots: ["A","B","C","D","E","F","G","H"],
+      rounds, currentRound: 3, // viewing round 3, but all 7 rounds are complete
+      tiebreakRandom: [0,1,2,3,4,5,6,7],
+      finals: null, awardsShown: false, winScore: 11, winBy: 2,
+      scoringSystem: "sideout", notifiedRounds: [], previousRanks: [],
+    };
+    const playingEl = renderPlaying();
+    const wCells = Array.from(playingEl.querySelectorAll("table.standings tbody tr"))
+      .map(tr => parseInt(tr.cells[3].textContent, 10));
+    const totalWins = wCells.reduce((a, b) => a + b, 0);
+    // 14 games × 2 winning players = 28 win-credits; the pre-fix bug showed 12 (rounds 1–3 only).
+    console.assert(totalWins === 28,
+      "Live Standings count wins from all completed rounds when viewing an earlier round", { totalWins, wCells });
+    state = saved;
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -5284,15 +5313,17 @@ function renderPlaying() {
   actions.appendChild(primaryBtn);
   wrap.appendChild(actions);
 
-  // standings
+  // standings — always computed over ALL rounds, not just up to the viewed round,
+  // so navigating back to check or fix an earlier score never drops later rounds'
+  // wins/points from the Live Standings. (computeStats skips incomplete games.)
   const standingsOpts = () => {
-    const completedRounds = state.rounds.slice(0, state.currentRound).filter(isRoundComplete).length;
+    const completedRounds = state.rounds.filter(isRoundComplete).length;
     const sub = completedRounds > 0
       ? "Through " + completedRounds + " round" + (completedRounds > 1 ? "s" : "")
       : "Awaiting first scores";
     return { subtitle: sub };
   };
-  let standingsCard = renderStandingsCard(state.currentRound, standingsOpts());
+  let standingsCard = renderStandingsCard(state.rounds.length, standingsOpts());
   wrap.appendChild(standingsCard);
 
   // history
@@ -5310,7 +5341,7 @@ function renderPlaying() {
           ? !(state.rounds.length === total && state.rounds.every(isRoundComplete))
           : !state.rounds.every(isRoundComplete);
     }
-    const newStandings = renderStandingsCard(state.currentRound, standingsOpts());
+    const newStandings = renderStandingsCard(state.rounds.length, standingsOpts());
     standingsCard.replaceWith(newStandings);
     standingsCard = newStandings;
     maybeFireRoundComplete(primaryBtn);
