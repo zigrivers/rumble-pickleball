@@ -14,8 +14,10 @@
 - The app's existing `<head>` already contains `<meta name="theme-color" content="#0f1419">` and `apple-mobile-web-app-capable` — do **not** duplicate these.
 - App theme: `--bg: #0f1419`, `--accent: #fbbf24`, `--panel: #1a2028`.
 - Historical plan/spec docs under `docs/superpowers/` intentionally keep the old `pickleball.html` name as point-in-time records — do **not** rewrite them.
+- **Prerequisite — run all commands from the repo root:** `cd "$(git rev-parse --show-toplevel)"`. All paths below are repo-root-relative.
 - Serve-for-testing command (used throughout):
-  `python3 -m http.server 8765 --bind 127.0.0.1 -d /Users/kenallred/Developer/rumble`
+  `python3 -m http.server 8765 --bind 127.0.0.1 -d . &`
+- `el(tag, attrs, ...children)` referenced in Task 6 is the existing top-level DOM helper already defined in `index.html` (search `function el(`) and is in scope at the boot point where the PWA block is appended.
 
 ---
 
@@ -35,7 +37,7 @@ git mv pickleball.html index.html
 Start the server (background) and open the app:
 
 ```bash
-python3 -m http.server 8765 --bind 127.0.0.1 -d /Users/kenallred/Developer/rumble &
+python3 -m http.server 8765 --bind 127.0.0.1 -d . &
 ```
 
 ```bash
@@ -60,7 +62,7 @@ git commit -m "refactor: rename pickleball.html to index.html for Pages hosting"
 ### Task 2: Generate PWA icons from the 🏓 mark
 
 **Files:**
-- Create: `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` (180×180)
+- Create: `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` (180×180), `icon-512-maskable.png` (extra safe-zone padding)
 
 Icons are rendered in a real browser (reliable emoji rendering) via agent-browser, then written to disk from base64.
 
@@ -89,6 +91,8 @@ window.ICONS = {
   "icon-192.png": makeIcon(192, 0.18),
   "icon-512.png": makeIcon(512, 0.18),
   "apple-touch-icon.png": makeIcon(180, 0.12),
+  // Maskable: extra padding so the mark stays inside the adaptive-icon safe zone.
+  "icon-512-maskable.png": makeIcon(512, 0.34),
 };
 </script>
 </body></html>
@@ -96,22 +100,24 @@ window.ICONS = {
 
 - [ ] **Step 2: Render and write the PNGs**
 
+Decode via `python3` (portable — avoids the GNU `base64 --decode` / BSD `base64 -D` split, and robustly strips any surrounding quotes/whitespace from the eval output):
+
 ```bash
 agent-browser open "file:///tmp/icon-gen.html"
 agent-browser wait --load domcontentloaded
-for name in icon-192.png icon-512.png apple-touch-icon.png; do
+for name in icon-192.png icon-512.png apple-touch-icon.png icon-512-maskable.png; do
   agent-browser eval "window.ICONS['$name']" \
-    | tr -d '"' | base64 --decode > "/Users/kenallred/Developer/rumble/$name"
+    | python3 -c "import sys,base64; d=sys.stdin.read().strip().strip('\"'); open('$name','wb').write(base64.b64decode(d))"
 done
-file /Users/kenallred/Developer/rumble/icon-*.png /Users/kenallred/Developer/rumble/apple-touch-icon.png
+file icon-192.png icon-512.png apple-touch-icon.png icon-512-maskable.png
 ```
 
-Expected: `file` reports each as `PNG image data, 192 x 192` / `512 x 512` / `180 x 180`.
+Expected: `file` reports `PNG image data, 192 x 192` / `512 x 512` / `180 x 180` / `512 x 512`.
 
 - [ ] **Step 3: Eyeball one icon**
 
 ```bash
-agent-browser open "file:///Users/kenallred/Developer/rumble/icon-512.png"
+agent-browser open "file://$(pwd)/icon-512.png"
 agent-browser screenshot /tmp/icon-check.png
 ```
 
@@ -120,8 +126,7 @@ Read `/tmp/icon-check.png` — confirm a dark square with a centered 🏓. If th
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /Users/kenallred/Developer/rumble
-git add icon-192.png icon-512.png apple-touch-icon.png
+git add icon-192.png icon-512.png apple-touch-icon.png icon-512-maskable.png
 git commit -m "feat: add PWA icons generated from the paddle mark"
 rm -f /tmp/icon-gen.html /tmp/icon-check.png
 ```
@@ -149,9 +154,9 @@ Create `manifest.webmanifest` (relative paths — the app is served from the `/r
   "background_color": "#0f1419",
   "theme_color": "#0f1419",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
 ```
@@ -216,14 +221,19 @@ git commit -m "feat: link manifest and apple-touch-icon"
 Create `sw.js`:
 
 ```js
+// App-specific cache prefix. github.io is a shared origin across all of the
+// owner's project Pages, so cleanup must only touch THIS app's caches — never
+// delete by "everything that isn't the current version".
+const CACHE_PREFIX = "rumble-pickleball-";
 // Bump VERSION on every deploy so clients pick up changes.
-const VERSION = "rumble-v1";
+const VERSION = CACHE_PREFIX + "v1";
 const SHELL = [
   "./",
   "index.html",
   "manifest.webmanifest",
   "icon-192.png",
   "icon-512.png",
+  "icon-512-maskable.png",
   "apple-touch-icon.png",
 ];
 
@@ -235,15 +245,22 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
+      Promise.all(
+        keys
+          .filter((k) => k.startsWith(CACHE_PREFIX) && k !== VERSION)
+          .map((k) => caches.delete(k))
+      )
     ).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  // ignoreSearch so cached shell serves any query string (?test, ?simulate)
+  // and update-induced reloads that preserve the query.
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request, { ignoreSearch: true })
+      .then((cached) => cached || fetch(event.request))
   );
 });
 
@@ -283,44 +300,59 @@ At the end of the script block (after `render();`), insert:
 
 ```js
 // ---------- PWA: service worker registration + update chip ----------
-// Guarded to https so AirDrop/file:// use is unaffected (SW won't register there).
-if (location.protocol === "https:" && "serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").then((reg) => {
-    function showUpdateChip(worker) {
-      if (document.getElementById("pwa-update-chip")) return;
-      const chip = el("button", {
-        id: "pwa-update-chip",
-        style: "position:fixed;left:50%;bottom:16px;transform:translateX(-50%);" +
-          "z-index:300;background:var(--accent);color:#1a1207;border:none;" +
-          "border-radius:999px;padding:10px 18px;font-weight:600;font-size:14px;" +
-          "box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer;",
-      }, "🆕 New version — tap to update");
-      chip.addEventListener("click", () => {
-        chip.disabled = true;
-        worker.postMessage("skipWaiting");
-      });
-      document.body.appendChild(chip);
-    }
-    // A new worker was found and finished installing while a controller exists.
-    reg.addEventListener("updatefound", () => {
-      const nw = reg.installing;
-      if (!nw) return;
-      nw.addEventListener("statechange", () => {
-        if (nw.state === "installed" && navigator.serviceWorker.controller) {
-          showUpdateChip(nw);
-        }
-      });
+// Register on secure contexts: https in production, and localhost/127.0.0.1 for
+// local testing (both are valid SW secure contexts). file:// is excluded, so
+// AirDrop use is unaffected (SW won't register there; the local file still runs).
+// Uses the existing top-level el() DOM helper defined earlier in this file.
+{
+  const _host = location.hostname;
+  const _swOk = "serviceWorker" in navigator &&
+    (location.protocol === "https:" || _host === "localhost" || _host === "127.0.0.1" || _host === "[::1]");
+  if (_swOk) {
+    // Reload only when an UPDATE takes control — never on first-load claim().
+    // hadController is false on a fresh first visit (clients.claim() fires
+    // controllerchange then, which must NOT reload), true once controlled.
+    const hadController = !!navigator.serviceWorker.controller;
+    let _pwaReloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (hadController && !_pwaReloaded) { _pwaReloaded = true; location.reload(); }
     });
-    // If one is already waiting (e.g. found before this listener attached).
-    if (reg.waiting && navigator.serviceWorker.controller) showUpdateChip(reg.waiting);
-  });
-  // When the new worker takes control, reload exactly once.
-  let _pwaReloaded = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (_pwaReloaded) return;
-    _pwaReloaded = true;
-    location.reload();
-  });
+
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      function showUpdateChip(worker) {
+        if (document.getElementById("pwa-update-chip")) return;
+        const chip = el("button", {
+          id: "pwa-update-chip",
+          style: "position:fixed;left:50%;bottom:16px;transform:translateX(-50%);" +
+            "z-index:300;background:var(--accent);color:#1a1207;border:none;" +
+            "border-radius:999px;padding:10px 18px;font-weight:600;font-size:14px;" +
+            "box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer;",
+        }, "🆕 New version — tap to update");
+        chip.addEventListener("click", () => {
+          chip.disabled = true;
+          worker.postMessage("skipWaiting");
+        });
+        document.body.appendChild(chip);
+      }
+      // Show the chip once a NEW worker is installed alongside an active controller.
+      function trackWorker(worker) {
+        if (!worker) return;
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdateChip(worker);
+          return;
+        }
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdateChip(worker);
+          }
+        });
+      }
+      // Cover all three sources: one already waiting, one mid-install, future updates.
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateChip(reg.waiting);
+      trackWorker(reg.installing);
+      reg.addEventListener("updatefound", () => trackWorker(reg.installing));
+    });
+  }
 }
 ```
 
@@ -338,7 +370,7 @@ Expected: `registered scope http://localhost:8765/`.
 - [ ] **Step 3: Verify it does NOT register on file://**
 
 ```bash
-agent-browser open "file:///Users/kenallred/Developer/rumble/index.html"
+agent-browser open "file://$(pwd)/index.html"
 agent-browser wait --load domcontentloaded
 agent-browser eval "('serviceWorker' in navigator) ? (navigator.serviceWorker.controller ? 'CONTROLLED(bad)' : 'no controller (ok for file://)') : 'no SW API'"
 ```
@@ -365,10 +397,10 @@ agent-browser open "http://localhost:8765/index.html"
 agent-browser wait --load domcontentloaded
 sleep 1   # let the SW cache the shell
 # Confirm the shell is cached:
-agent-browser eval "caches.open('rumble-v1').then(c => c.keys()).then(k => 'cached:' + k.length)"
+agent-browser eval "caches.open('rumble-pickleball-v1').then(c => c.keys()).then(k => 'cached:' + k.length)"
 ```
 
-Expected: `cached:6`.
+Expected: `cached:7`.
 
 - [ ] **Step 2: Reload offline**
 
@@ -387,10 +419,10 @@ Expected: `app rendered offline` (served from cache with the server down).
 
 ```bash
 # Restart server, bump VERSION to force an update.
-python3 -m http.server 8765 --bind 127.0.0.1 -d /Users/kenallred/Developer/rumble &
+python3 -m http.server 8765 --bind 127.0.0.1 -d . &
 ```
 
-Edit `sw.js`: change `const VERSION = "rumble-v1";` to `"rumble-v2";` and save.
+Edit `sw.js`: change `const VERSION = CACHE_PREFIX + "v1";` to `CACHE_PREFIX + "v2";` and save.
 
 ```bash
 agent-browser open "http://localhost:8765/index.html"
@@ -407,11 +439,11 @@ sleep 2
 agent-browser eval "caches.keys().then(k => k.join(','))"
 ```
 
-Expected: `rumble-v2` only (old cache deleted on activate).
+Expected: `rumble-pickleball-v2` only (old cache deleted on activate).
 
 - [ ] **Step 4: Revert VERSION and commit**
 
-Restore `sw.js` `VERSION` to `"rumble-v1"` (v2 was only to exercise the update path).
+Restore `sw.js` `VERSION` to `CACHE_PREFIX + "v1"` (v2 was only to exercise the update path).
 
 ```bash
 git add sw.js
@@ -434,9 +466,11 @@ git push origin main
 
 - [ ] **Step 2: Enable Pages (main / root) via the API**
 
+Use a JSON body (the `/pages` endpoint expects a nested `source` object; form `-f` flags don't reliably produce that shape):
+
 ```bash
 gh api -X POST repos/zigrivers/rumble-pickleball/pages \
-  -f "source[branch]=main" -f "source[path]=/" 2>&1 || \
+  --input - <<<'{"source":{"branch":"main","path":"/"}}' 2>&1 || \
   echo "If this errors (already enabled / scope), enable manually: repo Settings → Pages → Source: main / root."
 ```
 
@@ -486,14 +520,16 @@ pkill -f "http.server 8765" 2>/dev/null || true
 - File layout (rename + siblings) → Tasks 1–5. ✅
 - Manifest with relative subpath paths → Task 3. ✅
 - index.html additions (manifest/apple-touch links; theme-color already present) → Task 4. ✅
-- Guarded SW registration (https only; file:// unaffected) → Task 6 (Steps 2–3 verify both). ✅
-- Service worker cache-first + versioned + activate cleanup + no silent reload → Tasks 5–6. ✅
-- Update chip (tap → skipWaiting → single reload) → Task 6 + Task 7 Step 3. ✅
+- Guarded SW registration (https **+ localhost**; file:// unaffected) → Task 6 (Steps 2–3 verify both). ✅
+- Service worker cache-first + versioned + prefix-scoped activate cleanup + no silent reload → Tasks 5–6. ✅
+- Update chip (tap → skipWaiting → single reload, `hadController`-guarded so first-load claim never reloads) → Task 6 + Task 7 Step 3. ✅
 - Data-continuity caveat → documented in spec; no code task needed (per-origin storage is browser behavior). ✅
 - Pages enablement (main/root) + live URL → Task 8. ✅
-- Testing: manifest detected, SW registers on https / not on file://, offline load, update path, app `?test`/`?simulate` pass → Tasks 4,6,7,8. ✅
+- Testing: manifest detected, SW registers on https/localhost & not on file://, offline load (incl. query strings via `ignoreSearch`), update path, app `?test`/`?simulate` pass → Tasks 4,6,7,8 (Task 8 exercises the real `/rumble-pickleball/` subpath live). ✅
 - Texting interplay → out of scope for this plan (separate spec), correctly excluded. ✅
 
-**Placeholder scan:** No TBD/TODO; all code blocks complete; all commands have expected output. ✅
+**Placeholder scan:** No TBD/TODO; all code blocks complete; all commands have expected output; all paths repo-root-relative. ✅
 
-**Type/name consistency:** `VERSION`/cache name `rumble-v1`, `SHELL` (6 entries → `cached:6`), message string `"skipWaiting"`, chip id `pwa-update-chip` — consistent across Tasks 5, 6, 7. ✅
+**Type/name consistency:** cache prefix `rumble-pickleball-`, `VERSION = CACHE_PREFIX + "v1"`, `SHELL` (7 entries → `cached:7`), message string `"skipWaiting"`, chip id `pwa-update-chip` — consistent across Tasks 5, 6, 7. ✅
+
+**MMR review (2026-06-07):** 5-model review (claude/gemini/codex/grok/antigravity), 9 distinct findings, all addressed in this revision — localhost SW guard, `hadController` reload guard, `ignoreSearch`, prefix-scoped cache cleanup, portable `python3` base64 decode, dedicated maskable icon, JSON `gh api` Pages body, `installing`-transition tracking, repo-relative paths.
