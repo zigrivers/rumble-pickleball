@@ -6,7 +6,7 @@
 
 **Architecture:** All changes layer onto the existing single HTML file. Pure helpers (`finalRanking`, `computeAwards`, `partnerOf`, `parsePastedNames`, `maybeFireRoundComplete`) are added as named, side-effect-free top-level functions. UI features are added as render helpers invoked from existing render dispatchers. Two new state fields (`awardsShown`, `notifiedRounds`) and one new config field (`winScore`) extend the existing `pb_tourney_v1` localStorage object. Tests for pure logic are inline `console.assert` blocks gated behind `?test` URL param so the production file stays clean for AirDrop.
 
-**Tech Stack:** Vanilla JS, vanilla CSS, no build step, no deps. Playwright MCP for verification (HTTP server: `python3 -m http.server 8765 --bind 127.0.0.1 -d /Users/kenallred/Documents/dev-projects/rumble`). Spec reference: `docs/superpowers/specs/2026-04-29-pickleball-ux-enhancements-design.md`.
+**Tech Stack:** Vanilla JS, vanilla CSS, no build step, no deps. Playwright MCP for verification (HTTP server: `python3 -m http.server 8765 --bind 127.0.0.1 -d /Users/kenallred/Developer/rumble`). Spec reference: `docs/superpowers/specs/2026-04-29-pickleball-ux-enhancements-design.md`.
 
 **Verification approach:** This project has no formal test framework (single deliverable HTML file, MVP posture). For each task that adds pure logic, we add a `console.assert` block to a `runSelfTests()` function gated by `?test` URL param. For UI/DOM behavior, we verify via playwright MCP screenshots and `browser_evaluate` calls in the same session as the implementation. Each task ends with a commit so the history shows the feature progression.
 
@@ -14,7 +14,7 @@
 
 ## Project conventions reference
 
-- **All edits go into `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html`.** No new files unless specified.
+- **All edits go into `/Users/kenallred/Developer/rumble/pickleball.html`.** No new files unless specified.
 - **CSS additions:** append to the existing `<style>` block (search for the existing `</style>` closing tag and insert above it). Group by feature with section comments.
 - **JS additions:** append helpers near the top of the script block (search for `// ====================== rendering ======================` line — render helpers go below it; pure data helpers go above it, just before the `el()` function).
 - **State changes:** edit `newState()` for defaults, edit `load()` for migration of existing saved state.
@@ -33,7 +33,7 @@ Each task that adds verification will use these patterns:
   Run by visiting `http://127.0.0.1:8765/pickleball.html?test` and checking devtools console for any `Assertion failed:` lines.
 
 - **Playwright UI verification (during this session or future)**:
-  1. Start server: `python3 -m http.server 8765 --bind 127.0.0.1 -d /Users/kenallred/Documents/dev-projects/rumble` (background)
+  1. Start server: `python3 -m http.server 8765 --bind 127.0.0.1 -d /Users/kenallred/Developer/rumble` (background)
   2. Resize: 820×1180 (iPad portrait) or 1180×820 (iPad landscape)
   3. Navigate: `http://127.0.0.1:8765/pickleball.html`
   4. Seed state via `browser_evaluate` if needed
@@ -47,7 +47,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Add the empty `runSelfTests()` function so subsequent tasks can append assertions to it. No behavior change in production mode.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (top of script block)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (top of script block)
 
 - [ ] **Step 1: Add `runSelfTests()` and the `?test` gate**
 
@@ -93,7 +93,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Add the three new fields with safe defaults. Both fresh state and saved state from the previous version must end up with the new fields populated.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (`newState()` function and `load()` function)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (`newState()` function and `load()` function)
 
 - [ ] **Step 1: Update `newState()` to include the new fields**
 
@@ -224,7 +224,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Add a collapsible (default-expanded) `<details>` card under the title on the Setup screen with the spec's rules content.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + `renderSetup()`)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (CSS + `renderSetup()`)
 
 - [ ] **Step 1: Add CSS for the rules block**
 
@@ -323,7 +323,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Add a "Paste 8 names" link above the inputs that opens a modal with a textarea. Parsing accepts newline- or comma-separated, validates exactly-8-unique (case-insensitive), distributes into `state.rawNames`, re-renders.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helper + setup render + modal handler)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (helper + setup render + modal handler)
 
 - [ ] **Step 1: Add `parsePastedNames` pure helper**
 
@@ -512,7 +512,7 @@ Each task that adds verification will use these patterns:
 **Goal:** When user taps "Start Tournament," names visibly cycle through the 8 slots for ~1200ms before locking, with a tap-to-skip overlay. Final assignment is computed up-front.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + helper + `startTournament` integration)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (CSS + helper + `startTournament` integration)
 
 - [ ] **Step 1: Add CSS for the shuffle overlay**
 
@@ -706,7 +706,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Add a small color-coded "→ Partner" chip after each player's name in the Live Standings. Source is `state.rounds[currentRound]` (next-round entry, post-flip). Disappears at round 7 and during finals/done.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helper + standings render integration)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (helper + standings render integration)
 
 - [ ] **Step 1: Add `nextPartnerInfo(slot)` pure helper**
 
@@ -819,7 +819,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Add a small "× 11" pill between team name and score input. Visible only when both scores in that game are null. Tap → fills `state.winScore` and focuses the opponent's input. Pill amount tracks `state.winScore`.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + `renderTeamRow` changes)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (CSS + `renderTeamRow` changes)
 
 - [ ] **Step 1: Add CSS for the quick-fill pill**
 
@@ -959,7 +959,7 @@ Each task that adds verification will use these patterns:
 **Goal:** When the round becomes complete, fire a 2.5s toast and 1.5s shimmer on the next-round button, gated by `state.notifiedRounds`. Fires once per round per tournament, refresh-safe.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + helper + integrate into `renderPlaying` + score-input handler refresh callback)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (CSS + helper + integrate into `renderPlaying` + score-input handler refresh callback)
 
 - [ ] **Step 1: Add CSS for toast + shimmer**
 
@@ -1127,7 +1127,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Render a small "#1", "#4", etc. seed pill before each player name in the Championship and Consolation matchups. Gold-tinted on Championship, silver-tinted on Consolation.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + helper + finals render)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (CSS + helper + finals render)
 
 - [ ] **Step 1: Add CSS for seed pills**
 
@@ -1278,7 +1278,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Make Championship card visually dominant (8px gold border, gold glow, 22px team-name font, 44px score-input font, 20px padding). Add a one-line "Balanced pairing — top seed + 4th vs 2nd + 3rd" caption inside the Championship card. Disable the Crown Champions button when either finals game is tied.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + finals render + Crown gate)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (CSS + finals render + Crown gate)
 
 - [ ] **Step 1: Add CSS for amplified Championship + caption**
 
@@ -1395,7 +1395,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Pure function returning the 8 players in tournament-outcome tier order: champ-W (2) > champ-L (2) > cons-W (2) > cons-L (2). Within tier, season ranking breaks order. Used by the podium and the standings table on the Champions screen.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helper near other compute functions)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (helper near other compute functions)
 
 - [ ] **Step 1: Add `finalRanking()` helper**
 
@@ -1495,7 +1495,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Render a stepped gold/silver/bronze podium for ranks 1–3 from `finalRanking()`. Ranks 4–8 continue in the standings table beneath.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + render)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (CSS + render)
 
 - [ ] **Step 1: Add CSS for the podium**
 
@@ -1673,7 +1673,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Add the pure-function helper that computes the four awards. Renderer comes in Task 12b. Tied candidates for Biggest Win and Closest Game are tracked as arrays so all tied teams render comma-separated.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helper + tests)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (helper + tests)
 
 - [ ] **Step 1: Add `computeAwards()` pure helper**
 
@@ -1856,7 +1856,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Render the four computed awards as 2×2 chips below the podium.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (CSS + render integration)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (CSS + render integration)
 
 - [ ] **Step 1: Add CSS for the awards strip**
 
@@ -1965,7 +1965,7 @@ Each task that adds verification will use these patterns:
 **Goal:** A 2-second canvas confetti burst fires the first time `phase === "done"` is rendered with `awardsShown === false`. Sets `awardsShown = true` and saves; subsequent renders don't refire.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helper + integration into `renderDoneScreen`)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (helper + integration into `renderDoneScreen`)
 
 - [ ] **Step 1: Add `runConfetti()` helper**
 
@@ -2069,7 +2069,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Add a "How this works" button at the top of the settings modal that opens a sub-modal with the same content as the Setup-screen rules block.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (handler + settings render)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (handler + settings render)
 
 - [ ] **Step 1: Refactor rules content into a shared array**
 
@@ -2177,7 +2177,7 @@ Each task that adds verification will use these patterns:
 **Goal:** A small `<select>` in Settings labeled "Win score" with options 11/15/21, bound to `state.winScore`. Updates immediately propagate to round-screen pill labels.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (`openSettings` + CSS)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (`openSettings` + CSS)
 
 - [ ] **Step 1: Add CSS for the inline select**
 
@@ -2257,7 +2257,7 @@ Each task that adds verification will use these patterns:
 **Goal:** A button in Settings (visible only when `phase !== "setup"`) that opens a sub-modal listing all 7 rounds with both court matchups and any entered scores. When phase is finals or done, also append the Championship and Consolation matchups.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (handler + settings render + CSS)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (handler + settings render + CSS)
 
 - [ ] **Step 1: Add CSS for the schedule modal**
 
@@ -2397,7 +2397,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Pull the schedule + court-flip generation out of `startTournament` into a named helper so the upcoming Reset Tournament path doesn't duplicate it. Pure refactor — no behavior change.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (helper + `startTournament` body)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (helper + `startTournament` body)
 
 - [ ] **Step 1: Add the `generateRounds()` helper**
 
@@ -2461,7 +2461,7 @@ Each task that adds verification will use these patterns:
 **Goal:** Replace the existing single Reset button with two: Reset Tournament (preserves names + winScore, hidden in setup) and Clear All (full wipe). Uses the `generateRounds()` helper from Task 17.
 
 **Files:**
-- Modify: `/Users/kenallred/Documents/dev-projects/rumble/pickleball.html` (handler in `openSettings`)
+- Modify: `/Users/kenallred/Developer/rumble/pickleball.html` (handler in `openSettings`)
 
 - [ ] **Step 1: Replace the existing reset button with two-tier logic**
 
