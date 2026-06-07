@@ -2229,6 +2229,160 @@ function runSelfTests() {
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
+
+// -------- tournament simulation (gated by ?simulate URL param) --------
+// Plays full random RR tournaments end-to-end through the real UI components:
+// score entry via real input events on renderPlaying()'s score inputs, then the
+// rendered Live Standings table is checked after EVERY round against an
+// independent recomputation (shared with nothing in computeStats/rankPlayers),
+// through buildFinals seeding and the done screen's Final Standings.
+// User data is snapshotted and restored — safe to run with a tournament saved.
+function runSimulation() {
+  const TOURNAMENTS = 3;
+  let failures = 0;
+  const _origAssert = console.assert.bind(console);
+  console.assert = (cond, ...rest) => { if (!cond) failures++; _origAssert(cond, ...rest); };
+
+  const savedState = state;
+  const savedStore = {};
+  for (const k of [STORAGE_KEY, "pb_durations_v1", "pb_calibration_v1"]) savedStore[k] = localStorage.getItem(k);
+
+  // Independent expectations from the scores the simulation entered, following
+  // the documented ranking rules: points → wins → diff → h2h → tiebreakRandom.
+  function expectedTable(games, tieRand) {
+    const st = {};
+    for (let s = 1; s <= 8; s++) st[s] = { slot: s, pts: 0, w: 0, l: 0, diff: 0 };
+    for (const g of games) {
+      const t1w = g.s1 > g.s2, t2w = g.s2 > g.s1;
+      for (const s of g.t1) { st[s].pts += g.s1; st[s].diff += g.s1 - g.s2; if (t1w) st[s].w++; if (t2w) st[s].l++; }
+      for (const s of g.t2) { st[s].pts += g.s2; st[s].diff += g.s2 - g.s1; if (t2w) st[s].w++; if (t1w) st[s].l++; }
+    }
+    const h2h = (a, b) => {                       // regular rounds only, like headToHead()
+      let d = 0;
+      for (const g of games) {
+        if (g.final) continue;
+        if (g.t1.includes(a) && g.t2.includes(b)) d += g.s1 - g.s2;
+        else if (g.t2.includes(a) && g.t1.includes(b)) d += g.s2 - g.s1;
+      }
+      return d;
+    };
+    return Object.values(st).sort((x, y) =>
+      y.pts - x.pts || y.w - x.w || y.diff - x.diff || -h2h(x.slot, y.slot) ||
+      (tieRand.indexOf(x.slot - 1) - tieRand.indexOf(y.slot - 1)));
+  }
+
+  const fmtDiff = d => (d > 0 ? "+" : "") + d;
+  const randScore = () => Math.random() < 0.2
+    ? (w => [w, w - 2])(12 + Math.floor(Math.random() * 4))   // overtime
+    : [11, Math.floor(Math.random() * 11)];
+
+  // Enter a game's score through the real input handlers and record it.
+  function enterGame(inputs, idx, game, entered, isFinal) {
+    const [w, l] = randScore();
+    const t1wins = Math.random() < 0.5;
+    const s1 = t1wins ? w : l, s2 = t1wins ? l : w;
+    inputs[idx].value = String(s1);
+    inputs[idx].dispatchEvent(new Event("input"));
+    inputs[idx + 1].value = String(s2);
+    inputs[idx + 1].dispatchEvent(new Event("input"));
+    entered.push({ t1: game.team1.slice(), t2: game.team2.slice(), s1, s2, final: !!isFinal });
+  }
+
+  // Compare a rendered standings table against an expected row list.
+  function checkTable(root, expected, label) {
+    const rows = Array.from(root.querySelectorAll("table.standings tbody tr"))
+      .filter(tr => tr.cells.length > 1)          // skip tier-divider rows
+      .map(tr => ({
+        name: tr.cells[1].childNodes[0].textContent,
+        pts: tr.cells[2].textContent, w: tr.cells[3].textContent, diff: tr.cells[4].textContent,
+      }));
+    console.assert(rows.length === 8, label + ": 8 rows", rows.length);
+    expected.forEach((e, i) => {
+      const r = rows[i] || {};
+      console.assert(
+        r.name === e.name && r.pts === String(e.pts) && r.w === String(e.w) && r.diff === fmtDiff(e.diff),
+        label + " row " + (i + 1), { got: r, want: e });
+    });
+  }
+
+  for (let t = 1; t <= TOURNAMENTS; t++) {
+    state = newState();
+    state.format = "rr";
+    state.rawNames = ["Ava", "Ben", "Cy", "Dee", "Eli", "Fay", "Gus", "Hal"];
+    // Mirror startTournament's RR branch without the shuffle-reveal overlay.
+    state.slots = shuffle(state.rawNames);
+    state.tiebreakRandom = shuffle([0, 1, 2, 3, 4, 5, 6, 7]);
+    state.rounds = generateRounds();
+    state.currentRound = 1;
+    state.phase = "playing";
+    state.notifiedRounds = [1, 2, 3, 4, 5, 6, 7]; // suppress round-complete toasts
+    state.awardsShown = true;                     // suppress done-screen confetti
+    const tieRand = state.tiebreakRandom;
+    const entered = [];
+
+    for (let r = 1; r <= 7; r++) {
+      const wrap = renderPlaying();               // real round screen, detached
+      const inputs = wrap.querySelectorAll(".score-input"); // c1.t1, c1.t2, c2.t1, c2.t2
+      const round = state.rounds[r - 1];
+      enterGame(inputs, 0, round.court1, entered);
+      enterGame(inputs, 2, round.court2, entered);
+
+      const exp = expectedTable(entered, tieRand)
+        .map(e => ({ ...e, name: nameOf(e.slot) }));
+      checkTable(wrap, exp, `T${t} R${r}`);
+      const winCredits = exp.reduce((a, e) => a + e.w, 0);
+      console.assert(winCredits === 4 * r, `T${t} R${r}: win-credits = 4×rounds`, winCredits);
+      const subtitle = Array.from(wrap.querySelectorAll("span.muted"))
+        .map(el => el.textContent).find(s => /^Through /.test(s));
+      console.assert(subtitle === "Through " + r + " round" + (r > 1 ? "s" : ""),
+        `T${t} R${r}: subtitle`, subtitle);
+      if (r < 7) state.currentRound++;            // RR advance is currentRound++ (see renderPlaying)
+    }
+
+    // Finals seeding from the real buildFinals(), checked against season order.
+    buildFinals();
+    const season = expectedTable(entered, tieRand).map(e => e.slot);
+    console.assert(
+      JSON.stringify(state.finals.championship.team1) === JSON.stringify([season[0], season[3]]) &&
+      JSON.stringify(state.finals.championship.team2) === JSON.stringify([season[1], season[2]]) &&
+      JSON.stringify(state.finals.consolation.team1) === JSON.stringify([season[4], season[7]]) &&
+      JSON.stringify(state.finals.consolation.team2) === JSON.stringify([season[5], season[6]]),
+      `T${t}: finals seeding 1+4 vs 2+3 / 5+8 vs 6+7`, state.finals, season);
+
+    const finalsWrap = renderFinalsScreen();
+    const fInputs = finalsWrap.querySelectorAll(".score-input"); // champ t1,t2; cons t1,t2
+    enterGame(fInputs, 0, state.finals.championship, entered, true);
+    enterGame(fInputs, 2, state.finals.consolation, entered, true);
+
+    // Done screen: values include finals; row order is tournament-tier based.
+    state.phase = "done";
+    const doneWrap = renderDoneScreen();
+    const withFinals = expectedTable(entered, tieRand);
+    const bySlot = new Map(withFinals.map(e => [e.slot, e]));
+    const seasonRank = new Map(season.map((s, i) => [s, i]));
+    const f = state.finals;
+    const champWin = f.championship.score1 > f.championship.score2 ? f.championship.team1 : f.championship.team2;
+    const champLose = f.championship.score1 > f.championship.score2 ? f.championship.team2 : f.championship.team1;
+    const consWin = f.consolation.score1 > f.consolation.score2 ? f.consolation.team1 : f.consolation.team2;
+    const consLose = f.consolation.score1 > f.consolation.score2 ? f.consolation.team2 : f.consolation.team1;
+    const tierOrder = [champWin, champLose, consWin, consLose]
+      .flatMap(team => team.slice().sort((a, b) => seasonRank.get(a) - seasonRank.get(b)));
+    const expFinal = tierOrder.map(s => ({ ...bySlot.get(s), name: nameOf(s) }));
+    checkTable(doneWrap, expFinal, `T${t} final standings`);
+    const winnersText = doneWrap.querySelector(".winners");
+    console.assert(winnersText && winnersText.textContent === teamName(champWin),
+      `T${t}: champions banner`, winnersText && winnersText.textContent);
+    console.log(`[simulate] tournament ${t}: ${failures === 0 ? "all rounds verified" : "see failures above"}`);
+  }
+
+  for (const k in savedStore) {
+    if (savedStore[k] === null) localStorage.removeItem(k);
+    else localStorage.setItem(k, savedStore[k]);
+  }
+  state = savedState;
+  console.log(`[simulate] complete — ${failures} failure(s) across ${TOURNAMENTS} tournaments`);
+  console.assert = _origAssert;
+}
 let state = load() || newState();
 
 function newState() {
@@ -2640,6 +2794,9 @@ const KeepAwake = {
 
 if (typeof location !== "undefined" && location.search.includes("test")) {
   queueMicrotask(runSelfTests);
+}
+if (typeof location !== "undefined" && location.search.includes("simulate")) {
+  queueMicrotask(runSimulation);
 }
 
 let _keepAwakeToastShown = false;
