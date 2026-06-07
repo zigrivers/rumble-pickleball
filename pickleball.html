@@ -2226,6 +2226,26 @@ function runSelfTests() {
     console.assert(badConsecutive === 0, "whist: no foursome repeats on consecutive rounds", { badConsecutive });
   }
 
+  // Finals court cards must identify the physical court to play on
+  // (championship → court 1 surface, consolation → court 2).
+  {
+    const saved = state;
+    state = {
+      phase: "finals", format: "rr",
+      slots: ["A","B","C","D","E","F","G","H"],
+      winScore: 11, winBy: 2, scoringSystem: "sideout",
+    };
+    const game = () => ({ team1: [1,2], team2: [3,4], score1: null, score2: null });
+    console.assert(/South Court/i.test(renderCourtCard(game(), "champ", [], null).textContent),
+      "championship card names South Court (rr)");
+    console.assert(/North Court/i.test(renderCourtCard(game(), "cons", [], null).textContent),
+      "consolation card names North Court (rr)");
+    state.format = "king";
+    console.assert(/King's Court/i.test(renderCourtCard(game(), "champ", [], null).textContent),
+      "championship card names King's Court (king)");
+    state = saved;
+  }
+
   // Diagnostics button path — runSimulation must return its failure count (0 on
   // correct code). Its internal asserts chain through this suite's counter too.
   {
@@ -5598,6 +5618,13 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
     const winByWord = state.winBy === 1 ? "win by 1" : "win by 2";
     card.appendChild(el("div", { class: "court-score-desc" },
       scoringWord + " to " + state.winScore + " · " + winByWord));
+  } else {
+    // Finals: tell players which physical court to walk to. Championship gets
+    // the court-1 surface, consolation court 2, using the format's court names.
+    const courtName = courtKey === "champ"
+      ? ({ stack: "Court 1", king: "King's Court", gauntlet: "Court 1 (Top)" }[state.format] || "South Court")
+      : ({ stack: "Court 2", king: "Bottom Court", gauntlet: "Court 2" }[state.format] || "North Court");
+    card.appendChild(el("div", { class: "court-score-desc" }, "📍 Play on " + courtName));
   }
   if (courtKey === "champ") {
     card.appendChild(el("div", { class: "pairing-caption" },
