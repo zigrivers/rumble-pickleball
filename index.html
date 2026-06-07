@@ -7624,6 +7624,62 @@ setInterval(() => {
 }, 1000);
 
 render();
+
+// ---------- PWA: service worker registration + update chip ----------
+// Register on secure contexts: https in production, and localhost/127.0.0.1 for
+// local testing (both are valid SW secure contexts). file:// is excluded, so
+// AirDrop use is unaffected (SW won't register there; the local file still runs).
+// Uses the existing top-level el() DOM helper defined earlier in this file.
+{
+  const _host = location.hostname;
+  const _swOk = "serviceWorker" in navigator &&
+    (location.protocol === "https:" || _host === "localhost" || _host === "127.0.0.1" || _host === "[::1]");
+  if (_swOk) {
+    // Reload only when an UPDATE takes control — never on first-load claim().
+    // hadController is false on a fresh first visit (clients.claim() fires
+    // controllerchange then, which must NOT reload), true once controlled.
+    const hadController = !!navigator.serviceWorker.controller;
+    let _pwaReloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (hadController && !_pwaReloaded) { _pwaReloaded = true; location.reload(); }
+    });
+
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      function showUpdateChip(worker) {
+        if (document.getElementById("pwa-update-chip")) return;
+        const chip = el("button", {
+          id: "pwa-update-chip",
+          style: "position:fixed;left:50%;bottom:16px;transform:translateX(-50%);" +
+            "z-index:300;background:var(--accent);color:#1a1207;border:none;" +
+            "border-radius:999px;padding:10px 18px;font-weight:600;font-size:14px;" +
+            "box-shadow:0 4px 16px rgba(0,0,0,.4);cursor:pointer;",
+        }, "🆕 New version — tap to update");
+        chip.addEventListener("click", () => {
+          chip.disabled = true;
+          worker.postMessage("skipWaiting");
+        });
+        document.body.appendChild(chip);
+      }
+      // Show the chip once a NEW worker is installed alongside an active controller.
+      function trackWorker(worker) {
+        if (!worker) return;
+        if (worker.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdateChip(worker);
+          return;
+        }
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdateChip(worker);
+          }
+        });
+      }
+      // Cover all three sources: one already waiting, one mid-install, future updates.
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateChip(reg.waiting);
+      trackWorker(reg.installing);
+      reg.addEventListener("updatefound", () => trackWorker(reg.installing));
+    });
+  }
+}
 </script>
 </body>
 </html>
