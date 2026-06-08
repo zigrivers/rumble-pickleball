@@ -5685,6 +5685,7 @@ function renderDoneScreenCrown() {
     }
   }, "Start New Tournament"));
 
+  wrap.appendChild(renderTextResultsCard("final"));
   return wrap;
 }
 
@@ -6994,6 +6995,42 @@ function runConfetti() {
   requestAnimationFrame(frame);
 }
 
+function renderTextResultsCard(mode) {
+  const card = el("div", { class: "card" });
+  card.appendChild(el("h3", { style: "margin:0 0 10px;" },
+    mode === "final" ? "📱 Text results" : "📱 Text standings"));
+  if (!textResultsSupported()) {
+    card.appendChild(el("p", { class: "muted", style: "margin:0;" },
+      "Texting results isn't available for this format yet."));
+    return card;
+  }
+  const btnStyle = "display:inline-block;text-decoration:none;background:var(--accent);" +
+    "color:#1a1207;border:none;border-radius:8px;padding:6px 12px;font-weight:600;font-size:13px;cursor:pointer;";
+  const count = state.slots.filter(Boolean).length;
+  for (let slot = 1; slot <= count; slot++) {
+    const phone = (state.phones || [])[slot - 1];
+    const row = el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" });
+    row.appendChild(el("div", { style: "flex:1;" }, nameOf(slot)));
+    if (isValidPhone(phone)) {
+      const body = buildResultsMessage(slot, mode);
+      row.appendChild(el("a", { href: smsHref(phone, body), style: btnStyle }, "Text"));
+      const copyBtn = el("button", { style: btnStyle + "background:var(--panel);color:var(--text);" }, "Copy");
+      copyBtn.addEventListener("click", () => {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(body).then(
+            () => showToast("Copied " + nameOf(slot) + "'s recap"),
+            () => showToast("Copy failed — long-press the Text draft instead"));
+        }
+      });
+      row.appendChild(copyBtn);
+    } else {
+      row.appendChild(el("span", { class: "muted" }, "no number"));
+    }
+    card.appendChild(row);
+  }
+  return card;
+}
+
 function renderDoneScreen() {
   if (state.format === "crown") return renderDoneScreenCrown();
   const wrap = el("div");
@@ -7158,6 +7195,7 @@ function renderDoneScreen() {
     : "Within each tier, season points → wins → differential break ties.";
   finalCard.appendChild(el("p", { class: "standings-footer" }, footerText));
   wrap.appendChild(finalCard);
+  wrap.appendChild(renderTextResultsCard("final"));
 
   wrap.appendChild(el("button", {
     class: "ghost",
