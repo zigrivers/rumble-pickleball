@@ -2291,6 +2291,20 @@ function runSelfTests() {
     if (saved !== null) localStorage.setItem(ROSTER_KEY, saved); else localStorage.removeItem(ROSTER_KEY);
   }
 
+  // Task TR3 — phone state migration
+  {
+    const legacy = { phase: "setup", rawNames: ["A","B","C","D","E","F","G","H"], slots: ["","","","","","","",""] };
+    const m = backfillStateDefaults(legacy);
+    console.assert(Array.isArray(m.rawPhones) && m.rawPhones.length === 8 && m.rawPhones.every(p => p === ""),
+      "migration adds rawPhones length 8", m.rawPhones);
+    console.assert(Array.isArray(m.phones) && m.phones.length === 8 && m.phones.every(p => p === ""),
+      "migration adds phones length 8", m.phones);
+    const legacy4 = { phase: "setup", rawNames: ["A","B","C","D"], slots: ["A","B","C","D"] };
+    const m4 = backfillStateDefaults(legacy4);
+    console.assert(m4.rawPhones.length === 4 && m4.phones.length === 4,
+      "migration sizes arrays to existing player count", m4.rawPhones, m4.phones);
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -2459,6 +2473,7 @@ function newState() {
     kingRounds:     9,                                  // only used when format === "king"
     gauntletRounds: 8,                                  // only used when format === "gauntlet"
     rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle, used on setup screen; always 8 elements
+    rawPhones: ["", "", "", "", "", "", "", ""],     // parallel to rawNames; optional cell numbers
     slots:    ["", "", "", "", "", "", "", ""],      // post-shuffle, slot index 0..7 = slot 1..8; always 8 elements
     currentRound: 1,
     rounds: [],                                      // populated on Start
@@ -2522,6 +2537,8 @@ function backfillStateDefaults(obj) {
     if (!m.theme && CROWN_SCHEDULE[mi]) m.theme = CROWN_SCHEDULE[mi].theme;
   });
   if (obj.crownFinal && !obj.crownFinal.theme) obj.crownFinal.theme = "Crown";
+  if (!Array.isArray(obj.rawPhones)) obj.rawPhones = Array((obj.rawNames || []).length || 8).fill("");
+  if (!Array.isArray(obj.phones))    obj.phones    = Array((obj.slots    || []).length || 8).fill("");
   // timeBudget backfill
   if (!obj.timeBudget || typeof obj.timeBudget !== "object") {
     obj.timeBudget = {
