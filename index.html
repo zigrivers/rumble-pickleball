@@ -5794,6 +5794,14 @@ function renderPlaying() {
   let standingsCard = renderStandingsCard(state.rounds.length, standingsOpts());
   wrap.appendChild(standingsCard);
 
+  // Mid-event recap (RR/Gauntlet only, once at least one round is complete).
+  if (textResultsSupported()) {
+    const completedRounds = state.rounds.filter(isRoundComplete).length;
+    if (completedRounds >= 1) {
+      wrap.appendChild(renderTextResultsCard({ throughRound: completedRounds }));
+    }
+  }
+
   // history
   const history = renderHistory(state.currentRound);
   if (history) wrap.appendChild(history);
