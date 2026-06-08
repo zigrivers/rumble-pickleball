@@ -788,6 +788,17 @@
     50%  { box-shadow: 0 0 24px 6px rgba(251, 191, 36, 0.5); }
     100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
   }
+  /* Honor reduced-motion: collapse CSS animations/transitions (shimmer, toasts,
+     toggle slides). JS-driven motion (shuffle reveal, confetti) is gated
+     separately via prefersReducedMotion(). */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
   /* Finals seed pills */
   .seed-pill {
     display: inline-block;
@@ -3073,8 +3084,17 @@ function shuffle(arr) {
   return a;
 }
 
+function prefersReducedMotion() {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function runShuffleReveal(finalSlots, onDone, opts) {
   opts = opts || {};
+  // Reduced-motion: skip the reveal animation and go straight to the result.
+  // Defer onDone (like the animated path's setTimeout) so any synchronous work
+  // after the runShuffleReveal call — e.g. startTournament deriving state.phones
+  // and saving roster entries — completes before the first render.
+  if (prefersReducedMotion()) { queueMicrotask(onDone); return; }
   const overlay = el("div", { class: "shuffle-overlay" });
   overlay.appendChild(el("div", { class: "shuffle-title" }, opts.title || "Drawing slots…"));
   const cells = [];
@@ -4390,6 +4410,37 @@ function canStart() {
   return true;
 }
 
+// Human-readable reason the Start button is disabled (empty string = ready).
+function startBlockReason() {
+  if (!state) return "";
+  const count = state.format === "crown" ? 4 : 8;
+  const trimmed = (state.rawNames || []).slice(0, count).map(n => (n || "").trim());
+  const filled = trimmed.filter(Boolean).length;
+  if (filled < count) return "Enter all " + count + " player names to start (" + filled + "/" + count + " so far).";
+  const seen = new Set();
+  for (const n of trimmed) {
+    const k = n.toLowerCase();
+    if (seen.has(k)) return "Duplicate name: “" + n + "”. Each player needs a unique name.";
+    seen.add(k);
+  }
+  if (state.timeBudget && state.timeBudget.enabled && !state.timeBudget.plannedConfig)
+    return "Pick an event time for the time budget (or turn it off).";
+  return "";
+}
+
+// Keep the Start button + its hint in sync without a full re-render.
+function updateStartState() {
+  if (!state) return;
+  const btn = document.getElementById("start-btn");
+  if (btn) btn.disabled = !canStart();
+  const hint = document.getElementById("start-hint");
+  if (hint) {
+    const reason = startBlockReason();
+    hint.textContent = reason;
+    hint.style.display = reason ? "" : "none";
+  }
+}
+
 const RULES_RR = [
   "8 players, 2 courts, doubles. Every round, all 8 play.",
   "7 rounds, one per partner — you'll partner every other player exactly once and face every player exactly twice, with a fresh foursome on your court every round.",
@@ -4708,6 +4759,10 @@ function applyTimeBudgetSolve() {
     isTight = config.preset === "Sprint";
   }
 
+  // plannedConfig affects canStart() — keep the setup Start button/hint in sync
+  // (no-ops when the setup screen isn't mounted, e.g. the settings modal).
+  updateStartState();
+
   return { config, error, isTight, suggestion };
 }
 
@@ -4827,6 +4882,31 @@ function showRallyAckDialog(onConfirm, onCancel) {
   // Escape on this forced-choice dialog means "keep current setting" — route it
   // through the same cancel path as the button so state stays consistent.
   mountModal(bg, modal, { onEscape: cancel });
+}
+
+// Themed replacement for window.confirm(): runs onConfirm only if the user
+// confirms. Escape / Cancel / backdrop all dismiss without confirming.
+function showConfirm(message, onConfirm, opts) {
+  opts = opts || {};
+  const bg = el("div", { class: "modal-bg" });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, opts.title || "Are you sure?"));
+  modal.appendChild(el("p", null, message));
+  const confirmBtn = el("button", {
+    class: opts.danger ? "danger" : "primary",
+    style: "width:100%;margin-bottom:8px;",
+  }, opts.confirmText || "Confirm");
+  const cancelBtn = el("button", { style: "width:100%;" }, opts.cancelText || "Cancel");
+  // Cancel = dismiss with no side effects. Confirm / Cancel / Escape (handled by
+  // mountModal's default) / backdrop click all dismiss; only Confirm runs onConfirm.
+  const cancel = () => { bg.remove(); };
+  confirmBtn.addEventListener("click", () => { bg.remove(); onConfirm(); });
+  cancelBtn.addEventListener("click", cancel);
+  bg.addEventListener("click", (e) => { if (e.target === bg) cancel(); });
+  modal.appendChild(confirmBtn);
+  modal.appendChild(cancelBtn);
+  bg.appendChild(modal);
+  mountModal(bg, modal);
 }
 
 function renderTimeBudgetBlock() {
@@ -4989,6 +5069,7 @@ function renderTimeBudgetBlock() {
     } else {
       state.timeBudget.plannedConfig = null;
       save();
+      updateStartState();
     }
   });
 
@@ -5061,8 +5142,7 @@ function renderSetup() {
         _phoneAutofilled[i] = !!filled;
       }
       save();
-      const btn = document.getElementById("start-btn");
-      if (btn) btn.disabled = !canStart();
+      updateStartState();
     });
     phoneInput.addEventListener("input", () => {
       state.rawPhones[i] = phoneInput.value;
@@ -5085,6 +5165,15 @@ function renderSetup() {
 
   wrap.appendChild(card);
   wrap.appendChild(startBtn);
+  const startHint = el("div", {
+    id: "start-hint",
+    class: "muted",
+    style: "text-align:center;margin-top:8px;font-size:13px;",
+  });
+  const initialReason = startBlockReason();
+  startHint.textContent = initialReason;
+  startHint.style.display = initialReason ? "" : "none";
+  wrap.appendChild(startHint);
   return wrap;
 }
 
@@ -5859,7 +5948,7 @@ function renderDoneScreenCrown() {
   wrap.appendChild(el("button", {
     class: "primary", style: "width:100%;",
     onclick: () => {
-      if (confirm("Start a new tournament? This clears all scores and names.")) {
+      showConfirm("Start a new tournament? This clears all scores and names.", () => {
         const keptKeepAwake = state.keepAwake;
         const keptKeepAwakeAggressive = state.keepAwakeAggressive;
         state = newState();
@@ -5867,7 +5956,7 @@ function renderDoneScreenCrown() {
         state.keepAwakeAggressive = keptKeepAwakeAggressive;
         syncKeepAwakeToState();
         save(); render();
-      }
+      }, { title: "Start new tournament", confirmText: "Start new", danger: true });
     }
   }, "Start New Tournament"));
 
@@ -6149,6 +6238,12 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
     value: Number.isInteger(game[scoreKey]) ? String(game[scoreKey]) : "",
     "aria-label": "Score for " + nameOf(team[0]) + " and " + nameOf(team[1]),
   });
+  // Normalize the displayed value to the recorded integer on blur, so a stray
+  // "-5"/"7.5" left in the field (rejected or truncated when parsed) doesn't
+  // linger visually out of sync with the recorded score.
+  input.addEventListener("blur", () => {
+    input.value = Number.isInteger(game[scoreKey]) ? String(game[scoreKey]) : "";
+  });
   input.addEventListener("input", () => {
     const v = input.value.trim();
     if (v === "") {
@@ -6221,6 +6316,9 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
     }, "× " + quickFillTarget);
     pill.addEventListener("click", () => {
       game[scoreKey] = quickFillTarget;
+      // Reflect the value into this team's own input — refreshes don't re-render
+      // the court cards, so without this the box stayed blank after a tap.
+      input.value = String(quickFillTarget);
       save();
       refreshes.forEach(fn => fn());
       // Focus the opponent's input so the user can type the loser's score.
@@ -7151,6 +7249,7 @@ function renderAwardsStrip() {
 }
 
 function runConfetti() {
+  if (prefersReducedMotion()) return;   // honor reduced-motion: no confetti
   const canvas = el("canvas", {
     style: "position: fixed; inset: 0; z-index: 90; pointer-events: none;"
   });
@@ -7425,7 +7524,7 @@ function renderDoneScreen() {
     class: "primary",
     style: "width: 100%;",
     onclick: () => {
-      if (confirm("Start a new tournament? This clears all scores and names.")) {
+      showConfirm("Start a new tournament? This clears all scores and names.", () => {
         const keptKeepAwake = state.keepAwake;
         const keptKeepAwakeAggressive = state.keepAwakeAggressive;
         state = newState();
@@ -7433,7 +7532,7 @@ function renderDoneScreen() {
         state.keepAwakeAggressive = keptKeepAwakeAggressive;
         syncKeepAwakeToState();
         save(); render();
-      }
+      }, { title: "Start new tournament", confirmText: "Start new", danger: true });
     }
   }, "Start New Tournament"));
 
@@ -7964,9 +8063,10 @@ function openSettings() {
   modal.appendChild(rosterWrap);
   const clearNumsBtn = el("button", { class: "secondary", style: "width:100%;margin-top:6px;" }, "Clear all saved numbers");
   clearNumsBtn.addEventListener("click", () => {
-    if (!confirm("Delete all saved phone numbers?")) return;
-    clearRoster();
-    refreshRoster();
+    showConfirm("Delete all saved phone numbers?", () => {
+      clearRoster();
+      refreshRoster();
+    }, { title: "Delete saved numbers", confirmText: "Delete", danger: true });
   });
   modal.appendChild(clearNumsBtn);
   modal.appendChild(el("p", { class: "muted", style: "margin:8px 0 0;font-size:13px;" },
@@ -8002,35 +8102,36 @@ function openSettings() {
         const msg = inSetup
           ? "Switch to " + f.label + "?"
           : "Switch to " + f.label + "? This wipes the current tournament (names are kept).";
-        if (!confirm(msg)) return;
-        if (inSetup) {
-          state.format = f.id;
-        } else {
-          const keptNames = state.rawNames.slice();
-          const keptWinScore = state.winScore;
-          const keptWinBy = state.winBy;
-          const keptScoringSystem = state.scoringSystem;
-          const keptStackRounds = state.stackRounds;
-          const keptKingRounds = state.kingRounds;
-          const keptGauntletRounds = state.gauntletRounds;
-          const keptKeepAwake = state.keepAwake;
-          const keptKeepAwakeAggressive = state.keepAwakeAggressive;
-          state = newState();
-          state.rawNames = keptNames;
-          state.winScore = keptWinScore;
-          state.winBy = keptWinBy;
-          state.scoringSystem = keptScoringSystem;
-          state.format = f.id;
-          state.stackRounds = keptStackRounds;
-          state.kingRounds = keptKingRounds;
-          state.gauntletRounds = keptGauntletRounds;
-          state.keepAwake = keptKeepAwake;
-          state.keepAwakeAggressive = keptKeepAwakeAggressive;
-          syncKeepAwakeToState();
-        }
-        save();
-        close();
-        render();
+        showConfirm(msg, () => {
+          if (inSetup) {
+            state.format = f.id;
+          } else {
+            const keptNames = state.rawNames.slice();
+            const keptWinScore = state.winScore;
+            const keptWinBy = state.winBy;
+            const keptScoringSystem = state.scoringSystem;
+            const keptStackRounds = state.stackRounds;
+            const keptKingRounds = state.kingRounds;
+            const keptGauntletRounds = state.gauntletRounds;
+            const keptKeepAwake = state.keepAwake;
+            const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+            state = newState();
+            state.rawNames = keptNames;
+            state.winScore = keptWinScore;
+            state.winBy = keptWinBy;
+            state.scoringSystem = keptScoringSystem;
+            state.format = f.id;
+            state.stackRounds = keptStackRounds;
+            state.kingRounds = keptKingRounds;
+            state.gauntletRounds = keptGauntletRounds;
+            state.keepAwake = keptKeepAwake;
+            state.keepAwakeAggressive = keptKeepAwakeAggressive;
+            syncKeepAwakeToState();
+          }
+          save();
+          close();
+          render();
+        }, { title: "Switch format", confirmText: "Switch", danger: !inSetup });
       },
     }, "Switch to " + f.label));
   });
@@ -8043,7 +8144,7 @@ function openSettings() {
       onclick: () => {
         const isCrown = state.format === "crown";
         const playerCount = isCrown ? 4 : 8;
-        if (!confirm("Reset scores and re-shuffle the schedule? Your " + playerCount + " names will be kept.")) return;
+        showConfirm("Reset scores and re-shuffle the schedule? Your " + playerCount + " names will be kept.", () => {
         const keptNames = state.slots.slice();
         const keptWinScore = state.winScore;
         const keptWinBy = state.winBy;
@@ -8091,6 +8192,7 @@ function openSettings() {
         save();
         close();
         render();
+        }, { title: "Reset tournament", confirmText: "Reset", danger: true });
       }
     }, "Reset Tournament"));
   }
@@ -8100,17 +8202,18 @@ function openSettings() {
     class: "danger",
     style: "width: 100%; margin-top: 8px;",
     onclick: () => {
-      if (!confirm("Clear all data including names? This can't be undone.")) return;
-      clearRoster();
-      const keptKeepAwakeClear = state.keepAwake;
-      const keptKeepAwakeAggressiveClear = state.keepAwakeAggressive;
-      state = newState();
-      state.keepAwake = keptKeepAwakeClear;
-      state.keepAwakeAggressive = keptKeepAwakeAggressiveClear;
-      syncKeepAwakeToState();
-      save();
-      close();
-      render();
+      showConfirm("Clear all data including names? This can't be undone.", () => {
+        clearRoster();
+        const keptKeepAwakeClear = state.keepAwake;
+        const keptKeepAwakeAggressiveClear = state.keepAwakeAggressive;
+        state = newState();
+        state.keepAwake = keptKeepAwakeClear;
+        state.keepAwakeAggressive = keptKeepAwakeAggressiveClear;
+        syncKeepAwakeToState();
+        save();
+        close();
+        render();
+      }, { title: "Clear all data", confirmText: "Clear all", danger: true });
     }
   }, "Clear All"));
 
