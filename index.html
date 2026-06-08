@@ -1307,12 +1307,11 @@ function projectFinishTime(state, calibration, nowTs) {
   const config = state.timeBudget.plannedConfig;
   if (!config || !Array.isArray(state.rounds)) return null;
 
+  // A tied round is still in progress, so it stays in the remaining-round
+  // estimate until it's decided.
   let completedRounds = 0;
   for (const r of state.rounds) {
-    if (Number.isInteger(r.court1?.score1) && Number.isInteger(r.court1?.score2) &&
-        Number.isInteger(r.court2?.score1) && Number.isInteger(r.court2?.score2)) {
-      completedRounds++;
-    }
+    if (isGameDecided(r.court1) && isGameDecided(r.court2)) completedRounds++;
   }
 
   const remainingRounds = Math.max(0, state.rounds.length - completedRounds);
@@ -2424,6 +2423,23 @@ function runSelfTests() {
     console.assert(won[a-1].partnersUsed.has(b) && won[a-1].points === 11 && won[a-1].wins === 1,
       "audit2: a decided game counts partners/points/win");
 
+    // Stack & King: a tied game adds nothing to Stack Score / King Score; a
+    // decided game does.
+    for (const fmt of ["stack", "king"]) {
+      state.format = fmt;
+      state.slots = state.rawNames.slice();
+      state.rounds = [fmt === "stack" ? assignInitialStackCourts() : assignInitialKingCourts()];
+      const compute = fmt === "stack" ? computeStackStats : computeKingStats;
+      const scoreOf = s => (fmt === "stack" ? s.stackScore : s.kingScore);
+      const g = state.rounds[0].court1;
+      g.score1 = 9; g.score2 = 9;   // tie
+      const tieSum = compute(state.rounds.length).reduce((acc, s) => acc + scoreOf(s), 0);
+      console.assert(tieSum === 0, "audit2: " + fmt + " tied game adds no score", tieSum);
+      g.score1 = 11;                // 11-9 decided
+      const winSum = compute(state.rounds.length).reduce((acc, s) => acc + scoreOf(s), 0);
+      console.assert(winSum > 0, "audit2: " + fmt + " decided game scores", winSum);
+    }
+
     state = savedState;
   }
 
@@ -3181,7 +3197,10 @@ function computeStackStats(throughRound) {
         if (courtKey === 1) { stats[t[0]-1].gamesOnCourt1++; stats[t[1]-1].gamesOnCourt1++; }
         else                { stats[t[0]-1].gamesOnCourt2++; stats[t[1]-1].gamesOnCourt2++; }
       });
-      if (!isGameComplete(game)) continue;
+      // Only decided games contribute to the score/win tally — a tied score is
+      // an in-progress game (the court/partner counters above are scheduling
+      // facts and intentionally still count the current round).
+      if (!isGameDecided(game)) continue;
       const t1Won = game.score1 > game.score2;
       const t2Won = game.score2 > game.score1;
       const margin = Math.abs(game.score1 - game.score2);
@@ -3317,7 +3336,10 @@ function computeKingStats(throughRound) {
     const r = state.rounds[i];
     for (const courtKey of [1, 2]) {
       const game = courtKey === 1 ? r.court1 : r.court2;
-      if (!isGameComplete(game)) continue;
+      // Only decided games contribute to the score/win tally — a tied score is
+      // an in-progress game (the court/partner counters above are scheduling
+      // facts and intentionally still count the current round).
+      if (!isGameDecided(game)) continue;
       const t1Won = game.score1 > game.score2;
       const t2Won = game.score2 > game.score1;
       for (const teamKey of ["team1", "team2"]) {
@@ -6034,10 +6056,10 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
       clearInterval(elapsedTimer);
       return;
     }
+    // Keep ticking even once decided (updateElapsed blanks the badge) so the
+    // clock resumes if the score is edited back to a tie. The interval is
+    // cleared when the card is removed on the next render.
     updateElapsed();
-    if (isGameDecided(game)) {
-      clearInterval(elapsedTimer);
-    }
   }, 1000);
 
   const updateSummary = () => {
@@ -6104,6 +6126,9 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
       const n = parseInt(v, 10);
       if (!Number.isNaN(n) && n >= 0) game[scoreKey] = n;
     }
+    // Editing a decided game back to a tie/blank reopens it — clear the end
+    // stamp so the clock resumes and a later re-decide records a fresh duration.
+    if (!isGameDecided(game)) game.gameEndedAt = null;
     // Only stamp the end time / log a duration once the game is decided — a
     // tied score is still in progress, and stamping it would freeze gameEndedAt
     // (a later correction wouldn't update it) and pollute time-budget calibration.
