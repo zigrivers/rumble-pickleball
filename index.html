@@ -7728,6 +7728,34 @@ function openSettings() {
   modal.appendChild(simBtn);
   modal.appendChild(simResult);
 
+  // ---- Saved numbers ----
+  modal.appendChild(el("div", { class: "ka-section-title" }, "Saved numbers"));
+  modal.appendChild(el("p", { class: "ka-sub", style: "margin:0 0 8px;" },
+    "Remembered by name for next time. Numbers are matched by name, so two people with the same name share one entry."));
+  const rosterWrap = el("div");
+  function refreshRoster() {
+    rosterWrap.textContent = "";
+    const roster = loadRoster();
+    const names = Object.keys(roster).sort();
+    if (!names.length) {
+      rosterWrap.appendChild(el("p", { class: "muted", style: "margin:0;" }, "No saved numbers yet."));
+      return;
+    }
+    names.forEach(key => {
+      const r = el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" });
+      r.appendChild(el("div", { style: "flex:1;" }, key + " — " + roster[key]));
+      const del = el("button", { class: "secondary", style: "padding:4px 10px;" }, "✕");
+      del.addEventListener("click", () => { deleteRosterEntry(key); refreshRoster(); });
+      r.appendChild(del);
+      rosterWrap.appendChild(r);
+    });
+  }
+  refreshRoster();
+  modal.appendChild(rosterWrap);
+  const clearNumsBtn = el("button", { class: "secondary", style: "width:100%;margin-top:6px;" }, "Clear all saved numbers");
+  clearNumsBtn.addEventListener("click", () => { clearRoster(); refreshRoster(); });
+  modal.appendChild(clearNumsBtn);
+
   const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { syncKeepAwakeToState(); close(); render(); } }, "Done");
   modal.appendChild(closeBtn);
 
@@ -7850,6 +7878,7 @@ function openSettings() {
     style: "width: 100%; margin-top: 8px;",
     onclick: () => {
       if (!confirm("Clear all data including names? This can't be undone.")) return;
+      clearRoster();
       const keptKeepAwakeClear = state.keepAwake;
       const keptKeepAwakeAggressiveClear = state.keepAwakeAggressive;
       state = newState();
