@@ -14,3 +14,6 @@
 
 # Verification screenshots from subagent runs
 verify-screenshots/
+
+# Surface audit state
+.surface/
