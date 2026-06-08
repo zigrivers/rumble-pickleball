@@ -2326,6 +2326,43 @@ function runSelfTests() {
     state = savedState;
   }
 
+  // Task TR5 — buildResultsMessage (seeded tournament)
+  {
+    const savedState = state;
+    const rounds = SCHEDULE.map((rd, i) => ({
+      round: i + 1,
+      court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 5 },
+      court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 5 },
+    }));
+    state = {
+      phase: "done", format: "rr",
+      slots: ["A","B","C","D","E","F","G","H"],
+      rounds, currentRound: 7, tiebreakRandom: [0,1,2,3,4,5,6,7],
+      finals: {
+        championship: { team1: [1,4], team2: [2,3], score1: 11, score2: 9 },
+        consolation:  { team1: [5,8], team2: [6,7], score1: 11, score2: 9 },
+      },
+      awardsShown: true, winScore: 11, notifiedRounds: [],
+    };
+    const order = finalRanking().map(s => s.slot);
+    const stats = computeStats(totalRegularRounds(), true);
+    const top = order[0];
+    const msg = buildResultsMessage(top, "final");
+    console.assert(msg.includes("You: #1 of 8"), "final: top player is #1", msg);
+    console.assert(msg.includes("🥇 ") && msg.includes("🥈 "), "final: champion lines present");
+    console.assert(msg.includes("Final standings:"), "final: heading present");
+    const bySlot = {}; stats.forEach(s => bySlot[s.slot] = s);
+    const ok = order.every((s, i) => msg.includes((i+1) + ". " + bySlot[s].name + " (" + bySlot[s].wins + "W, " + bySlot[s].points + " pts)"));
+    console.assert(ok, "final: leaderboard numbers match computeStats(total,true)");
+    const mid = buildResultsMessage(order[0], { throughRound: 3 });
+    console.assert(mid.includes("standings through 3 rounds"), "mid: interim header", mid);
+    console.assert(!mid.includes("🥇"), "mid: no champion line");
+    state.finals = null;
+    const noFinals = buildResultsMessage(1, "final");
+    console.assert(!noFinals.includes("🥇"), "final: champion lines guarded on null finals");
+    state = savedState;
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -3616,6 +3653,46 @@ function deleteRosterEntry(name) {
 }
 function clearRoster() {
   try { localStorage.removeItem(ROSTER_KEY); } catch (e) {}
+}
+
+function textResultsSupported() {
+  return state.format === "rr" || state.format === "gauntlet";
+}
+
+// Personalized recap for the player in `slot`. mode = "final" | { throughRound: N }.
+// State-dependent: reads slots/finals/stats. Final-mode numbers come from
+// computeStats(total, true) + finalRanking() order, matching the done screen.
+function buildResultsMessage(slot, mode) {
+  const isFinal = mode === "final";
+  const through = isFinal ? totalRegularRounds() : mode.throughRound;
+  const order = (isFinal ? finalRanking() : rankPlayers(through)).map(s => s.slot);
+  const stats = computeStats(through, isFinal);
+  const bySlot = {}; stats.forEach(s => { bySlot[s.slot] = s; });
+  const me = bySlot[slot];
+  const pos = order.indexOf(slot) + 1;
+  const sign = d => (d > 0 ? "+" : "") + d;
+  const lines = [];
+  const youLine = "You: #" + pos + " of " + order.length +
+    " (" + me.wins + "W " + me.losses + "L, " + sign(me.diff) + " pts)";
+  const board = order.map((s, i) => {
+    const st = bySlot[s];
+    return (i + 1) + ". " + st.name + " (" + st.wins + "W, " + st.points + " pts)";
+  });
+  if (isFinal) {
+    lines.push("🏓 Rumble Pickleball — tonight's results", "", youLine, "");
+    if (state.finals) {
+      const f = state.finals;
+      const champWin = f.championship.score1 > f.championship.score2 ? f.championship.team1 : f.championship.team2;
+      const consWin  = f.consolation.score1  > f.consolation.score2  ? f.consolation.team1  : f.consolation.team2;
+      lines.push("🥇 " + teamName(champWin), "🥈 " + teamName(consWin), "");
+    }
+    lines.push("Final standings:", ...board, "", "GG! 🎾");
+  } else {
+    lines.push(
+      "🏓 Rumble Pickleball — standings through " + through + " round" + (through > 1 ? "s" : ""),
+      "", youLine, "", "Standings:", ...board, "", "(not final — more rounds to play) 🎾");
+  }
+  return lines.join("\n");
 }
 
 function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
