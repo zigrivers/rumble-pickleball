@@ -3091,7 +3091,10 @@ function prefersReducedMotion() {
 function runShuffleReveal(finalSlots, onDone, opts) {
   opts = opts || {};
   // Reduced-motion: skip the reveal animation and go straight to the result.
-  if (prefersReducedMotion()) { onDone(); return; }
+  // Defer onDone (like the animated path's setTimeout) so any synchronous work
+  // after the runShuffleReveal call — e.g. startTournament deriving state.phones
+  // and saving roster entries — completes before the first render.
+  if (prefersReducedMotion()) { queueMicrotask(onDone); return; }
   const overlay = el("div", { class: "shuffle-overlay" });
   overlay.appendChild(el("div", { class: "shuffle-title" }, opts.title || "Drawing slots…"));
   const cells = [];
@@ -4409,6 +4412,7 @@ function canStart() {
 
 // Human-readable reason the Start button is disabled (empty string = ready).
 function startBlockReason() {
+  if (!state) return "";
   const count = state.format === "crown" ? 4 : 8;
   const trimmed = (state.rawNames || []).slice(0, count).map(n => (n || "").trim());
   const filled = trimmed.filter(Boolean).length;
@@ -4426,6 +4430,7 @@ function startBlockReason() {
 
 // Keep the Start button + its hint in sync without a full re-render.
 function updateStartState() {
+  if (!state) return;
   const btn = document.getElementById("start-btn");
   if (btn) btn.disabled = !canStart();
   const hint = document.getElementById("start-hint");
@@ -4892,8 +4897,12 @@ function showConfirm(message, onConfirm, opts) {
     style: "width:100%;margin-bottom:8px;",
   }, opts.confirmText || "Confirm");
   const cancelBtn = el("button", { style: "width:100%;" }, opts.cancelText || "Cancel");
+  // Cancel = dismiss with no side effects. Confirm / Cancel / Escape (handled by
+  // mountModal's default) / backdrop click all dismiss; only Confirm runs onConfirm.
+  const cancel = () => { bg.remove(); };
   confirmBtn.addEventListener("click", () => { bg.remove(); onConfirm(); });
-  cancelBtn.addEventListener("click", () => { bg.remove(); });
+  cancelBtn.addEventListener("click", cancel);
+  bg.addEventListener("click", (e) => { if (e.target === bg) cancel(); });
   modal.appendChild(confirmBtn);
   modal.appendChild(cancelBtn);
   bg.appendChild(modal);
