@@ -1308,10 +1308,11 @@ function projectFinishTime(state, calibration, nowTs) {
   if (!config || !Array.isArray(state.rounds)) return null;
 
   // A tied round is still in progress, so it stays in the remaining-round
-  // estimate until it's decided.
+  // estimate until it's decided. Guard court existence before isRoundDecided so
+  // a malformed/partial round object can't throw.
   let completedRounds = 0;
   for (const r of state.rounds) {
-    if (isGameDecided(r.court1) && isGameDecided(r.court2)) completedRounds++;
+    if (r && r.court1 && r.court2 && isRoundDecided(r)) completedRounds++;
   }
 
   const remainingRounds = Math.max(0, state.rounds.length - completedRounds);
@@ -2439,6 +2440,33 @@ function runSelfTests() {
       const winSum = compute(state.rounds.length).reduce((acc, s) => acc + scoreOf(s), 0);
       console.assert(winSum > 0, "audit2: " + fmt + " decided game scores", winSum);
     }
+
+    // Gauntlet: a tied game adds no points (uses the shared computeStats).
+    state.format = "gauntlet";
+    state.slots = state.rawNames.slice();
+    state.rounds = [assignInitialGauntletCourts()];
+    const gg = state.rounds[0].court1;
+    gg.score1 = 9; gg.score2 = 9;
+    console.assert(computeStats(state.rounds.length, false).every(s => s.points === 0),
+      "audit2: gauntlet tied game adds no points");
+    gg.score1 = 11;
+    console.assert(computeStats(state.rounds.length, false).some(s => s.points > 0),
+      "audit2: gauntlet decided game scores");
+
+    // projectFinishTime: a tied round stays in the remaining estimate (so the
+    // projected finish is later than when that round is decided).
+    state.format = "rr";
+    state.slots = state.rawNames.slice();
+    state.rounds = generateRounds();
+    state.timeBudget = { ...newState().timeBudget, enabled: true, minutes: 90,
+      plannedConfig: { target: 11, winBy: 2, scoring: "sideout" } };
+    const rr0 = state.rounds[0];
+    rr0.court1.score1 = 11; rr0.court1.score2 = 5; rr0.court2.score1 = 9; rr0.court2.score2 = 9; // tied round
+    const winTied = projectFinishTime(state, null, 0);
+    rr0.court2.score1 = 11;                                                                       // now decided
+    const winDecided = projectFinishTime(state, null, 0);
+    console.assert(winTied && winDecided && winTied[0] > winDecided[0],
+      "audit2: tied round counts as remaining in the finish estimate", winTied, winDecided);
 
     state = savedState;
   }
@@ -3914,7 +3942,9 @@ function maybeFireSlippagePrompt() {
   if (!tb || !tb.enabled) return;
   if (state.format === "crown") return;
 
-  const completedRounds = state.notifiedRounds.length;
+  // Derive from decided rounds (not notifiedRounds) so reopening a round to a
+  // tie correctly lowers the count.
+  const completedRounds = state.rounds.filter(r => r && r.court1 && r.court2 && isRoundDecided(r)).length;
   const totalRounds = totalRegularRounds();
   const warmupThreshold = Math.max(2, Math.ceil(0.25 * totalRounds));
   if (completedRounds < warmupThreshold) return;
@@ -5868,8 +5898,10 @@ function renderPlaying() {
   // holds for every format now: RR pre-generates all rounds (length === total
   // from the start), incremental formats build up to total; either way every
   // round must be decided.
+  // Live predicate (recomputed wherever needed — scores change after render).
+  const allRoundsDecided = () => state.rounds.length === total && state.rounds.every(isRoundDecided);
   const advanceReady = isRoundDecided(round);
-  const allRoundsAdvanceable = state.rounds.length === total && state.rounds.every(isRoundDecided);
+  const allRoundsAdvanceable = allRoundsDecided();
   const actions = el("div", { class: "row-actions" });
   if (state.currentRound > 1) {
     actions.appendChild(el("button", {
@@ -5922,8 +5954,7 @@ function renderPlaying() {
       onclick: () => {
         // Re-evaluate at click time — score inputs may have decided the
         // round since this button was rendered.
-        const ready = state.rounds.length === total && state.rounds.every(isRoundDecided);
-        if (ready) { buildFinals(); render(); }
+        if (allRoundsDecided()) { buildFinals(); render(); }
       }
     }, "Build Finals →");
     primaryBtn.disabled = !allRoundsAdvanceable;
@@ -5961,7 +5992,7 @@ function renderPlaying() {
     if (state.currentRound < total) {
       primaryBtn.disabled = !isRoundDecided(round);
     } else {
-      primaryBtn.disabled = !(state.rounds.length === total && state.rounds.every(isRoundDecided));
+      primaryBtn.disabled = !allRoundsDecided();
     }
     const newStandings = renderStandingsCard(state.rounds.length, standingsOpts());
     standingsCard.replaceWith(newStandings);
@@ -6128,7 +6159,19 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
     }
     // Editing a decided game back to a tie/blank reopens it — clear the end
     // stamp so the clock resumes and a later re-decide records a fresh duration.
-    if (!isGameDecided(game)) game.gameEndedAt = null;
+    // Also retract the round from notifiedRounds if it's no longer decided, so
+    // the completion toast can re-fire and time-budget counts stay accurate.
+    if (!isGameDecided(game)) {
+      game.gameEndedAt = null;
+      for (let ri = 0; ri < state.rounds.length; ri++) {
+        const rr = state.rounds[ri];
+        if ((rr.court1 === game || rr.court2 === game) && !isRoundDecided(rr)) {
+          const pos = state.notifiedRounds.indexOf(ri + 1);
+          if (pos !== -1) state.notifiedRounds.splice(pos, 1);
+          break;
+        }
+      }
+    }
     // Only stamp the end time / log a duration once the game is decided — a
     // tied score is still in progress, and stamping it would freeze gameEndedAt
     // (a later correction wouldn't update it) and pollute time-budget calibration.
