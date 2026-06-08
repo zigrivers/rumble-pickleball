@@ -1126,6 +1126,16 @@
     cursor: pointer;
     margin-left: 4px;
   }
+  /* Mobile UI/UX overrides — placed last so they win over the base rules above
+     (equal specificity → later source order wins) when the media query matches. */
+  @media (max-width: 480px) {
+    /* Standings: drop the "N left" badge and let the name cell wrap so the
+       next-partner chip ("→ Fay") isn't clipped to an ellipsis. */
+    table.standings .partner-badge { display: none; }
+    table.standings td.name { white-space: normal; }
+    /* Championship names carry seed pills; shrink so "#1 Ava & #4 Eli" fits one line. */
+    .court-card.gold .team-name { font-size: 18px; }
+  }
 </style>
 </head>
 <body>
@@ -4092,6 +4102,10 @@ function el(tag, props, ...children) {
 }
 
 function render() {
+  // Dismiss any open dialog (settings/paste/etc.) on a full re-render so it can't
+  // stay stacked over a new view. Dialogs use .modal-bg; the shuffle-reveal
+  // overlay uses .shuffle-overlay and is intentionally left alone.
+  document.querySelectorAll(".modal-bg").forEach(n => n.remove());
   const app = document.getElementById("app");
   app.innerHTML = "";
   app.appendChild(renderHeader());
@@ -4847,21 +4861,23 @@ function renderSetup() {
       class: "name-input",
       type: "text",
       placeholder: "Player " + (i + 1),
+      "aria-label": "Player " + (i + 1) + " name",
       value: state.rawNames[i] || "",
       autocomplete: "off",
       autocapitalize: "words",
       autocorrect: "off",
       spellcheck: "false",
-      style: "flex:2;",
+      style: "flex:1.4;",
     });
     const phoneInput = el("input", {
       class: "name-input",
       type: "tel",
       inputmode: "tel",
       placeholder: "📱 optional",
+      "aria-label": "Phone number for player " + (i + 1),
       value: state.rawPhones[i] || "",
       autocomplete: "off",
-      style: "flex:1.4;",
+      style: "flex:1.4;font-size:15px;",
     });
     nameInput.addEventListener("input", () => {
       state.rawNames[i] = nameInput.value;
@@ -7013,7 +7029,7 @@ function renderTextResultsCard(mode) {
     return card;
   }
   const btnStyle = "display:inline-block;text-decoration:none;background:var(--accent);" +
-    "color:#1a1207;border:none;border-radius:8px;padding:6px 12px;font-weight:600;font-size:13px;cursor:pointer;";
+    "color:#1a1207;border:none;border-radius:8px;padding:11px 16px;font-weight:600;font-size:14px;cursor:pointer;";
   const count = state.slots.filter(Boolean).length;
   for (let slot = 1; slot <= count; slot++) {
     const phone = (state.phones || [])[slot - 1];
@@ -7073,7 +7089,15 @@ function renderDoneScreen() {
   wrap.appendChild(card);
 
   wrap.appendChild(renderPodium(ranking));
-  wrap.appendChild(renderAwardsStrip());
+  // Surface the primary post-game action (texting) above the awards/standings
+  // scroll instead of burying it at the bottom.
+  wrap.appendChild(renderTextResultsCard("final"));
+  // Awards collapsed by default to shorten the results scroll — champions and
+  // podium carry the celebration; tap to explore the full awards.
+  const awardsDetails = el("details", { class: "history" });
+  awardsDetails.appendChild(el("summary", null, el("span", null, "🏅 Awards")));
+  awardsDetails.appendChild(renderAwardsStrip());
+  wrap.appendChild(awardsDetails);
 
   // Final standings — uses the same renderStandingsCard, with finals included in totals
   const finalCard = el("div", { class: "card" });
@@ -7203,7 +7227,6 @@ function renderDoneScreen() {
     : "Within each tier, season points → wins → differential break ties.";
   finalCard.appendChild(el("p", { class: "standings-footer" }, footerText));
   wrap.appendChild(finalCard);
-  wrap.appendChild(renderTextResultsCard("final"));
 
   wrap.appendChild(el("button", {
     class: "ghost",
@@ -7744,7 +7767,7 @@ function openSettings() {
     names.forEach(key => {
       const r = el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" });
       r.appendChild(el("div", { style: "flex:1;" }, key + " — " + roster[key]));
-      const del = el("button", { class: "secondary", style: "padding:4px 10px;" }, "✕");
+      const del = el("button", { class: "secondary", style: "padding:10px 14px;", "aria-label": "Delete saved number for " + key }, "✕");
       del.addEventListener("click", () => { deleteRosterEntry(key); refreshRoster(); });
       r.appendChild(del);
       rosterWrap.appendChild(r);
@@ -7780,8 +7803,12 @@ function openSettings() {
     { id: "gauntlet", label: "Gauntlet" },
     { id: "crown",    label: "Crown Court" },
   ];
+  // Collapsed by default so the modal stays short and the Reset/Clear actions
+  // below aren't buried under five format buttons.
+  const fmtDetails = el("details", { style: "margin-top: 8px;" });
+  fmtDetails.appendChild(el("summary", { style: "cursor:pointer;padding:8px 0;font-weight:600;color:var(--muted);" }, "Switch format"));
   allFormats.filter(f => f.id !== state.format).forEach(f => {
-    modal.appendChild(el("button", {
+    fmtDetails.appendChild(el("button", {
       style: "width: 100%; margin-top: 8px;",
       onclick: () => {
         const inSetup = state.phase === "setup";
@@ -7820,6 +7847,7 @@ function openSettings() {
       },
     }, "Switch to " + f.label));
   });
+  modal.appendChild(fmtDetails);
 
   // Reset Tournament — visible only outside the setup phase
   if (state.phase !== "setup") {
