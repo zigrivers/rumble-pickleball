@@ -2305,6 +2305,27 @@ function runSelfTests() {
       "migration sizes arrays to existing player count", m4.rawPhones, m4.phones);
   }
 
+  // Task TR4 — startTournament builds phones + roster
+  {
+    const savedState = state;
+    const savedRoster = localStorage.getItem(ROSTER_KEY);
+    localStorage.removeItem(ROSTER_KEY);
+    state = newState();
+    state.format = "rr";
+    state.rawNames = ["Ava","Ben","Cy","Dee","Eli","Fay","Gus","Hal"];
+    state.rawPhones = ["(555) 111-2222","","555.333.4444","","","","",""];
+    startTournament();
+    const idxAva = state.slots.indexOf("Ava");
+    const idxCy  = state.slots.indexOf("Cy");
+    console.assert(state.phones.length === state.slots.length, "phones length matches slots");
+    console.assert(state.phones[idxAva] === "5551112222", "Ava phone aligned after shuffle", state.phones[idxAva]);
+    console.assert(state.phones[idxCy] === "5553334444", "Cy phone aligned after shuffle", state.phones[idxCy]);
+    console.assert(rosterPhoneFor("Ava") === "5551112222", "roster upserted Ava");
+    console.assert(rosterPhoneFor("Ben") === "", "no roster entry for blank Ben");
+    if (savedRoster !== null) localStorage.setItem(ROSTER_KEY, savedRoster); else localStorage.removeItem(ROSTER_KEY);
+    state = savedState;
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -3452,6 +3473,9 @@ function startTournament() {
   const count = isCrown ? 4 : 8;
   const names = state.rawNames.slice(0, count).map(s => s.trim());
   const shuffled = shuffle(names);
+  // Map each (trimmed, unique) name to its normalized phone for post-shuffle alignment.
+  const phoneByName = {};
+  names.forEach((n, i) => { if (n) phoneByName[n] = normalizePhone(state.rawPhones[i] || ""); });
 
   state.tiebreakRandom = shuffle(isCrown ? [0,1,2,3] : [0,1,2,3,4,5,6,7]);
   state.currentRound = 1;
@@ -3544,6 +3568,10 @@ function startTournament() {
     save();
     runShuffleReveal(state.slots.slice(), () => render());
   }
+  // Derive per-slot phones from the final slot order, and remember name→phone in the roster.
+  state.phones = state.slots.map(n => phoneByName[n] || "");
+  for (let i = 0; i < count; i++) saveRosterEntry(names[i], state.rawPhones[i] || "");
+  save();
 }
 
 // ---------- phone / SMS utilities ----------
