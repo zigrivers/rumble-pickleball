@@ -244,9 +244,13 @@
     margin: 2px 0 0;
   }
 
-  /* Cap width on wide/TV-cast screens so the name and stat columns stay close
-     enough to scan in one glance (mobile is < the cap, so unaffected). */
-  table.standings { width: 100%; max-width: 680px; margin-inline: auto; border-collapse: collapse; table-layout: fixed; }
+  table.standings { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  /* Cap width only on wide/TV-cast/desktop screens so the name and stat columns
+     stay close enough to scan in one glance. Phones and portrait tablets
+     (< 900px) keep the full-width table. */
+  @media (min-width: 900px) {
+    table.standings { max-width: 680px; margin-inline: auto; }
+  }
   table.standings col.c-rank { width: 56px; }
   table.standings col.c-pts,
   table.standings col.c-w,
@@ -3739,9 +3743,10 @@ function computeStats(throughRound, includeFinals) {
     games.push({ ...state.finals.consolation, isFinal: true });
   }
   for (const g of games) {
-    // Partner tally counts only games actually played — RR pre-generates all
-    // rounds, so counting scheduled-but-unplayed pairings made "N left" read 0
-    // from round 1. Gate on completion (after the early-continue below).
+    // Gate on completion before any partner or score tally, so pre-generated
+    // RR rounds only count games actually played — otherwise the "N left"
+    // partner badge counted scheduled-but-unplayed pairings and read 0 from
+    // round 1.
     if (!isGameComplete(g)) continue;
     if (!g.isFinal) {
       stats[g.team1[0]-1].partnersUsed.add(g.team1[1]);
@@ -3940,33 +3945,62 @@ function maybeFireSlippagePrompt() {
 }
 
 // Mount a modal with proper dialog semantics: role/aria-modal, an accessible
-// name from its heading, Escape-to-close, and a Tab focus trap. The keydown
-// listener self-removes once the backdrop leaves the DOM, so it works whether
-// the modal is dismissed via Escape or its own buttons (which call bg.remove()).
+// name from its heading, Escape-to-close, and a Tab focus trap.
+// - Focus moves into the modal on mount, so the trap is effective and screen
+//   readers land inside the dialog (callers may still set a more specific focus
+//   afterward).
+// - Only the topmost modal reacts to keys, so stacked modals (e.g. the rally
+//   prompt opened from Settings) don't both close on one Escape.
+// - The key listener is removed synchronously whenever the backdrop leaves the
+//   DOM (Escape or a button calling bg.remove()), via an AbortController wired
+//   into a patched bg.remove() — no dangling listeners accumulate.
+// - opts.onEscape, when given, runs instead of a bare bg.remove() so forced-
+//   choice dialogs (rally ack) route Escape through their cancel logic.
 let _modalSeq = 0;
-function mountModal(bg, modal) {
+function mountModal(bg, modal, opts) {
+  opts = opts || {};
   modal.setAttribute("role", "dialog");
   modal.setAttribute("aria-modal", "true");
   const heading = modal.querySelector("h1, h2, h3");
   if (heading) {
     if (!heading.id) heading.id = "modal-title-" + (++_modalSeq);
     modal.setAttribute("aria-labelledby", heading.id);
+  } else {
+    modal.setAttribute("aria-label", (modal.textContent || "Dialog").trim().slice(0, 60));
   }
+  const ac = new AbortController();
+  const origRemove = bg.remove.bind(bg);
+  bg.remove = () => { ac.abort(); origRemove(); };
+  const isTopmost = () => {
+    const all = document.querySelectorAll(".modal-bg");
+    return all.length === 0 || all[all.length - 1] === bg;
+  };
   const focusables = () => modal.querySelectorAll(
     'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
   const onKey = (e) => {
-    if (!document.body.contains(bg)) { document.removeEventListener("keydown", onKey, true); return; }
-    if (e.key === "Escape") { e.preventDefault(); bg.remove(); document.removeEventListener("keydown", onKey, true); return; }
+    if (!isTopmost()) return;            // only the topmost modal handles keys
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (opts.onEscape) opts.onEscape(); else bg.remove();
+      return;
+    }
     if (e.key === "Tab") {
       const f = focusables();
       if (!f.length) return;
       const first = f[0], last = f[f.length - 1];
+      // If focus has escaped the modal (e.g. it started on the opener), pull it
+      // back in so Tab can't reach background controls.
+      if (!modal.contains(document.activeElement)) { e.preventDefault(); first.focus(); return; }
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     }
   };
-  document.addEventListener("keydown", onKey, true);
+  document.addEventListener("keydown", onKey, { capture: true, signal: ac.signal });
   document.body.appendChild(bg);
+  // Move focus into the modal so the trap is effective from the first Tab.
+  const f = focusables();
+  if (f.length) f[0].focus();
+  else { modal.setAttribute("tabindex", "-1"); modal.focus(); }
 }
 
 function showSlippageModal(overMin, currentDesc, newDesc, onTighten) {
@@ -4068,11 +4102,9 @@ function maybeFireRoundComplete(primaryBtn) {
   const idx = state.currentRound - 1;
   const round = state.rounds[idx];
   if (!round) return;
-  // In Stack format, a tied round can't advance the tournament — don't celebrate it yet.
-  const advanceable = (state.format === "stack" || state.format === "king")
-    ? isRoundDecided(round)
-    : isRoundComplete(round);
-  if (!advanceable) return;
+  // A tied round can't advance the tournament in any format — don't celebrate
+  // it yet (mirrors renderPlaying's advance gate, which requires a decided round).
+  if (!isRoundDecided(round)) return;
   if (state.notifiedRounds.includes(state.currentRound)) return;
   _undoChipAdjIdx = -1;
   if (_activeAutoTightenToast) { _activeAutoTightenToast.remove(); _activeAutoTightenToast = null; }
@@ -4697,12 +4729,15 @@ function showRallyAckDialog(onConfirm, onCancel) {
   const confirmBtn = el("button", { class: "primary", style: "width:100%;margin-bottom:8px;" },
     "Confirm rally scoring");
   const cancelBtn = el("button", { style: "width:100%;" }, "Keep current setting");
+  const cancel = () => { bg.remove(); onCancel(); };
   confirmBtn.addEventListener("click", () => { bg.remove(); onConfirm(); });
-  cancelBtn.addEventListener("click", () => { bg.remove(); onCancel(); });
+  cancelBtn.addEventListener("click", cancel);
   modal.appendChild(confirmBtn);
   modal.appendChild(cancelBtn);
   bg.appendChild(modal);
-  mountModal(bg, modal);
+  // Escape on this forced-choice dialog means "keep current setting" — route it
+  // through the same cancel path as the button so state stays consistent.
+  mountModal(bg, modal, { onEscape: cancel });
 }
 
 function renderTimeBudgetBlock() {
@@ -5760,9 +5795,6 @@ function renderPlaying() {
   const isKing        = state.format === "king";
   const isGauntlet    = state.format === "gauntlet";
   const isIncremental = isStack || isKing || isGauntlet; // rounds built one at a time
-  const requiresDecided = true;                          // ties block advancement in every format
-                                                         // (a tied score means the game isn't over —
-                                                         // the court card already says "enter a tiebreaker")
   const total = totalRegularRounds();
 
   // Refresh hooks injected by score inputs
@@ -5773,13 +5805,12 @@ function renderPlaying() {
 
   // navigation row
   // A round is "advanceable" only when both courts are decided (no ties) — a
-  // tied score means the game hasn't finished (pickleball is win-by-2).
-  const advanceReady = requiresDecided ? isRoundDecided(round) : isRoundComplete(round);
-  const allRoundsAdvanceable = requiresDecided
-    ? (state.rounds.length === total && state.rounds.every(isRoundDecided))
-    : isIncremental
-      ? (state.rounds.length === total && state.rounds.every(isRoundComplete))
-      : state.rounds.every(isRoundComplete);
+  // tied score means the game hasn't finished (pickleball is win-by-2). This
+  // holds for every format now: RR pre-generates all rounds (length === total
+  // from the start), incremental formats build up to total; either way every
+  // round must be decided.
+  const advanceReady = isRoundDecided(round);
+  const allRoundsAdvanceable = state.rounds.length === total && state.rounds.every(isRoundDecided);
   const actions = el("div", { class: "row-actions" });
   if (state.currentRound > 1) {
     actions.appendChild(el("button", {
@@ -5793,7 +5824,7 @@ function renderPlaying() {
       class: "primary",
       onclick: () => {
         if (isIncremental) {
-          if (requiresDecided ? !isRoundDecided(round) : !isRoundComplete(round)) return;
+          if (!isRoundDecided(round)) return;
           // Build the next round if it doesn't already exist (e.g. user went
           // back, then advanced again — keep the existing pairing). previousRanks
           // is snapshotted only on first-time advance so backward navigation
@@ -5830,13 +5861,9 @@ function renderPlaying() {
     primaryBtn = el("button", {
       class: "primary",
       onclick: () => {
-        // Re-evaluate at click time — score inputs may have completed the
+        // Re-evaluate at click time — score inputs may have decided the
         // round since this button was rendered.
-        const ready = requiresDecided
-          ? (state.rounds.length === total && state.rounds.every(isRoundDecided))
-          : isIncremental
-            ? (state.rounds.length === total && state.rounds.every(isRoundComplete))
-            : state.rounds.every(isRoundComplete);
+        const ready = state.rounds.length === total && state.rounds.every(isRoundDecided);
         if (ready) { buildFinals(); render(); }
       }
     }, "Build Finals →");
@@ -5873,13 +5900,9 @@ function renderPlaying() {
   // Wire refresh: update primary button state + replace standings live
   refreshes.push(() => {
     if (state.currentRound < total) {
-      primaryBtn.disabled = requiresDecided ? !isRoundDecided(round) : !isRoundComplete(round);
+      primaryBtn.disabled = !isRoundDecided(round);
     } else {
-      primaryBtn.disabled = requiresDecided
-        ? !(state.rounds.length === total && state.rounds.every(isRoundDecided))
-        : isIncremental
-          ? !(state.rounds.length === total && state.rounds.every(isRoundComplete))
-          : !state.rounds.every(isRoundComplete);
+      primaryBtn.disabled = !(state.rounds.length === total && state.rounds.every(isRoundDecided));
     }
     const newStandings = renderStandingsCard(state.rounds.length, standingsOpts());
     standingsCard.replaceWith(newStandings);
