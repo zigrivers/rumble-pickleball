@@ -7730,7 +7730,7 @@ function openSettings() {
 
   // ---- Saved numbers ----
   modal.appendChild(el("div", { class: "ka-section-title" }, "Saved numbers"));
-  modal.appendChild(el("p", { class: "ka-sub", style: "margin:0 0 8px;" },
+  modal.appendChild(el("p", { class: "muted", style: "margin:0 0 8px;font-size:13px;" },
     "Remembered by name for next time. Numbers are matched by name, so two people with the same name share one entry."));
   const rosterWrap = el("div");
   function refreshRoster() {
@@ -7753,7 +7753,11 @@ function openSettings() {
   refreshRoster();
   modal.appendChild(rosterWrap);
   const clearNumsBtn = el("button", { class: "secondary", style: "width:100%;margin-top:6px;" }, "Clear all saved numbers");
-  clearNumsBtn.addEventListener("click", () => { clearRoster(); refreshRoster(); });
+  clearNumsBtn.addEventListener("click", () => {
+    if (!confirm("Delete all saved phone numbers?")) return;
+    clearRoster();
+    refreshRoster();
+  });
   modal.appendChild(clearNumsBtn);
 
   const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { syncKeepAwakeToState(); close(); render(); } }, "Done");
