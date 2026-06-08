@@ -2270,6 +2270,27 @@ function runSelfTests() {
       "smsHref omits ?body= when body empty/missing");
   }
 
+  // Task TR2 — roster CRUD
+  {
+    const saved = localStorage.getItem(ROSTER_KEY);
+    localStorage.removeItem(ROSTER_KEY);
+    console.assert(JSON.stringify(loadRoster()) === "{}", "loadRoster empty default");
+    saveRosterEntry("Ken", "(555) 201-3344");
+    console.assert(rosterPhoneFor("ken") === "5552013344", "rosterPhoneFor case-insensitive + normalized");
+    console.assert(rosterPhoneFor("  KEN ") === "5552013344", "rosterPhoneFor trims");
+    saveRosterEntry("Ken", "");          // blank -> delete
+    console.assert(rosterPhoneFor("Ken") === "", "saveRosterEntry deletes on empty");
+    saveRosterEntry("Ann", "5550000000");
+    deleteRosterEntry("Ann");
+    console.assert(rosterPhoneFor("Ann") === "", "deleteRosterEntry removes");
+    saveRosterEntry("Bo", "5551110000");
+    clearRoster();
+    console.assert(JSON.stringify(loadRoster()) === "{}", "clearRoster empties");
+    localStorage.setItem(ROSTER_KEY, "{bad json");
+    console.assert(JSON.stringify(loadRoster()) === "{}", "loadRoster tolerates corrupt json");
+    if (saved !== null) localStorage.setItem(ROSTER_KEY, saved); else localStorage.removeItem(ROSTER_KEY);
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -3521,6 +3542,35 @@ function isValidPhone(raw) {
 function smsHref(phone, body) {
   const tail = body ? "?body=" + encodeURIComponent(body) : "";
   return "sms:" + normalizePhone(phone) + tail;
+}
+
+const ROSTER_KEY = "pb_roster_v1";
+function loadRoster() {
+  try {
+    const r = JSON.parse(localStorage.getItem(ROSTER_KEY) || "{}");
+    return (r && typeof r === "object" && !Array.isArray(r)) ? r : {};
+  } catch (e) { return {}; }
+}
+function rosterPhoneFor(name) {
+  if (!name) return "";
+  return loadRoster()[name.trim().toLowerCase()] || "";
+}
+function saveRosterEntry(name, phone) {
+  const key = (name || "").trim().toLowerCase();
+  if (!key) return;
+  const roster = loadRoster();
+  if (isValidPhone(phone)) roster[key] = normalizePhone(phone);
+  else delete roster[key];
+  try { localStorage.setItem(ROSTER_KEY, JSON.stringify(roster)); } catch (e) {}
+}
+function deleteRosterEntry(name) {
+  const key = (name || "").trim().toLowerCase();
+  const roster = loadRoster();
+  delete roster[key];
+  try { localStorage.setItem(ROSTER_KEY, JSON.stringify(roster)); } catch (e) {}
+}
+function clearRoster() {
+  try { localStorage.removeItem(ROSTER_KEY); } catch (e) {}
 }
 
 function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
