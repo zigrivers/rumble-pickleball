@@ -7759,6 +7759,10 @@ function openSettings() {
     refreshRoster();
   });
   modal.appendChild(clearNumsBtn);
+  modal.appendChild(el("p", { class: "muted", style: "margin:8px 0 0;font-size:13px;" },
+    "Numbers are stored only in this browser (unencrypted) and are never sent anywhere — " +
+    "they leave your device only when you tap Text or Copy. This app is hosted on a shared " +
+    "github.io address, so other pages you host there could read them; use Clear All to remove."));
 
   const closeBtn = el("button", { style: "width: 100%; margin-top: 12px;", onclick: () => { syncKeepAwakeToState(); close(); render(); } }, "Done");
   modal.appendChild(closeBtn);
