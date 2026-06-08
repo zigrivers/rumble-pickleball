@@ -2266,6 +2266,8 @@ function runSelfTests() {
     console.assert(
       smsHref("(555) 201-3344", "Hi & bye?") === "sms:5552013344?body=Hi%20%26%20bye%3F",
       "smsHref normalizes number and url-encodes body");
+    console.assert(smsHref("5552013344", "") === "sms:5552013344" && smsHref("5552013344") === "sms:5552013344",
+      "smsHref omits ?body= when body empty/missing");
   }
 
   console.log(`[self-tests] complete — ${failures} failure(s)`);
@@ -3517,7 +3519,8 @@ function isValidPhone(raw) {
   return normalizePhone(raw).replace(/\D/g, "").length >= 7;
 }
 function smsHref(phone, body) {
-  return "sms:" + normalizePhone(phone) + "?body=" + encodeURIComponent(body);
+  const tail = body ? "?body=" + encodeURIComponent(body) : "";
+  return "sms:" + normalizePhone(phone) + tail;
 }
 
 function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
