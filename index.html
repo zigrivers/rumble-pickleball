@@ -91,6 +91,15 @@
   }
   button.danger { background: var(--bad); color: white; border-color: var(--bad); }
   button.ghost { background: transparent; }
+  /* Themed keyboard-focus ring (replaces the off-theme UA default ring). */
+  button:focus-visible,
+  a:focus-visible,
+  summary:focus-visible,
+  select:focus-visible,
+  .ka-switch:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   .icon-btn {
     width: 60px; min-width: 60px; height: 60px; min-height: 60px;
     padding: 0; font-size: 26px;
@@ -235,7 +244,9 @@
     margin: 2px 0 0;
   }
 
-  table.standings { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  /* Cap width on wide/TV-cast screens so the name and stat columns stay close
+     enough to scan in one glance (mobile is < the cap, so unaffected). */
+  table.standings { width: 100%; max-width: 680px; margin-inline: auto; border-collapse: collapse; table-layout: fixed; }
   table.standings col.c-rank { width: 56px; }
   table.standings col.c-pts,
   table.standings col.c-w,
@@ -726,7 +737,9 @@
     font-size: 14px;
     font-weight: 800;
     cursor: pointer;
-    min-height: 36px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
     white-space: nowrap;
     align-self: center;
   }
@@ -3726,13 +3739,16 @@ function computeStats(throughRound, includeFinals) {
     games.push({ ...state.finals.consolation, isFinal: true });
   }
   for (const g of games) {
+    // Partner tally counts only games actually played — RR pre-generates all
+    // rounds, so counting scheduled-but-unplayed pairings made "N left" read 0
+    // from round 1. Gate on completion (after the early-continue below).
+    if (!isGameComplete(g)) continue;
     if (!g.isFinal) {
       stats[g.team1[0]-1].partnersUsed.add(g.team1[1]);
       stats[g.team1[1]-1].partnersUsed.add(g.team1[0]);
       stats[g.team2[0]-1].partnersUsed.add(g.team2[1]);
       stats[g.team2[1]-1].partnersUsed.add(g.team2[0]);
     }
-    if (!isGameComplete(g)) continue;
     const t1Win = g.score1 > g.score2;
     const t2Win = g.score2 > g.score1;
     for (const slot of g.team1) {
@@ -3923,6 +3939,36 @@ function maybeFireSlippagePrompt() {
   });
 }
 
+// Mount a modal with proper dialog semantics: role/aria-modal, an accessible
+// name from its heading, Escape-to-close, and a Tab focus trap. The keydown
+// listener self-removes once the backdrop leaves the DOM, so it works whether
+// the modal is dismissed via Escape or its own buttons (which call bg.remove()).
+let _modalSeq = 0;
+function mountModal(bg, modal) {
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  const heading = modal.querySelector("h1, h2, h3");
+  if (heading) {
+    if (!heading.id) heading.id = "modal-title-" + (++_modalSeq);
+    modal.setAttribute("aria-labelledby", heading.id);
+  }
+  const focusables = () => modal.querySelectorAll(
+    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+  const onKey = (e) => {
+    if (!document.body.contains(bg)) { document.removeEventListener("keydown", onKey, true); return; }
+    if (e.key === "Escape") { e.preventDefault(); bg.remove(); document.removeEventListener("keydown", onKey, true); return; }
+    if (e.key === "Tab") {
+      const f = focusables();
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  };
+  document.addEventListener("keydown", onKey, true);
+  document.body.appendChild(bg);
+}
+
 function showSlippageModal(overMin, currentDesc, newDesc, onTighten) {
   const minuteWord = overMin === 1 ? "minute" : "minutes";
   const bg = el("div", { class: "modal-bg" });
@@ -3937,7 +3983,7 @@ function showSlippageModal(overMin, currentDesc, newDesc, onTighten) {
   modal.appendChild(tightenBtn);
   modal.appendChild(stayBtn);
   bg.appendChild(modal);
-  document.body.appendChild(bg);
+  mountModal(bg, modal);
   tightenBtn.focus();
 }
 
@@ -4356,7 +4402,7 @@ function openPasteModal() {
   }, "Cancel"));
 
   bg.appendChild(modal);
-  document.body.appendChild(bg);
+  mountModal(bg, modal);
   setTimeout(() => textarea.focus(), 0);
 }
 
@@ -4656,7 +4702,7 @@ function showRallyAckDialog(onConfirm, onCancel) {
   modal.appendChild(confirmBtn);
   modal.appendChild(cancelBtn);
   bg.appendChild(modal);
-  document.body.appendChild(bg);
+  mountModal(bg, modal);
 }
 
 function renderTimeBudgetBlock() {
@@ -5319,10 +5365,10 @@ function renderCrownStandingsCard() {
   table.appendChild(el("thead", null, el("tr", null,
     el("th", { style: "text-align:center;" }, "#"),
     el("th", null, "Player"),
-    el("th", { class: "num" }, "MP"),
-    el("th", { class: "num" }, "G W–L"),
-    el("th", { class: "num" }, "PTS"),
-    el("th", { class: "num col-hide-mobile" }, "+/–"),
+    el("th", { class: "num", title: "Matches played" }, "MP"),
+    el("th", { class: "num", title: "Game win–loss" }, "G W–L"),
+    el("th", { class: "num", title: "Points scored" }, "PTS"),
+    el("th", { class: "num col-hide-mobile", title: "Points differential" }, "+/–"),
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
@@ -5654,10 +5700,10 @@ function renderDoneScreenCrown() {
   table.appendChild(el("thead", null, el("tr", null,
     el("th", { style: "text-align:center;" }, "#"),
     el("th", null, "Player"),
-    el("th", { class: "num" }, "Total MP"),
-    el("th", { class: "num" }, "G W–L"),
-    el("th", { class: "num" }, "PTS"),
-    el("th", { class: "num col-hide-mobile" }, "+/–"),
+    el("th", { class: "num", title: "Total matches played" }, "Total MP"),
+    el("th", { class: "num", title: "Game win–loss" }, "G W–L"),
+    el("th", { class: "num", title: "Points scored" }, "PTS"),
+    el("th", { class: "num col-hide-mobile", title: "Points differential" }, "+/–"),
   )));
   const standingsTbody = el("tbody");
   ranking.forEach((s, i) => {
@@ -5701,7 +5747,7 @@ function renderDoneScreenCrown() {
     }
   }, "Start New Tournament"));
 
-  wrap.appendChild(renderTextResultsCard("final"));
+  if (textResultsSupported()) wrap.appendChild(renderTextResultsCard("final"));
   return wrap;
 }
 
@@ -5714,7 +5760,9 @@ function renderPlaying() {
   const isKing        = state.format === "king";
   const isGauntlet    = state.format === "gauntlet";
   const isIncremental = isStack || isKing || isGauntlet; // rounds built one at a time
-  const requiresDecided = isStack || isKing;             // ties block advancement
+  const requiresDecided = true;                          // ties block advancement in every format
+                                                         // (a tied score means the game isn't over —
+                                                         // the court card already says "enter a tiebreaker")
   const total = totalRegularRounds();
 
   // Refresh hooks injected by score inputs
@@ -5724,8 +5772,8 @@ function renderPlaying() {
   wrap.appendChild(renderRoundCourts(round, false, refreshes));
 
   // navigation row
-  // RR: round is "advanceable" when both scores are present (ties allowed).
-  // Stack: round is "advanceable" only when both courts are decided (no ties).
+  // A round is "advanceable" only when both courts are decided (no ties) — a
+  // tied score means the game hasn't finished (pickleball is win-by-2).
   const advanceReady = requiresDecided ? isRoundDecided(round) : isRoundComplete(round);
   const allRoundsAdvanceable = requiresDecided
     ? (state.rounds.length === total && state.rounds.every(isRoundDecided))
@@ -5770,7 +5818,7 @@ function renderPlaying() {
           render();
           if (toastMsg) showToast(toastMsg);
         } else {
-          if (!isRoundComplete(round)) return;
+          if (!isRoundDecided(round)) return;
           state.currentRound++;
           save();
           render();
@@ -6147,9 +6195,9 @@ function renderStandingsCard(throughRound, opts) {
   table.appendChild(el("thead", null, el("tr", null,
     el("th", { style: "text-align: center;" }, "#"),
     el("th", null, "Player"),
-    el("th", { class: "num" }, "PTS"),
-    el("th", { class: "num" }, "W"),
-    el("th", { class: "num col-hide-mobile" }, "+/–"),
+    el("th", { class: "num", title: "Points scored" }, "PTS"),
+    el("th", { class: "num", title: "Wins" }, "W"),
+    el("th", { class: "num col-hide-mobile", title: "Points differential" }, "+/–"),
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
@@ -7028,8 +7076,12 @@ function renderTextResultsCard(mode) {
       "Texting results isn't available for this format yet."));
     return card;
   }
-  const btnStyle = "display:inline-block;text-decoration:none;background:var(--accent);" +
-    "color:#1a1207;border:none;border-radius:8px;padding:11px 16px;font-weight:600;font-size:14px;cursor:pointer;";
+  // inline-flex + min-height keeps the Text <a> and Copy <button> the same
+  // height (the inline min-height also overrides the global button min-height,
+  // which otherwise made Copy taller than Text).
+  const btnStyle = "display:inline-flex;align-items:center;justify-content:center;min-height:44px;" +
+    "text-decoration:none;background:var(--accent);" +
+    "color:#1a1207;border:none;border-radius:8px;padding:0 16px;font-weight:600;font-size:14px;cursor:pointer;";
   const count = state.slots.filter(Boolean).length;
   for (let slot = 1; slot <= count; slot++) {
     const phone = (state.phones || [])[slot - 1];
@@ -7090,8 +7142,10 @@ function renderDoneScreen() {
 
   wrap.appendChild(renderPodium(ranking));
   // Surface the primary post-game action (texting) above the awards/standings
-  // scroll instead of burying it at the bottom.
-  wrap.appendChild(renderTextResultsCard("final"));
+  // scroll instead of burying it at the bottom. Only formats that support
+  // texting (RR/Gauntlet) get the card — others skip it rather than show a
+  // dead "not available" placeholder.
+  if (textResultsSupported()) wrap.appendChild(renderTextResultsCard("final"));
   // Awards collapsed by default to shorten the results scroll — champions and
   // podium carry the celebration; tap to explore the full awards.
   const awardsDetails = el("details", { class: "history" });
@@ -7171,7 +7225,7 @@ function renderDoneScreen() {
       el("th", { style: "text-align: center;" }, "#"),
       el("th", null, "Player"),
       el("th", { class: "num", title: "King Score" }, "Score"),
-      el("th", { class: "num" }, "W"),
+      el("th", { class: "num", title: "Total wins" }, "W"),
       el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
       el("th", { class: "num col-hide-mobile", title: "Points scored" }, "PTS"),
     )));
@@ -7202,9 +7256,9 @@ function renderDoneScreen() {
     table.appendChild(el("thead", null, el("tr", null,
       el("th", { style: "text-align: center;" }, "#"),
       el("th", null, "Player"),
-      el("th", { class: "num" }, "PTS"),
-      el("th", { class: "num" }, "W"),
-      el("th", { class: "num col-hide-mobile" }, "+/–"),
+      el("th", { class: "num", title: "Points scored" }, "PTS"),
+      el("th", { class: "num", title: "Wins" }, "W"),
+      el("th", { class: "num col-hide-mobile", title: "Points differential" }, "+/–"),
     )));
     const tbody = el("tbody");
     ranking.forEach((rs, i) => {
@@ -7323,7 +7377,7 @@ function openScheduleModal() {
     onclick: close,
   }, "Close"));
   bg.appendChild(modal);
-  document.body.appendChild(bg);
+  mountModal(bg, modal);
 }
 
 function openHowItWorksModal() {
@@ -7364,7 +7418,7 @@ function openHowItWorksModal() {
     onclick: close,
   }, "Close"));
   bg.appendChild(modal);
-  document.body.appendChild(bg);
+  mountModal(bg, modal);
 }
 
 function openSettings() {
@@ -7499,7 +7553,7 @@ function openSettings() {
   tbToggleText.appendChild(el("div", { class: "ka-title" }, "Set a time budget"));
   tbToggleText.appendChild(el("div", { class: "ka-sub" }, "Back-solves a win condition to fit your time."));
   const tbToggleSwitch = el("label", { class: "ka-switch" });
-  const tbToggleInput = el("input", { type: "checkbox", id: "tb-s-enabled" });
+  const tbToggleInput = el("input", { type: "checkbox", id: "tb-s-enabled", "aria-label": "Set a time budget" });
   if (state.timeBudget.enabled) tbToggleInput.setAttribute("checked", "checked");
   if (state.phase !== "setup") { tbToggleInput.disabled = true; tbToggleInput.title = "Locked — set before starting"; }
   tbToggleSwitch.appendChild(tbToggleInput);
@@ -7648,7 +7702,7 @@ function openSettings() {
   kaPrimaryText.appendChild(el("div", { class: "ka-sub" },
     "Prevents your Mac and AirPlay TVs from sleeping during a tournament."));
   const kaPrimarySwitch = el("label", { class: "ka-switch" });
-  const kaPrimaryInput = el("input", { type: "checkbox" });
+  const kaPrimaryInput = el("input", { type: "checkbox", "aria-label": "Keep display awake" });
   if (state.keepAwake) kaPrimaryInput.setAttribute("checked", "checked");
   kaPrimarySwitch.appendChild(kaPrimaryInput);
   kaPrimarySwitch.appendChild(el("span", { class: "slider" }));
@@ -7663,7 +7717,7 @@ function openSettings() {
   kaAggText.appendChild(el("div", { class: "ka-sub" },
     "Enable if your TV still sleeps. Adds a silent audio loop."));
   const kaAggSwitch = el("label", { class: "ka-switch" });
-  const kaAggInput = el("input", { type: "checkbox" });
+  const kaAggInput = el("input", { type: "checkbox", "aria-label": "Aggressive mode (silent audio)" });
   if (state.keepAwakeAggressive) kaAggInput.setAttribute("checked", "checked");
   if (!state.keepAwake) kaAggInput.disabled = true;
   kaAggSwitch.appendChild(kaAggInput);
@@ -7928,7 +7982,7 @@ function openSettings() {
   }, "Clear All"));
 
   bg.appendChild(modal);
-  document.body.appendChild(bg);
+  mountModal(bg, modal);
 
   // Populate read-out if already enabled when modal opens (must run after modal is in DOM)
   if (state.timeBudget.enabled) {
