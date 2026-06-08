@@ -2254,6 +2254,20 @@ function runSelfTests() {
     console.assert(runSimulation() === 0, "runSimulation returns 0 failures");
   }
 
+  // Task TR1 — phone utilities
+  {
+    console.assert(normalizePhone("(555) 201-3344") === "5552013344", "normalizePhone strips formatting");
+    console.assert(normalizePhone("+1 555 201 3344") === "+15552013344", "normalizePhone keeps leading +");
+    console.assert(normalizePhone("  555.201.3344  ") === "5552013344", "normalizePhone trims + strips dots");
+    console.assert(normalizePhone("") === "" && normalizePhone(null) === "", "normalizePhone handles empty/null");
+    console.assert(isValidPhone("555-201-3344") === true, "isValidPhone true for 10 digits");
+    console.assert(isValidPhone("12345") === false, "isValidPhone false for too-short");
+    console.assert(isValidPhone("") === false, "isValidPhone false for empty");
+    console.assert(
+      smsHref("(555) 201-3344", "Hi & bye?") === "sms:5552013344?body=Hi%20%26%20bye%3F",
+      "smsHref normalizes number and url-encodes body");
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -3490,6 +3504,20 @@ function startTournament() {
     save();
     runShuffleReveal(state.slots.slice(), () => render());
   }
+}
+
+// ---------- phone / SMS utilities ----------
+function normalizePhone(raw) {
+  if (typeof raw !== "string") return "";
+  const trimmed = raw.trim();
+  const lead = trimmed.startsWith("+") ? "+" : "";
+  return lead + trimmed.replace(/\D/g, "");
+}
+function isValidPhone(raw) {
+  return normalizePhone(raw).replace(/\D/g, "").length >= 7;
+}
+function smsHref(phone, body) {
+  return "sms:" + normalizePhone(phone) + "?body=" + encodeURIComponent(body);
 }
 
 function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
