@@ -2390,6 +2390,43 @@ function runSelfTests() {
     state = savedState;
   }
 
+  // Audit pass-2 — ties are in-progress; only decided games count toward
+  // standings/partners (and the "N left" badge no longer reads 0 from round 1).
+  {
+    const savedState = state;
+    state = newState();
+    state.format = "rr";
+    state.rawNames = ["Ava","Ben","Cy","Dee","Eli","Fay","Gus","Hal"];
+    state.slots = state.rawNames.slice();
+    state.tiebreakRandom = [0,1,2,3,4,5,6,7];
+    state.rounds = generateRounds();   // RR pre-generates all 7 rounds up front
+    state.currentRound = 1;
+    state.phase = "playing";
+
+    // Pre-game: no decided games → 0 partners used ("7 left"), 0 points.
+    const pre = computeStats(state.rounds.length, false);
+    console.assert(pre.every(s => s.partnersUsed.size === 0 && s.points === 0),
+      "audit2: pre-game RR counts no partners/points despite pre-generated rounds");
+
+    // A tied game is in-progress: no points, no partners, round not decided.
+    const r1 = state.rounds[0];
+    r1.court1.score1 = 9; r1.court1.score2 = 9;
+    console.assert(!isRoundDecided(r1), "audit2: tied round is not decided");
+    const tie = computeStats(state.rounds.length, false);
+    console.assert(tie.every(s => s.points === 0 && s.partnersUsed.size === 0),
+      "audit2: a tied game adds no points/partners");
+
+    // Decide it (11-9) → partners/points/win now count for that court's players.
+    r1.court1.score1 = 11;
+    console.assert(isGameDecided(r1.court1), "audit2: 11-9 is decided");
+    const won = computeStats(state.rounds.length, false);
+    const [a, b] = r1.court1.team1;
+    console.assert(won[a-1].partnersUsed.has(b) && won[a-1].points === 11 && won[a-1].wins === 1,
+      "audit2: a decided game counts partners/points/win");
+
+    state = savedState;
+  }
+
   console.log(`[self-tests] complete — ${failures} failure(s)`);
   console.assert = _origAssert;
 }
@@ -3726,7 +3763,6 @@ function buildResultsMessage(slot, mode) {
 function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
 function teamName(team) { return nameOf(team[0]) + " & " + nameOf(team[1]); }
 function isGameComplete(g) { return Number.isInteger(g.score1) && Number.isInteger(g.score2); }
-function isRoundComplete(r) { return isGameComplete(r.court1) && isGameComplete(r.court2); }
 
 function computeStats(throughRound, includeFinals) {
   const stats = [];
@@ -3743,11 +3779,12 @@ function computeStats(throughRound, includeFinals) {
     games.push({ ...state.finals.consolation, isFinal: true });
   }
   for (const g of games) {
-    // Gate on completion before any partner or score tally, so pre-generated
-    // RR rounds only count games actually played — otherwise the "N left"
-    // partner badge counted scheduled-but-unplayed pairings and read 0 from
-    // round 1.
-    if (!isGameComplete(g)) continue;
+    // Only decided games count toward points/wins/diff/partners. A tied score
+    // is an in-progress game (pickleball is win-by-2) — counting it would let a
+    // tie pad the standings while it can't advance. This also fixes the "N left"
+    // partner badge, which otherwise counted RR's pre-generated unplayed rounds
+    // and read 0 from round 1.
+    if (!isGameDecided(g)) continue;
     if (!g.isFinal) {
       stats[g.team1[0]-1].partnersUsed.add(g.team1[1]);
       stats[g.team1[1]-1].partnersUsed.add(g.team1[0]);
@@ -3775,7 +3812,7 @@ function headToHead(slotA, slotB, throughRound) {
   for (let i = 0; i < throughRound && i < state.rounds.length; i++) {
     const r = state.rounds[i];
     for (const g of [r.court1, r.court2]) {
-      if (!isGameComplete(g)) continue;
+      if (!isGameDecided(g)) continue;
       const aOn1 = g.team1.includes(slotA);
       const aOn2 = g.team2.includes(slotA);
       const bOn1 = g.team1.includes(slotB);
@@ -5874,9 +5911,9 @@ function renderPlaying() {
 
   // standings — always computed over ALL rounds, not just up to the viewed round,
   // so navigating back to check or fix an earlier score never drops later rounds'
-  // wins/points from the Live Standings. (computeStats skips incomplete games.)
+  // wins/points from the Live Standings. (computeStats skips undecided games.)
   const standingsOpts = () => {
-    const completedRounds = state.rounds.filter(isRoundComplete).length;
+    const completedRounds = state.rounds.filter(isRoundDecided).length;
     const sub = completedRounds > 0
       ? "Through " + completedRounds + " round" + (completedRounds > 1 ? "s" : "")
       : "Awaiting first scores";
@@ -5887,7 +5924,7 @@ function renderPlaying() {
 
   // Mid-event recap (RR/Gauntlet only, once at least one round is complete).
   if (textResultsSupported()) {
-    const completedRounds = state.rounds.filter(isRoundComplete).length;
+    const completedRounds = state.rounds.filter(isRoundDecided).length;
     if (completedRounds >= 1) {
       wrap.appendChild(renderTextResultsCard({ throughRound: completedRounds }));
     }
@@ -5974,7 +6011,9 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   card.appendChild(summary);
 
   function updateElapsed() {
-    if (Number.isInteger(game.score1) && Number.isInteger(game.score2)) {
+    // A tied score is an in-progress game (pickleball is win-by-2), so keep the
+    // clock running until the game is actually decided.
+    if (isGameDecided(game)) {
       elapsedBadge.textContent = "";
       return;
     }
@@ -5996,7 +6035,7 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
       return;
     }
     updateElapsed();
-    if (Number.isInteger(game.score1) && Number.isInteger(game.score2)) {
+    if (isGameDecided(game)) {
       clearInterval(elapsedTimer);
     }
   }, 1000);
@@ -6065,7 +6104,10 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
       const n = parseInt(v, 10);
       if (!Number.isNaN(n) && n >= 0) game[scoreKey] = n;
     }
-    if (game.gameEndedAt == null && Number.isInteger(game.score1) && Number.isInteger(game.score2)) {
+    // Only stamp the end time / log a duration once the game is decided — a
+    // tied score is still in progress, and stamping it would freeze gameEndedAt
+    // (a later correction wouldn't update it) and pollute time-budget calibration.
+    if (game.gameEndedAt == null && isGameDecided(game)) {
       game.gameEndedAt = Date.now();
       let roundIdx = -1, courtIdx = -1;
       for (let ri = 0; ri < state.rounds.length; ri++) {
