@@ -1,0 +1,48 @@
+version: 1
+
+defaults:
+  # Minimum severity that blocks the verdict (P0 critical → P3 nits).
+  fix_threshold: P2
+  timeout: 300
+  format: json
+
+# Standing context injected into EVERY review (mmr "Project Review Criteria"
+# layer). Keeps the panel grounded in what this repo actually is and cuts the
+# recurring CI/release-tooling hallucinations.
+review_criteria:
+  - >-
+    This repo is a single-file vanilla-JS Progressive Web App. The ONLY source
+    files are index.html (the entire app — HTML, CSS, and JS inline) and sw.js
+    (the service-worker cache). There is no build step, no bundler, no
+    package.json scripts, no test runner config, no CI, and no GitHub Actions /
+    workflows. Do NOT report findings about CI, GitHub Actions, setup-node,
+    actions/checkout, npm/yarn caching, lockfiles, Dockerfiles, release
+    pipelines, or CHANGELOG/Keep-a-Changelog conventions — none of that exists
+    in this project. If a finding references such a file or system, it is
+    hallucinated; drop it.
+  - >-
+    A "vN" version bump (in a commit message or in sw.js) refers to the PWA
+    service-worker cache-version string (CACHE_PREFIX + "vN") that forces
+    clients to pick up the new index.html. It is NEVER a dependency, action, or
+    tool version (e.g. it is not setup-node@v5). Do not interpret a cache-version
+    bump as a dependency upgrade.
+  - >-
+    Ground every finding in the actual diff and the two real files. Built-in
+    test harnesses live in index.html: "?test" runs unit asserts (baseline is
+    exactly 1 known keep-awake failure) and "?simulate" plays full tournaments
+    (must be 0 failures). Prefer concrete, reproducible correctness findings in
+    the changed JS/HTML/CSS over speculative or process-level commentary.
+
+channels:
+  claude:
+    enabled: true
+  gemini:
+    enabled: true
+  codex:
+    enabled: true
+  grok:
+    enabled: true
+  antigravity:
+    enabled: true
+  doc-conformance:
+    enabled: true
