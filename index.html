@@ -4504,6 +4504,12 @@ function renderRulesBlock() {
     "📺 If you're showing the tournament on a TV via AirPlay, the ",
     el("strong", null, "Keep display awake"),
     " setting (in ⚙ Settings) prevents your Mac and the TV from going dark during quiet stretches."));
+  body.appendChild(el("p", { style: "margin: 10px 0 0;" },
+    "📖 New here, or sharing the app with players? See the ",
+    el("a", { href: "guide.html", target: "_blank", rel: "noopener",
+              style: "color: var(--accent); font-weight: 600;" },
+      "install & getting-started guide"),
+    "."));
   details.appendChild(body);
   return details;
 }
