@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rumble Pickleball — Field Guide</title>
+<meta name="description" content="How to install Rumble Pickleball on your phone, Mac, or PC — and run your first tournament. A courtside cheat-sheet.">
+<meta name="theme-color" content="#0f1419">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<!-- Open Graph / share preview -->
+<meta property="og:title" content="Rumble Pickleball — Field Guide">
+<meta property="og:description" content="Install it on any device + run your first tournament. A one-page courtside cheat-sheet.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="icon-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a2028; --panel-2:#232b36; --border:#2e3946;
+    --text:#f1f5f9; --muted:#94a3b8;
+    --gold:#fbbf24; --good:#10b981; --bad:#ef4444;
+    --court1:#38bdf8; --court2:#a78bfa;
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"Hanken Grotesk",system-ui,sans-serif;
+    --r:18px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--body); font-size:17px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    /* Atmosphere: gold glow + faint court-line texture */
+    background-image:
+      radial-gradient(1200px 600px at 50% -10%, rgba(251,191,36,.10), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, rgba(56,189,248,.06), transparent 55%),
+      radial-gradient(900px 500px at 0% 14%, rgba(167,139,250,.06), transparent 55%);
+    background-attachment:fixed;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 20px 80px}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:20;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:14px 20px; margin:0 -20px 0;
+    background:rgba(15,20,25,.72); backdrop-filter:saturate(140%) blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:800; letter-spacing:-.02em}
+  .brand .ball{font-size:22px; filter:drop-shadow(0 2px 6px rgba(251,191,36,.4))}
+  .brand b{color:var(--gold)}
+  .topbar .actions{display:flex; gap:8px}
+  .btn{
+    font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.02em;
+    color:var(--text); background:var(--panel-2); border:1px solid var(--border);
+    border-radius:999px; padding:9px 16px; cursor:pointer; text-decoration:none;
+    display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
+    transition:transform .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .btn:hover{transform:translateY(-1px); border-color:var(--gold)}
+  .btn.gold{background:var(--gold); color:#1a1207; border-color:var(--gold)}
+  .btn.gold:hover{box-shadow:0 8px 24px rgba(251,191,36,.28)}
+
+  /* ---------- hero ---------- */
+  .hero{padding:72px 0 28px; text-align:center; position:relative}
+  .kicker{
+    font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.32em;
+    text-transform:uppercase; color:var(--gold);
+    display:inline-flex; align-items:center; gap:12px;
+  }
+  .kicker::before,.kicker::after{content:""; width:34px; height:2px; background:linear-gradient(90deg,transparent,var(--gold))}
+  .kicker::after{background:linear-gradient(90deg,var(--gold),transparent)}
+  h1{
+    font-family:var(--display); font-weight:900; letter-spacing:-.035em; line-height:.92;
+    font-size:clamp(48px, 11vw, 104px); margin:18px 0 6px; text-transform:uppercase;
+  }
+  h1 .pb{display:block; font-size:.42em; letter-spacing:.18em; color:var(--muted); font-weight:700}
+  h1 .ball{font-size:.7em; -webkit-text-fill-color:initial}
+  .lede{max-width:640px; margin:14px auto 0; color:var(--muted); font-size:19px}
+
+  /* court-color rule under hero */
+  .court-rule{display:flex; height:6px; max-width:340px; margin:30px auto 0; border-radius:99px; overflow:hidden; border:1px solid var(--border)}
+  .court-rule span{flex:1}
+  .court-rule .c1{background:var(--court1)} .court-rule .gd{background:var(--gold)} .court-rule .c2{background:var(--court2)}
+
+  /* link chip */
+  .linkcard{
+    margin:34px auto 0; max-width:560px;
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--border); border-radius:var(--r);
+    padding:8px 8px 8px 20px; display:flex; align-items:center; gap:12px;
+    box-shadow:0 20px 50px rgba(0,0,0,.45);
+  }
+  .linkcard .lab{font-family:var(--display); font-weight:700; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted)}
+  .linkcard a.url{color:var(--gold); font-weight:600; text-decoration:none; word-break:break-all; flex:1; text-align:left}
+  .linkcard a.url:hover{text-decoration:underline}
+  #copybtn{min-width:104px; justify-content:center}
+
+  /* ---------- sections ---------- */
+  section{margin-top:72px}
+  .sec-head{display:flex; align-items:baseline; gap:16px; margin-bottom:6px; flex-wrap:wrap}
+  .sec-num{font-family:var(--display); font-weight:900; font-size:clamp(40px,8vw,68px); line-height:1; color:transparent; -webkit-text-stroke:2px var(--gold); letter-spacing:-.04em}
+  h2{font-family:var(--display); font-weight:800; letter-spacing:-.025em; font-size:clamp(28px,5vw,40px); margin:0; text-transform:uppercase}
+  .sec-sub{color:var(--muted); margin:4px 0 28px; max-width:680px}
+
+  /* device grid */
+  .grid{display:grid; gap:18px; grid-template-columns:repeat(2,1fr)}
+  @media (max-width:720px){ .grid{grid-template-columns:1fr} }
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
+    padding:24px 22px 22px; position:relative; overflow:hidden;
+    transition:transform .2s ease, border-color .2s ease;
+  }
+  .card:hover{transform:translateY(-3px); border-color:#3b4a5c}
+  .card::before{content:""; position:absolute; inset:0 0 auto 0; height:4px; background:var(--accent-bar,var(--gold)); opacity:.9}
+  .card.apple{--accent-bar:var(--court1)} .card.droid{--accent-bar:var(--good)}
+  .card.mac{--accent-bar:var(--gold)} .card.win{--accent-bar:var(--court2)}
+  .card .ico{font-size:30px; line-height:1}
+  .card h3{font-family:var(--display); font-weight:800; letter-spacing:-.01em; font-size:23px; margin:12px 0 4px; display:flex; align-items:center; gap:10px}
+  .pill{font-family:var(--display); font-weight:700; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); background:var(--panel-2); border:1px solid var(--border); border-radius:999px; padding:4px 10px; display:inline-block; margin-bottom:14px}
+  ol.steps{counter-reset:s; list-style:none; margin:0; padding:0}
+  ol.steps li{counter-increment:s; position:relative; padding:7px 0 7px 42px; border-top:1px solid var(--border)}
+  ol.steps li:first-child{border-top:0}
+  ol.steps li::before{
+    content:counter(s); position:absolute; left:0; top:8px;
+    width:28px; height:28px; border-radius:50%;
+    background:var(--panel-2); border:1px solid var(--border);
+    color:var(--gold); font-family:var(--display); font-weight:800; font-size:14px;
+    display:grid; place-items:center;
+  }
+  ol.steps b{color:var(--text)}
+  kbd{font-family:var(--display); font-weight:700; font-size:.86em; background:var(--panel-2); border:1px solid var(--border); border-bottom-width:2px; border-radius:6px; padding:1px 7px; color:var(--text); white-space:nowrap}
+
+  .note{margin-top:22px; display:flex; gap:12px; align-items:flex-start; background:rgba(251,191,36,.07); border:1px solid rgba(251,191,36,.3); border-radius:14px; padding:14px 18px; color:#fde9b0}
+  .note .ni{font-size:20px; line-height:1.4}
+  .note b{color:var(--gold)}
+
+  /* playbook */
+  .plays{display:grid; gap:18px; grid-template-columns:repeat(3,1fr)}
+  @media (max-width:860px){ .plays{grid-template-columns:1fr} }
+  .play{background:linear-gradient(180deg,var(--panel),#161c24); border:1px solid var(--border); border-radius:var(--r); padding:24px 22px; position:relative}
+  .play .ph{font-family:var(--display); font-weight:700; font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--phc,var(--gold))}
+  .play.s1{--phc:var(--court1)} .play.s2{--phc:var(--gold)} .play.s3{--phc:var(--court2)}
+  .play h3{font-family:var(--display); font-weight:800; font-size:24px; margin:6px 0 14px; letter-spacing:-.01em}
+  .play ol{margin:0; padding-left:20px}
+  .play ol li{margin:9px 0}
+  .play .tag{font-family:var(--display); font-weight:800; color:var(--phc); }
+  .chip-x{display:inline-block; font-family:var(--display); font-weight:800; font-size:.82em; color:var(--gold); background:rgba(251,191,36,.14); border:1px solid rgba(251,191,36,.4); border-radius:999px; padding:1px 9px}
+
+  /* tips */
+  .tips{display:grid; gap:16px; grid-template-columns:repeat(2,1fr)}
+  @media (max-width:720px){ .tips{grid-template-columns:1fr} }
+  .tip{display:flex; gap:14px; background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:18px 20px}
+  .tip .ti{font-size:24px; line-height:1.3}
+  .tip b{font-family:var(--display); font-weight:800}
+
+  footer{margin-top:80px; padding-top:30px; border-top:1px solid var(--border); text-align:center; color:var(--muted)}
+  footer .ball{font-size:30px; display:block; margin-bottom:10px}
+  footer a{color:var(--gold); text-decoration:none; font-weight:600}
+
+  /* staggered entrance */
+  .reveal{opacity:0; transform:translateY(16px); animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion:reduce){
+    .reveal{animation:none; opacity:1; transform:none}
+    html{scroll-behavior:auto}
+    .card:hover,.btn:hover{transform:none}
+  }
+
+  /* print: clean ink-friendly cheat-sheet */
+  @media print{
+    :root{--bg:#fff; --text:#111; --muted:#444; --panel:#fff; --panel-2:#f3f4f6; --border:#cbd5e1}
+    body{background:#fff; font-size:12px}
+    .topbar,.btn,#copybtn,.court-rule{display:none!important}
+    .hero{padding:10px 0}
+    h1{font-size:40px; color:#111}
+    h1 .pb{color:#555}
+    .sec-num{-webkit-text-stroke:1.5px #b45309; color:transparent}
+    .card,.play,.tip,.linkcard{box-shadow:none; break-inside:avoid; border-color:#cbd5e1}
+    section{margin-top:24px}
+    .grid,.plays,.tips{gap:10px}
+    a{color:#111; text-decoration:underline}
+    .reveal{animation:none; opacity:1; transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="ball">🏓</span> <span>Rumble&nbsp;<b>Field&nbsp;Guide</b></span></div>
+  <div class="actions">
+    <a class="btn" href="#install">Install</a>
+    <a class="btn" href="#start">Get started</a>
+    <button class="btn gold" onclick="window.print()" aria-label="Print this guide">🖨 Print</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="kicker reveal">Courtside Cheat-Sheet</div>
+    <h1 class="reveal" style="animation-delay:.05s">
+      <span class="ball">🏓</span> Rumble
+      <span class="pb">Pickleball</span>
+    </h1>
+    <p class="lede reveal" style="animation-delay:.12s">
+      A free web app that runs your whole pickleball tournament — Round&nbsp;Robin, Stack, King of the Court, Gauntlet &amp; Crown.
+      No app store, no account, works offline. Here's how to get it on any device and run your first event.
+    </p>
+    <div class="court-rule reveal" style="animation-delay:.18s"><span class="c1"></span><span class="gd"></span><span class="c2"></span></div>
+
+    <div class="linkcard reveal" style="animation-delay:.24s">
+      <span class="lab">Link</span>
+      <a class="url" id="appurl" href="https://zigrivers.github.io/rumble-pickleball/" target="_blank" rel="noopener">zigrivers.github.io/rumble-pickleball</a>
+      <button class="btn gold" id="copybtn" onclick="copyLink()">⧉ Copy link</button>
+    </div>
+  </header>
+
+  <!-- ============ INSTALL ============ -->
+  <section id="install">
+    <div class="sec-head">
+      <span class="sec-num reveal">01</span>
+      <div>
+        <h2 class="reveal" style="animation-delay:.05s">Get it on your device</h2>
+      </div>
+    </div>
+    <p class="sec-sub reveal" style="animation-delay:.08s">Pick your device. It saves to your home screen / Dock and opens like a normal app — no download.</p>
+
+    <div class="grid">
+      <div class="card apple reveal" style="animation-delay:.05s">
+        <div class="ico">📱</div>
+        <h3>iPhone &amp; iPad</h3>
+        <span class="pill">Use Safari — not Chrome</span>
+        <ol class="steps">
+          <li>Open the link in <b>Safari</b>.</li>
+          <li>Tap the <b>Share</b> button (the square with an ↑ arrow, bottom center).</li>
+          <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+          <li>Tap <b>Add</b> (top-right corner).</li>
+          <li>Open the <b>Rumble</b> icon on your home screen.</li>
+        </ol>
+      </div>
+
+      <div class="card droid reveal" style="animation-delay:.12s">
+        <div class="ico">🤖</div>
+        <h3>Android</h3>
+        <span class="pill">Use Chrome</span>
+        <ol class="steps">
+          <li>Open the link in <b>Chrome</b>.</li>
+          <li>Tap the <b>⋮</b> menu (three dots, top-right).</li>
+          <li>Tap <b>Add to Home screen</b> (or <b>Install app</b>).</li>
+          <li>Tap <b>Add</b> / <b>Install</b> to confirm.</li>
+          <li>Open the <b>Rumble</b> icon from your apps.</li>
+        </ol>
+      </div>
+
+      <div class="card mac reveal" style="animation-delay:.19s">
+        <div class="ico">💻</div>
+        <h3>Mac</h3>
+        <span class="pill">Safari 17+ · or Chrome/Edge</span>
+        <ol class="steps">
+          <li>Open the link in <b>Safari</b>.</li>
+          <li>In the menu bar: <kbd>File</kbd> → <b>Add to Dock…</b> <span style="color:var(--muted)">(or Share → Add to Dock)</span>.</li>
+          <li>Keep the name <b>Rumble</b>, click <b>Add</b>.</li>
+          <li>Launch it from your <b>Dock</b> — it opens in its own window.</li>
+          <li><b>Chrome/Edge:</b> click the <b>install icon</b> (a screen with ↓) in the address bar → <b>Install</b>.</li>
+        </ol>
+      </div>
+
+      <div class="card win reveal" style="animation-delay:.26s">
+        <div class="ico">🪟</div>
+        <h3>Windows PC</h3>
+        <span class="pill">Use Chrome or Edge</span>
+        <ol class="steps">
+          <li>Open the link in <b>Chrome</b> or <b>Edge</b>.</li>
+          <li><b>Chrome:</b> click the <b>install icon</b> (a monitor with ↓) on the right side of the address bar.</li>
+          <li><b>Edge:</b> click <b>···</b> → <b>Apps</b> → <b>Install this site as an app</b>.</li>
+          <li>Click <b>Install</b>.</li>
+          <li>Launch <b>Rumble</b> from your Start menu / desktop.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="note reveal">
+      <span class="ni">💡</span>
+      <span><b>No install needed.</b> You can also just <b>bookmark the link</b> and use it in any browser tab — installing only adds the standalone window + icon. Either way it works <b>offline</b> after the first visit and <b>auto-saves</b> your tournament.</span>
+    </div>
+  </section>
+
+  <!-- ============ GETTING STARTED ============ -->
+  <section id="start">
+    <div class="sec-head">
+      <span class="sec-num reveal">02</span>
+      <div><h2 class="reveal" style="animation-delay:.05s">Run your first tournament</h2></div>
+    </div>
+    <p class="sec-sub reveal" style="animation-delay:.08s">Three plays: set up, score each round, crown your champions.</p>
+
+    <div class="plays">
+      <div class="play s1 reveal" style="animation-delay:.05s">
+        <div class="ph">Play 1</div>
+        <h3>Set up</h3>
+        <ol>
+          <li>Pick a <span class="tag">Format</span> card — Round Robin, Stack, King of the Court, Gauntlet, or Crown Court (4 players).</li>
+          <li>Type a name in each player box. <span style="color:var(--muted)">Tip: tap <b>Paste 8 names</b> to drop in a whole list at once.</span></li>
+          <li><em>Optional:</em> add a phone number to text someone their results later.</li>
+          <li><em>Optional:</em> flip on <b>Set a time budget</b> — it tunes the scoring to fit your clock.</li>
+          <li>Tap <span class="tag">Start Tournament</span> and watch the courts get drawn.</li>
+        </ol>
+      </div>
+
+      <div class="play s2 reveal" style="animation-delay:.14s">
+        <div class="ph">Play 2</div>
+        <h3>Score each round</h3>
+        <ol>
+          <li>Each court shows the two teams and a score box.</li>
+          <li>Type each team's <b>final score</b> — or tap the <span class="chip-x">× 11</span> pill to fill the winner instantly, then type the loser's.</li>
+          <li><b>Live Standings</b> update as you go; a timer tracks each court.</li>
+          <li>When both courts are done, tap <span class="tag">Round&nbsp;2&nbsp;→</span>.</li>
+          <li>Need a fix? Tap <span class="tag">← Round&nbsp;N</span> to edit any earlier score.</li>
+        </ol>
+      </div>
+
+      <div class="play s3 reveal" style="animation-delay:.23s">
+        <div class="ph">Play 3</div>
+        <h3>Crown the champions</h3>
+        <ol>
+          <li>After the last round, tap <span class="tag">Build Finals →</span>.</li>
+          <li>Enter the Championship &amp; Consolation scores.</li>
+          <li>Tap <span class="tag">👑 Crown Champions</span> for the podium, awards &amp; final standings.</li>
+          <li>Added phones? Use <b>📱 Text results</b> to share each recap.</li>
+          <li>Tap <span class="tag">Start New Tournament</span> for round two of the day.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TIPS ============ -->
+  <section id="tips">
+    <div class="sec-head">
+      <span class="sec-num reveal">03</span>
+      <div><h2 class="reveal" style="animation-delay:.05s">Good to know</h2></div>
+    </div>
+
+    <div class="tips">
+      <div class="tip reveal" style="animation-delay:.05s"><span class="ti">📺</span><div><b>Cast it to a TV.</b> On a Mac, open <b>⚙️ Settings → Display &amp; TV</b> and keep <b>Keep display awake</b> on so your screen (and AirPlay TV) won't sleep mid-game.</div></div>
+      <div class="tip reveal" style="animation-delay:.11s"><span class="ti">💾</span><div><b>It auto-saves.</b> Close the window and come back later — your tournament is right where you left it.</div></div>
+      <div class="tip reveal" style="animation-delay:.17s"><span class="ti">📶</span><div><b>Works offline.</b> Once you've opened it once, no signal needed at the courts.</div></div>
+      <div class="tip reveal" style="animation-delay:.23s"><span class="ti">🤝</span><div><b>Share it.</b> Send teammates the link — everyone can install their own copy in seconds.</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="ball">🏓</span>
+    <p>Ready to rumble? Open <a href="https://zigrivers.github.io/rumble-pickleball/" target="_blank" rel="noopener">zigrivers.github.io/rumble-pickleball</a></p>
+    <p style="font-size:14px; opacity:.7">Rumble Pickleball — tournament manager for 8 (or 4) players.</p>
+  </footer>
+
+</div>
+
+<script>
+  function copyLink(){
+    var url="https://zigrivers.github.io/rumble-pickleball/";
+    var btn=document.getElementById("copybtn");
+    var done=function(){ var t=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(function(){btn.textContent=t;},1600); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(done, fallback);
+    } else { fallback(); }
+    function fallback(){
+      var r=document.createRange(); r.selectNode(document.getElementById("appurl"));
+      var s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      try{ document.execCommand("copy"); done(); }catch(e){} s.removeAllRanges();
+    }
+  }
+</script>
+</body>
+</html>
