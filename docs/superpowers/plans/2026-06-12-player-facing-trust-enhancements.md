@@ -513,7 +513,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 7 - fairness explainers
@@ -536,11 +536,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because `buildFairnessExplanation` does not exist.
 
-- [ ] **Step 3: Implement explanation helpers**
+- [x] **Step 3: Implement explanation helpers**
 
   Add `buildFairnessExplanation(type, opts)` returning:
 
@@ -550,7 +550,7 @@
 
   Implement `type` values `"bye"`, `"movement"`, and `"finals"` using existing state helpers.
 
-- [ ] **Step 4: Add UI entry points**
+- [x] **Step 4: Add UI entry points**
 
   Add small `Why?` buttons:
 
@@ -560,11 +560,11 @@
 
   Each opens a modal with the explanation title, body, facts, and Close button.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually verify RR byes, Stack movement, King movement, Gauntlet byes, finals tier placement, and unseated finals explanations.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html

@@ -224,6 +224,20 @@
     text-align: center;
     font-size: 14px;
   }
+  .why-btn {
+    min-height: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1.2;
+    background: transparent;
+    color: var(--accent);
+    border-color: rgba(251, 191, 36, 0.45);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .bye-banner .why-btn { margin-left: 8px; }
+  .rank-trajectory-wrap .why-btn { margin-left: 4px; }
   /* Stack format: top court gets a subtle gold treatment to read as "the top court" */
   .court-card.c1.stack-top {
     border-top-color: var(--gold);
@@ -3747,6 +3761,25 @@ function runSelfTests() {
       "displayModeModel creates display panels", model);
   }
 
+  // Player-facing/trust Task 7 - fairness explainers
+  {
+    console.assert(typeof buildFairnessExplanation === "function", "buildFairnessExplanation exists");
+    const saved = state;
+    state = newState();
+    state.players = [1,2,3,4,5].map(i => ({ slot: i, name: "P" + i, phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null }));
+    state.rounds = [makeRound(1, [{ court: 1, team1: [1,2], team2: [3,4], score1: null, score2: null }], [5])];
+    const exp = buildFairnessExplanation("bye", { slot: 5, round: 1 });
+    console.assert(exp.title.includes("P5") && exp.body.includes("sitting"),
+      "bye explanation names player and sitting state", exp);
+    state = saved;
+  }
+  {
+    const exp = buildFairnessExplanation("finals", { slot: 1, seed: 1, tier: "Championship" });
+    console.assert(exp.body.includes("seed") && exp.body.includes("Championship"),
+      "finals explanation references seed and tier", exp);
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6542,6 +6575,108 @@ function gamesOf(r) {
   return [];
 }
 function byesOf(r) { return r && Array.isArray(r.byes) ? r.byes : []; }
+function byePolicyText() {
+  if (state.format === "gauntlet") return "Gauntlet assigns byes with the rotation policy before building rank blocks for the players who play.";
+  if (state.format === "stack" || state.format === "king") return "Ladder formats balance byes first, then use the remaining players to fill courts by the format's movement rules.";
+  return "Round Robin spreads byes across eligible active players before pairing the courts for the round.";
+}
+function finalsTierForSlot(slot) {
+  for (const tier of finalTiers()) {
+    if ([...(tier.team1 || []), ...(tier.team2 || [])].includes(slot)) return tier.name || "Final";
+  }
+  if ((state.finals?.unseated || []).includes(slot)) return "Unseated";
+  return "Not seated";
+}
+function buildFairnessExplanation(type, opts) {
+  opts = opts || {};
+  if (type === "bye") {
+    const slots = opts.slots || (opts.slot ? [opts.slot] : []);
+    const roundNum = opts.round || state.currentRound || 1;
+    const names = slots.map(nameOf);
+    const facts = [];
+    slots.forEach(slot => {
+      const prior = byeStatsFor(slot, { round: roundNum, rounds: state.rounds, players: state.players });
+      const round = (state.rounds || []).find(r => (r.round || 0) === roundNum);
+      const sittingNow = byesOf(round).includes(slot);
+      const totalByes = prior.byeCount + (sittingNow ? 1 : 0);
+      facts.push(nameOf(slot) + ": " + totalByes + " bye" + (totalByes === 1 ? "" : "s") + " through Round " + roundNum);
+      facts.push(nameOf(slot) + ": eligible since Round " + (playerForBye(slot).eligibleFromRound || 1));
+      facts.push(nameOf(slot) + ": last prior bye " + (prior.lastByeRound === -Infinity ? "none" : "Round " + prior.lastByeRound));
+    });
+    facts.push(byePolicyText());
+    return {
+      title: slots.length === 1 ? names[0] + " is sitting" : "Why these players are sitting",
+      body: (names.join(", ") || "This player") + " is sitting this round because the schedule has more active players than available court seats. Rumble uses deterministic bye rotation to keep games played balanced.",
+      facts
+    };
+  }
+  if (type === "movement") {
+    const slot = opts.slot;
+    const previousRank = opts.previousRank || ((state.previousRanks || []).indexOf(slot) + 1);
+    const currentRank = opts.currentRank || 0;
+    const name = nameOf(slot);
+    const diff = previousRank && currentRank ? previousRank - currentRank : 0;
+    const direction = diff > 0 ? "climbed" : (diff < 0 ? "dropped" : "stayed");
+    const format = formatNameForSnapshot(state.format);
+    return {
+      title: name + " " + direction,
+      body: name + " " + direction + " because " + format + " updates court/rank position from the completed round results. When the exact allocator path is not stored, this explanation states the deterministic rule that applies.",
+      facts: [
+        previousRank ? "Previous rank: #" + previousRank : "Previous rank unavailable",
+        currentRank ? "Current rank: #" + currentRank : "Current rank unavailable",
+        "Byes do not create artificial movement; rankings can still change when averages or format scores change."
+      ]
+    };
+  }
+  if (type === "finals") {
+    const slot = opts.slot;
+    const seed = opts.seed || (slot ? seedRankBySlot().get(slot) : null);
+    const tier = opts.tier || (slot ? finalsTierForSlot(slot) : "Finals");
+    const name = slot ? nameOf(slot) : "This player";
+    return {
+      title: name + " finals placement",
+      body: name + " is seed #" + (seed || "?") + " and is placed in " + tier + ". Finals seat one four-player tier per active court by season seed, then pair #1+#4 against #2+#3 inside each tier.",
+      facts: [
+        seed ? "Season seed: #" + seed : "Season seed unavailable",
+        "Tier: " + tier,
+        "Players beyond the seated court tiers remain unseated by season rank."
+      ]
+    };
+  }
+  return {
+    title: "How Rumble decided this",
+    body: "This explanation is based on the deterministic tournament rules stored in the current event.",
+    facts: []
+  };
+}
+function openFairnessExplanationModal(type, opts) {
+  const exp = buildFairnessExplanation(type, opts || {});
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, exp.title));
+  modal.appendChild(el("p", { class: "muted", style: "margin-top:0;" }, exp.body));
+  if (exp.facts && exp.facts.length) {
+    const ul = el("ul", { style: "padding-left:20px;margin:0 0 14px;" });
+    exp.facts.forEach(f => ul.appendChild(el("li", null, f)));
+    modal.appendChild(ul);
+  }
+  modal.appendChild(el("button", { style: "width:100%;", onclick: close }, "Close"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+function whyButton(type, opts) {
+  return el("button", {
+    class: "why-btn",
+    title: "Explain this decision",
+    onclick: e => {
+      e.preventDefault();
+      e.stopPropagation();
+      openFairnessExplanationModal(type, opts);
+    },
+  }, "Why?");
+}
 function playerCount() {
   return Array.isArray(state.players) ? state.players.length : ((state.slots || []).filter(Boolean).length || 0);
 }
@@ -9313,7 +9448,8 @@ function renderPlaying() {
   const roundByes = byesOf(round);
   if (roundByes.length) {
     wrap.appendChild(el("div", { class: "bye-banner" },
-      "☕ Sitting this round: " + roundByes.map(nameOf).join(", ") + " — back next round."));
+      "☕ Sitting this round: " + roundByes.map(nameOf).join(", ") + " — back next round.",
+      whyButton("bye", { slots: roundByes.slice(), round: round.round || state.currentRound })));
   }
   wrap.appendChild(renderRoundCourts(round, false, refreshes));
 
@@ -9733,9 +9869,12 @@ function trajectorySpan(slot, currentIdx) {
   const prevIdx = prev.indexOf(slot);
   if (prevIdx < 0) return null;
   const diff = prevIdx - currentIdx;
-  if (diff > 0)  return el("span", { class: "rank-trajectory up",   title: "Up " + diff }, "▲" + diff);
-  if (diff < 0)  return el("span", { class: "rank-trajectory down", title: "Down " + (-diff) }, "▼" + (-diff));
-  return el("span", { class: "rank-trajectory same", title: "No change" }, "—");
+  const wrap = el("span", { class: "rank-trajectory-wrap" });
+  if (diff > 0) wrap.appendChild(el("span", { class: "rank-trajectory up", title: "Up " + diff }, "▲" + diff));
+  else if (diff < 0) wrap.appendChild(el("span", { class: "rank-trajectory down", title: "Down " + (-diff) }, "▼" + (-diff)));
+  else wrap.appendChild(el("span", { class: "rank-trajectory same", title: "No change" }, "—"));
+  wrap.appendChild(whyButton("movement", { slot, previousRank: prevIdx + 1, currentRank: currentIdx + 1 }));
+  return wrap;
 }
 
 function renderKingStandingsCard(throughRound, opts) {
@@ -9970,6 +10109,7 @@ function renderFinalsScreen() {
       el("span", { class: "seed-rank" }, "#" + (i + 1)),
       el("span", null, s.name),
       el("span", { class: "seed-meta" }, meta),
+      whyButton("finals", { slot: s.slot, seed: i + 1, tier: finalsTierForSlot(s.slot) }),
     ));
   });
   seedsCard.appendChild(grid);
