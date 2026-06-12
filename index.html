@@ -1324,7 +1324,7 @@ function projectFinishTime(state, calibration, nowTs) {
   // a malformed/partial round object can't throw.
   let completedRounds = 0;
   for (const r of state.rounds) {
-    if (r && r.court1 && r.court2 && isRoundDecided(r)) completedRounds++;
+    if (r && gamesOf(r).length && isRoundDecided(r)) completedRounds++;
   }
 
   const remainingRounds = Math.max(0, state.rounds.length - completedRounds);
@@ -3597,8 +3597,8 @@ function computeStackStats(throughRound) {
   const upTo = Math.min(throughRound || 0, state.rounds.length);
   for (let i = 0; i < upTo; i++) {
     const r = state.rounds[i];
-    for (const courtKey of [1, 2]) {
-      const game = courtKey === 1 ? r.court1 : r.court2;
+    for (const game of gamesOf(r)) {
+      const courtKey = game.court || 1;
       const teams = [game.team1, game.team2];
       teams.forEach(t => {
         stats[t[0]-1].partnersUsed.add(t[1]);
@@ -3638,8 +3638,10 @@ function computeStackStats(throughRound) {
     // next round has actually been built).
     if (i + 1 < state.rounds.length) {
       const nextR = state.rounds[i + 1];
-      const onC1Now  = new Set([...r.court1.team1,     ...r.court1.team2]);
-      const onC1Next = new Set([...nextR.court1.team1, ...nextR.court1.team2]);
+      const topNow = gamesOf(r).find(g => g.court === 1) || gamesOf(r)[0];
+      const topNext = gamesOf(nextR).find(g => g.court === 1) || gamesOf(nextR)[0];
+      const onC1Now  = new Set(topNow  ? [...topNow.team1,  ...topNow.team2]  : []);
+      const onC1Next = new Set(topNext ? [...topNext.team1, ...topNext.team2] : []);
       for (let s = 1; s <= 8; s++) {
         const wasC1 = onC1Now.has(s);
         const willC1 = onC1Next.has(s);
@@ -3743,8 +3745,8 @@ function computeKingStats(throughRound) {
   const upTo = Math.min(throughRound || 0, state.rounds.length);
   for (let i = 0; i < upTo; i++) {
     const r = state.rounds[i];
-    for (const courtKey of [1, 2]) {
-      const game = courtKey === 1 ? r.court1 : r.court2;
+    for (const game of gamesOf(r)) {
+      const courtKey = game.court || 1;
       // Only decided games contribute to the score/win tally — a tied score is
       // an in-progress game (the court/partner counters above are scheduling
       // facts and intentionally still count the current round).
@@ -4245,8 +4247,7 @@ function computeStats(throughRound, includeFinals) {
   }
   const games = [];
   for (let i = 0; i < (throughRound || 0) && i < state.rounds.length; i++) {
-    games.push({ ...state.rounds[i].court1, isFinal: false });
-    games.push({ ...state.rounds[i].court2, isFinal: false });
+    for (const g of gamesOf(state.rounds[i])) games.push({ ...g, isFinal: false });
   }
   if (includeFinals && state.finals) {
     games.push({ ...state.finals.championship, isFinal: true });
@@ -4285,7 +4286,7 @@ function headToHead(slotA, slotB, throughRound) {
   let diff = 0;
   for (let i = 0; i < throughRound && i < state.rounds.length; i++) {
     const r = state.rounds[i];
-    for (const g of [r.court1, r.court2]) {
+    for (const g of gamesOf(r)) {
       if (!isGameDecided(g)) continue;
       const aOn1 = g.team1.includes(slotA);
       const aOn2 = g.team2.includes(slotA);
@@ -4340,8 +4341,8 @@ function nextPartnerInfo(slot) {
   if (state.currentRound >= 7) return null;
   const next = state.rounds[state.currentRound]; // currentRound is 1-based; this is round N+1
   if (!next) return null;
-  for (const courtKey of [1, 2]) {
-    const game = courtKey === 1 ? next.court1 : next.court2;
+  for (const game of gamesOf(next)) {
+    const courtKey = game.court || 1;
     for (const team of [game.team1, game.team2]) {
       const idx = team.indexOf(slot);
       if (idx !== -1) return { partner: team[1 - idx], courtKey };
@@ -4368,7 +4369,7 @@ function maybeFireSlippagePrompt() {
 
   // Derive from decided rounds (not notifiedRounds) so reopening a round to a
   // tie correctly lowers the count.
-  const completedRounds = state.rounds.filter(r => r && r.court1 && r.court2 && isRoundDecided(r)).length;
+  const completedRounds = state.rounds.filter(r => r && gamesOf(r).length && isRoundDecided(r)).length;
   const totalRounds = totalRegularRounds();
   const warmupThreshold = Math.max(2, Math.ceil(0.25 * totalRounds));
   if (completedRounds < warmupThreshold) return;
@@ -4384,9 +4385,7 @@ function maybeFireSlippagePrompt() {
   for (const r of state.rounds) {
     let roundSec = 0;
     let courtsInRound = 0;
-    for (const key of ["court1", "court2"]) {
-      const g = r[key];
-      if (!g) continue;
+    for (const g of gamesOf(r)) {
       if (Number.isInteger(g.score1) && Number.isInteger(g.score2) && g.gameEndedAt && g.gameStartedAt) {
         const dur = Math.max(0, (g.gameEndedAt - g.gameStartedAt) / 1000 - (g.pauseSec || 0));
         roundSec = Math.max(roundSec, dur);
@@ -5589,7 +5588,10 @@ function renderSetup() {
 
 // ---------- playing screens ----------
 function isGameDecided(g) { return isGameComplete(g) && g.score1 !== g.score2; }
-function isRoundDecided(r) { return isGameDecided(r.court1) && isGameDecided(r.court2); }
+function isRoundDecided(r) {
+  const games = gamesOf(r);
+  return games.length > 0 && games.every(isGameDecided);
+}
 
 function movementToastText(prevRound, newRound) {
   // climbers = c2 winners (now on new c1)
@@ -7098,8 +7100,9 @@ function computeAwards() {
   const c2Tag = { stack: "Court 2", king: "Bottom Court", gauntlet: "Court 2" }[state.format] || "North";
   for (let r = 0; r < state.rounds.length; r++) {
     const round = state.rounds[r];
-    games.push({ ...round.court1, label: "R" + (r + 1) + " " + c1Tag });
-    games.push({ ...round.court2, label: "R" + (r + 1) + " " + c2Tag });
+    for (const g of gamesOf(round)) {
+      games.push({ ...g, label: "R" + (r + 1) + " " + (g.court === 1 ? c1Tag : c2Tag) });
+    }
   }
   if (state.finals) {
     games.push({ ...state.finals.championship, label: "Championship" });
@@ -8136,7 +8139,7 @@ function openSettings() {
 
     if (state.format === "stack") {
       const noGamesPlayed = !state.rounds.some(r =>
-        isGameComplete(r.court1) || isGameComplete(r.court2)
+        gamesOf(r).some(isGameComplete)
       );
       const roundsRow = el("div", { class: "settings-row" });
       roundsRow.appendChild(el("label", null, "Stack rounds"));
@@ -8161,7 +8164,7 @@ function openSettings() {
     if (state.format === "king" || state.format === "gauntlet") {
       const isFmt = state.format === "king";
       const noGamesPlayed = !state.rounds.some(r =>
-        isGameComplete(r.court1) || isGameComplete(r.court2)
+        gamesOf(r).some(isGameComplete)
       );
       const roundsRow = el("div", { class: "settings-row" });
       roundsRow.appendChild(el("label", null, isFmt ? "King rounds" : "Gauntlet rounds"));
@@ -8661,7 +8664,7 @@ setInterval(() => {
   if (lastSeen > 0 && now - lastSeen > 5 * 60 * 1000) {
     const gapSec = Math.round((now - lastSeen) / 1000);
     for (const r of state.rounds) {
-      for (const court of [r.court1, r.court2]) {
+      for (const court of gamesOf(r)) {
         if (court.gameStartedAt != null && court.gameEndedAt == null) {
           court.pauseSec = (court.pauseSec || 0) + gapSec;
         }

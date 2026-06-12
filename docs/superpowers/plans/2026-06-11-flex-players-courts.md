@@ -50,9 +50,9 @@
 
 ### Task 2.1: Stats & logic readers
 
-- [ ] Mechanically convert every `r.court1` / `r.court2` read in **logic** code (`computeStats`, `computeStackStats`, `computeKingStats`, `rankPlayers*`, `isRoundDecided`, h2h, awards, text-results builders, time-budget projections) to iterate `gamesOf(r)`. Loops over `[1, 2]` court keys become loops over games. Keep all assert names passing.
-- [ ] Verify `?test` (1 failure) + `?simulate` (0).
-- [ ] Commit: `refactor: stats/logic read rounds via games[] instead of court1/court2`
+- [x] Mechanically convert every `r.court1` / `r.court2` read in **logic** code (`computeStats`, `computeStackStats`, `computeKingStats`, `rankPlayers*`, `isRoundDecided`, h2h, awards, text-results builders, time-budget projections) to iterate `gamesOf(r)`. Loops over `[1, 2]` court keys become loops over games. Keep all assert names passing.
+- [x] Verify `?test` (1 failure) + `?simulate` (0).
+- [x] Commit: `refactor: stats/logic read rounds via games[] instead of court1/court2`
 
 ### Task 2.2: Builders + renderer
 
