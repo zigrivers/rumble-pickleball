@@ -115,10 +115,10 @@
 
 ## Phase 7 — Per-game-average standings
 
-- [ ] Tests: comparator order per §7 table; **pre-comparator**: GP=0 ranks below all GP>0 (construct the avgDiff-0-vs-negative trap case); **equivalence**: random equal-GP tournaments rank identically under totals and averages (this keeps golden-path standings unchanged — do NOT reorder avgPoints/winRate, see §7 rationale); king/stack rates.
-- [ ] Convert `rankPlayers`, `rankPlayersStack`, `rankPlayersKing` to rates; add GP column + 1-decimal per-game values to standings, awards, and text-results/text-standings builders (byes noted in texts).
-- [ ] Verify `?test` + `?simulate` + manual standings check.
-- [ ] Commit: `feat(standings): per-game-average ranking with GP column`
+- [x] Tests: comparator order per §7 table; **pre-comparator**: GP=0 ranks below all GP>0 (construct the avgDiff-0-vs-negative trap case); **equivalence**: random equal-GP tournaments rank identically under totals and averages (this keeps golden-path standings unchanged — do NOT reorder avgPoints/winRate, see §7 rationale); king/stack rates.
+- [x] Convert `rankPlayers`, `rankPlayersStack`, `rankPlayersKing` to rates; add GP column + 1-decimal per-game values to standings, awards, and text-results/text-standings builders (byes noted in texts).
+- [x] Verify `?test` + `?simulate` + manual standings check.
+- [x] Commit: `feat(standings): per-game-average ranking with GP column`
 
 ## Phase 8 — Tiered finals (all four formats)
 

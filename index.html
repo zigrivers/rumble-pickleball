@@ -1976,6 +1976,90 @@ function runSelfTests() {
       "gauntlet computeStats supports N players", { statsLength: stats.length, s10 });
     state = savedState;
   }
+  // Flex Phase 7 — per-game-average standings
+  {
+    const savedState = state;
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    const scoredGame = (court, team1, team2, score1, score2) => {
+      const g = makeGame(court, team1, team2);
+      g.score1 = score1; g.score2 = score2;
+      return g;
+    };
+    const order = stats => stats.map(s => s.slot).join(",");
+
+    state = {
+      phase: "playing", format: "rr", courtCount: 1,
+      slots: ["P1","P2","P3","P4","P5","P6"], players: makePlayers(6),
+      rounds: [
+        makeRound(1, [scoredGame(1, [1,3], [2,4], 11, 5)], [5,6]),
+        makeRound(2, [scoredGame(1, [2,3], [4,5], 11, 0)], [1,6]),
+      ],
+      tiebreakRandom: [0,1,2,3,4,5], previousRanks: [], notifiedRounds: [], awardsShown: false,
+      winScore: 11, finals: null,
+    };
+    const rrRanked = rankPlayers(2);
+    console.assert(rrRanked.find(s => s.slot === 1).gp === 1 && rrRanked.find(s => s.slot === 2).gp === 2,
+      "rankPlayers exposes GP", rrRanked);
+    console.assert(rrRanked.findIndex(s => s.slot === 1) < rrRanked.findIndex(s => s.slot === 2),
+      "RR averages outrank higher raw totals when GP differs", order(rrRanked));
+    console.assert(rrRanked[rrRanked.length - 1].slot === 6,
+      "RR GP=0 ranks below all GP>0 players", order(rrRanked));
+    const totalEquivalent = computeStats(1, false).slice().sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      if (b.diff !== a.diff) return b.diff - a.diff;
+      return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
+    }).map(s => s.slot).join(",");
+    console.assert(order(rankPlayers(1)) === totalEquivalent,
+      "RR equal-GP average ranking matches totals ranking", { avg: order(rankPlayers(1)), totalEquivalent });
+    const standings = renderStandingsCard(2);
+    console.assert(/GP/.test(standings.textContent) && /11\.0/.test(standings.textContent),
+      "RR standings show GP and per-game values", standings.textContent);
+
+    state = {
+      phase: "playing", format: "stack", courtCount: 2, stackRounds: 2,
+      slots: Array.from({ length: 10 }, (_, i) => "P" + (i + 1)), players: makePlayers(10),
+      rounds: [
+        makeRound(1, [
+          scoredGame(1, [1,3], [4,5], 11, 0),
+          scoredGame(2, [2,6], [7,8], 11, 0),
+        ], [9,10]),
+        makeRound(2, [
+          scoredGame(1, [3,4], [5,6], 11, 0),
+          scoredGame(2, [2,7], [8,9], 11, 0),
+        ], [1,10]),
+      ],
+      tiebreakRandom: Array.from({ length: 10 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    const stackRanked = rankPlayersStack(2);
+    console.assert(stackRanked.findIndex(s => s.slot === 1) < stackRanked.findIndex(s => s.slot === 2),
+      "Stack ranks by stackScore per GP", order(stackRanked));
+
+    state = {
+      phase: "playing", format: "king", courtCount: 2, kingRounds: 2,
+      slots: Array.from({ length: 10 }, (_, i) => "P" + (i + 1)), players: makePlayers(10),
+      rounds: [
+        makeRound(1, [
+          scoredGame(1, [1,3], [4,5], 11, 0),
+          scoredGame(2, [2,6], [7,8], 11, 0),
+        ], [9,10]),
+        makeRound(2, [
+          scoredGame(1, [3,4], [5,6], 11, 0),
+          scoredGame(2, [2,7], [8,9], 11, 0),
+        ], [1,10]),
+      ],
+      tiebreakRandom: Array.from({ length: 10 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    const kingRanked = rankPlayersKing(2);
+    console.assert(kingRanked.findIndex(s => s.slot === 1) < kingRanked.findIndex(s => s.slot === 2),
+      "King ranks by kingScore per GP", order(kingRanked));
+    state = savedState;
+  }
   // Task 3 — parsePastedNames
   {
     const a = parsePastedNames("Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd");
@@ -2844,12 +2928,12 @@ function runSelfTests() {
       scoringSystem: "sideout", notifiedRounds: [], previousRanks: [],
     };
     const playingEl = renderPlaying();
-    const wCells = Array.from(playingEl.querySelectorAll("table.standings tbody tr"))
-      .map(tr => parseInt(tr.cells[3].textContent, 10));
-    const totalWins = wCells.reduce((a, b) => a + b, 0);
-    // 14 games × 2 winning players = 28 win-credits; the pre-fix bug showed 12 (rounds 1–3 only).
-    console.assert(totalWins === 28,
-      "Live Standings count wins from all completed rounds when viewing an earlier round", { totalWins, wCells });
+    const gpCells = Array.from(playingEl.querySelectorAll("table.standings tbody tr"))
+      .map(tr => parseInt(tr.cells[2].textContent, 10));
+    const totalGp = gpCells.reduce((a, b) => a + b, 0);
+    // 14 games × 4 players = 56 game appearances; the pre-fix bug showed only rounds 1–3.
+    console.assert(totalGp === 56,
+      "Live Standings count wins from all completed rounds when viewing an earlier round", { totalGp, gpCells });
     state = saved;
   }
 
@@ -3019,7 +3103,8 @@ function runSelfTests() {
     console.assert(msg.includes("🥇 ") && msg.includes("🥈 "), "final: champion lines present");
     console.assert(msg.includes("Final standings:"), "final: heading present");
     const bySlot = {}; stats.forEach(s => bySlot[s.slot] = s);
-    const ok = order.every((s, i) => msg.includes((i+1) + ". " + bySlot[s].name + " (" + bySlot[s].wins + "W, " + bySlot[s].points + " pts)"));
+    const ok = order.every((s, i) => msg.includes((i+1) + ". " + bySlot[s].name + " (GP " +
+      bySlot[s].gp + ", " + bySlot[s].avgPoints.toFixed(1) + " pts/game)"));
     console.assert(ok, "final: leaderboard numbers match computeStats(total,true)");
     const mid = buildResultsMessage(order[0], { throughRound: 3 });
     console.assert(mid.includes("standings through 3 rounds"), "mid: interim header", mid);
@@ -3138,11 +3223,11 @@ function runSimulation() {
   // the documented ranking rules: points → wins → diff → h2h → tiebreakRandom.
   function expectedTable(games, tieRand) {
     const st = {};
-    for (let s = 1; s <= 8; s++) st[s] = { slot: s, pts: 0, w: 0, l: 0, diff: 0 };
+    for (let s = 1; s <= 8; s++) st[s] = { slot: s, pts: 0, w: 0, l: 0, diff: 0, gp: 0 };
     for (const g of games) {
       const t1w = g.s1 > g.s2, t2w = g.s2 > g.s1;
-      for (const s of g.t1) { st[s].pts += g.s1; st[s].diff += g.s1 - g.s2; if (t1w) st[s].w++; if (t2w) st[s].l++; }
-      for (const s of g.t2) { st[s].pts += g.s2; st[s].diff += g.s2 - g.s1; if (t2w) st[s].w++; if (t1w) st[s].l++; }
+      for (const s of g.t1) { st[s].pts += g.s1; st[s].diff += g.s1 - g.s2; st[s].gp++; if (t1w) st[s].w++; if (t2w) st[s].l++; }
+      for (const s of g.t2) { st[s].pts += g.s2; st[s].diff += g.s2 - g.s1; st[s].gp++; if (t2w) st[s].w++; if (t1w) st[s].l++; }
     }
     const h2h = (a, b) => {                       // regular rounds only, like headToHead()
       let d = 0;
@@ -3153,12 +3238,23 @@ function runSimulation() {
       }
       return d;
     };
-    return Object.values(st).sort((x, y) =>
-      y.pts - x.pts || y.w - x.w || y.diff - x.diff || -h2h(x.slot, y.slot) ||
-      (tieRand.indexOf(x.slot - 1) - tieRand.indexOf(y.slot - 1)));
+    return Object.values(st).map(s => ({
+      ...s,
+      ppg: s.pts / Math.max(1, s.gp),
+      wg: s.w / Math.max(1, s.gp),
+      dg: s.diff / Math.max(1, s.gp),
+    })).sort((x, y) => {
+      if (x.gp === 0 || y.gp === 0) {
+        if (x.gp !== y.gp) return x.gp === 0 ? 1 : -1;
+        return tieRand.indexOf(x.slot - 1) - tieRand.indexOf(y.slot - 1);
+      }
+      return y.ppg - x.ppg || y.wg - x.wg || y.dg - x.dg || -h2h(x.slot, y.slot) ||
+        (tieRand.indexOf(x.slot - 1) - tieRand.indexOf(y.slot - 1));
+    });
   }
 
-  const fmtDiff = d => (d > 0 ? "+" : "") + d;
+  const fmtRate = n => n.toFixed(1);
+  const fmtDiff = d => (d > 0 ? "+" : "") + d.toFixed(1);
   const randScore = () => Math.random() < 0.2
     ? (w => [w, w - 2])(12 + Math.floor(Math.random() * 4))   // overtime
     : [11, Math.floor(Math.random() * 11)];
@@ -3181,13 +3277,15 @@ function runSimulation() {
       .filter(tr => tr.cells.length > 1)          // skip tier-divider rows
       .map(tr => ({
         name: tr.cells[1].childNodes[0].textContent,
-        pts: tr.cells[2].textContent, w: tr.cells[3].textContent, diff: tr.cells[4].textContent,
+        gp: tr.cells[2].textContent, ppg: tr.cells[3].textContent,
+        wg: tr.cells[4].textContent, diff: tr.cells[5].textContent,
       }));
     console.assert(rows.length === 8, label + ": 8 rows", rows.length);
     expected.forEach((e, i) => {
       const r = rows[i] || {};
       console.assert(
-        r.name === e.name && r.pts === String(e.pts) && r.w === String(e.w) && r.diff === fmtDiff(e.diff),
+        r.name === e.name && r.gp === String(e.gp) && r.ppg === fmtRate(e.ppg)
+          && r.wg === fmtRate(e.wg) && r.diff === fmtDiff(e.dg),
         label + " row " + (i + 1), { got: r, want: e });
     });
   }
@@ -4134,6 +4232,7 @@ function computeStackStats(throughRound) {
       stackScore: 0,
       pointsScored: 0, pointsAgainst: 0,
       wins: 0, losses: 0,
+      gp: 0, stackRate: 0, winRate: 0,
       gamesOnCourt1: 0, gamesOnCourt2: 0,
       courtClimbs: 0, courtDrops: 0,
       partnersUsed: new Set(),
@@ -4171,6 +4270,7 @@ function computeStackStats(throughRound) {
           st.stackScore += gain;
           st.pointsScored += pts;
           st.pointsAgainst += ag;
+          st.gp++;
           if (won) st.wins++;
           if (lost) st.losses++;
           if (margin === 1) {
@@ -4197,6 +4297,10 @@ function computeStackStats(throughRound) {
       }
     }
   }
+  stats.forEach(s => {
+    s.stackRate = s.stackScore / Math.max(1, s.gp);
+    s.winRate = s.wins / Math.max(1, s.gp);
+  });
   return stats;
 }
 
@@ -4210,7 +4314,11 @@ function tiebreakOrder(slot) {
 function rankPlayersStack(throughRound) {
   const stats = computeStackStats(throughRound);
   stats.sort((a, b) => {
-    if (b.stackScore !== a.stackScore) return b.stackScore - a.stackScore;
+    if (a.gp === 0 || b.gp === 0) {
+      if (a.gp !== b.gp) return a.gp === 0 ? 1 : -1;
+      return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
+    }
+    if (b.stackRate !== a.stackRate) return b.stackRate - a.stackRate;
     return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
   });
   return stats;
@@ -4345,9 +4453,11 @@ function assignInitialKingCourts() {
 }
 
 function computeKingStats(throughRound) {
+  const count = statsSlotCount(throughRound, false);
   const stats = [];
-  for (let s = 1; s <= 8; s++) {
-    stats.push({ slot: s, name: nameOf(s), wins: 0, pointsScored: 0, kingCourtWins: 0, kingScore: 0 });
+  for (let s = 1; s <= count; s++) {
+    stats.push({ slot: s, name: nameOf(s), wins: 0, pointsScored: 0, kingCourtWins: 0, kingScore: 0,
+      gp: 0, kingRate: 0, winRate: 0 });
   }
   const upTo = Math.min(throughRound || 0, state.rounds.length);
   for (let i = 0; i < upTo; i++) {
@@ -4367,6 +4477,7 @@ function computeKingStats(throughRound) {
         for (const slot of team) {
           const st = stats[slot - 1];
           st.pointsScored += pts;
+          st.gp++;
           if (won) {
             st.wins++;
             if (courtKey === 1) st.kingCourtWins++;
@@ -4376,16 +4487,22 @@ function computeKingStats(throughRound) {
     }
   }
   stats.forEach(s => { s.kingScore = s.wins + s.pointsScored + s.kingCourtWins; });
+  stats.forEach(s => {
+    s.kingRate = s.kingScore / Math.max(1, s.gp);
+    s.winRate = s.wins / Math.max(1, s.gp);
+  });
   return stats;
 }
 
 function rankPlayersKing(throughRound) {
   const stats = computeKingStats(throughRound);
-  const tieRand = (state.tiebreakRandom && state.tiebreakRandom.length === 8)
-    ? state.tiebreakRandom : [0,1,2,3,4,5,6,7];
   stats.sort((a, b) => {
-    if (b.kingScore !== a.kingScore) return b.kingScore - a.kingScore;
-    return tieRand.indexOf(a.slot - 1) - tieRand.indexOf(b.slot - 1);
+    if (a.gp === 0 || b.gp === 0) {
+      if (a.gp !== b.gp) return a.gp === 0 ? 1 : -1;
+      return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
+    }
+    if (b.kingRate !== a.kingRate) return b.kingRate - a.kingRate;
+    return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
   });
   return stats;
 }
@@ -4815,10 +4932,12 @@ function buildResultsMessage(slot, mode) {
   const sign = d => (d > 0 ? "+" : "") + d;
   const lines = [];
   const youLine = "You: #" + pos + " of " + order.length +
-    " (" + me.wins + "W " + me.losses + "L, " + sign(me.diff) + " pts)";
+    " (GP " + me.gp + ", " + me.avgPoints.toFixed(1) + " pts/game, " +
+    me.winRate.toFixed(1) + " W/game, " + sign(me.avgDiff.toFixed(1)) + " diff/game)";
   const board = order.map((s, i) => {
     const st = bySlot[s];
-    return (i + 1) + ". " + st.name + " (" + st.wins + "W, " + st.points + " pts)";
+    return (i + 1) + ". " + st.name + " (GP " + st.gp + ", " +
+      st.avgPoints.toFixed(1) + " pts/game)";
   });
   if (isFinal) {
     lines.push("🏓 Rumble Pickleball — tonight's results", "", youLine, "");
@@ -4830,9 +4949,16 @@ function buildResultsMessage(slot, mode) {
     }
     lines.push("Final standings:", ...board, "", "GG! 🎾");
   } else {
+    const byeLines = [];
+    for (let i = 0; i < through && i < state.rounds.length; i++) {
+      const byes = byesOf(state.rounds[i]);
+      if (byes.length) byeLines.push("R" + (i + 1) + " sitting: " + byes.map(nameOf).join(", "));
+    }
     lines.push(
       "🏓 Rumble Pickleball — standings through " + through + " round" + (through > 1 ? "s" : ""),
-      "", youLine, "", "Standings:", ...board, "", "(not final — more rounds to play) 🎾");
+      "", youLine, "", "Standings:", ...board);
+    if (byeLines.length) lines.push("", "Byes:", ...byeLines);
+    lines.push("", "(not final — more rounds to play) 🎾");
   }
   return lines.join("\n");
 }
@@ -5086,7 +5212,8 @@ function computeStats(throughRound, includeFinals) {
   const stats = [];
   const count = statsSlotCount(throughRound, includeFinals);
   for (let s = 1; s <= count; s++) {
-    stats.push({ slot: s, name: nameOf(s), points: 0, wins: 0, losses: 0, diff: 0, played: 0, partnersUsed: new Set() });
+    stats.push({ slot: s, name: nameOf(s), points: 0, wins: 0, losses: 0, diff: 0, played: 0, gp: 0,
+      avgPoints: 0, winRate: 0, avgDiff: 0, partnersUsed: new Set() });
   }
   const games = [];
   for (let i = 0; i < (throughRound || 0) && i < state.rounds.length; i++) {
@@ -5112,15 +5239,20 @@ function computeStats(throughRound, includeFinals) {
     const t2Win = g.score2 > g.score1;
     for (const slot of g.team1) {
       const st = stats[slot-1];
-      st.points += g.score1; st.diff += (g.score1 - g.score2); st.played++;
+      st.points += g.score1; st.diff += (g.score1 - g.score2); st.played++; st.gp++;
       if (t1Win) st.wins++; else if (t2Win) st.losses++;
     }
     for (const slot of g.team2) {
       const st = stats[slot-1];
-      st.points += g.score2; st.diff += (g.score2 - g.score1); st.played++;
+      st.points += g.score2; st.diff += (g.score2 - g.score1); st.played++; st.gp++;
       if (t2Win) st.wins++; else if (t1Win) st.losses++;
     }
   }
+  stats.forEach(s => {
+    s.avgPoints = s.points / Math.max(1, s.gp);
+    s.winRate = s.wins / Math.max(1, s.gp);
+    s.avgDiff = s.diff / Math.max(1, s.gp);
+  });
   return stats;
 }
 
@@ -5144,9 +5276,13 @@ function headToHead(slotA, slotB, throughRound) {
 function rankPlayers(throughRound) {
   const stats = computeStats(throughRound, false);
   stats.sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.wins   !== a.wins)   return b.wins   - a.wins;
-    if (b.diff   !== a.diff)   return b.diff   - a.diff;
+    if (a.gp === 0 || b.gp === 0) {
+      if (a.gp !== b.gp) return a.gp === 0 ? 1 : -1;
+      return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
+    }
+    if (b.avgPoints !== a.avgPoints) return b.avgPoints - a.avgPoints;
+    if (b.winRate   !== a.winRate)   return b.winRate   - a.winRate;
+    if (b.avgDiff   !== a.avgDiff)   return b.avgDiff   - a.avgDiff;
     const h2h = headToHead(a.slot, b.slot, throughRound);
     if (h2h !== 0) return -h2h;
     return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
@@ -7645,7 +7781,7 @@ function rankCell(i) {
 
 function trajectorySpan(slot, currentIdx) {
   const prev = state.previousRanks || [];
-  if (prev.length !== 8) return null;
+  if (!prev.length) return null;
   const prevIdx = prev.indexOf(slot);
   if (prevIdx < 0) return null;
   const diff = prevIdx - currentIdx;
@@ -7667,6 +7803,7 @@ function renderKingStandingsCard(throughRound, opts) {
   const colgroup = el("colgroup", null,
     el("col", { class: "c-rank" }),
     el("col", { class: "c-name" }),
+    el("col", { class: "c-stack-extra" }),
     el("col", { class: "c-pts" }),
     el("col", { class: "c-w" }),
     el("col", { class: "c-stack-extra" }),
@@ -7676,10 +7813,11 @@ function renderKingStandingsCard(throughRound, opts) {
   table.appendChild(el("thead", null, el("tr", null,
     el("th", { style: "text-align: center;" }, "#"),
     el("th", null, "Player"),
-    el("th", { class: "num", title: "King Score = wins + points + Court 1 wins" }, "Score"),
-    el("th", { class: "num", title: "Total wins" }, "W"),
+    el("th", { class: "num", title: "Games played" }, "GP"),
+    el("th", { class: "num", title: "King Score per game" }, "KS/G"),
+    el("th", { class: "num", title: "Wins per game" }, "W/G"),
     el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
-    el("th", { class: "num col-hide-mobile", title: "Points scored" }, "PTS"),
+    el("th", { class: "num col-hide-mobile", title: "Points per game" }, "PPG"),
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
@@ -7691,10 +7829,11 @@ function renderKingStandingsCard(throughRound, opts) {
     tbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankTd,
       el("td", { class: "name" }, s.name),
-      el("td", { class: "num" }, "" + s.kingScore),
-      el("td", { class: "num" }, "" + s.wins),
+      el("td", { class: "num" }, "" + s.gp),
+      el("td", { class: "num" }, s.kingRate.toFixed(1)),
+      el("td", { class: "num" }, s.winRate.toFixed(1)),
       el("td", { class: "num col-hide-mobile" }, "" + s.kingCourtWins),
-      el("td", { class: "num col-hide-mobile" }, "" + s.pointsScored),
+      el("td", { class: "num col-hide-mobile" }, (s.pointsScored / Math.max(1, s.gp)).toFixed(1)),
     ));
   });
   table.appendChild(tbody);
@@ -7719,6 +7858,7 @@ function renderStandingsCard(throughRound, opts) {
   const colgroup = el("colgroup", null,
     el("col", { class: "c-rank" }),
     el("col", { class: "c-name" }),
+    el("col", { class: "c-stack-extra" }),
     el("col", { class: "c-pts" }),
     el("col", { class: "c-w" }),
     el("col", { class: "c-diff" }),
@@ -7727,13 +7867,14 @@ function renderStandingsCard(throughRound, opts) {
   table.appendChild(el("thead", null, el("tr", null,
     el("th", { style: "text-align: center;" }, "#"),
     el("th", null, "Player"),
-    el("th", { class: "num", title: "Points scored" }, "PTS"),
-    el("th", { class: "num", title: "Wins" }, "W"),
-    el("th", { class: "num col-hide-mobile", title: "Points differential" }, "+/–"),
+    el("th", { class: "num", title: "Games played" }, "GP"),
+    el("th", { class: "num", title: "Points per game" }, "PPG"),
+    el("th", { class: "num", title: "Wins per game" }, "W/G"),
+    el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
-    const remaining = 7 - s.partnersUsed.size;
+    const remaining = Math.max(0, playerCount() - 1 - s.partnersUsed.size);
     const partnerBadge = opts.hidePartners ? null : el("span", {
       class: "partner-badge" + (remaining === 0 ? " done" : ""),
       title: "Partners remaining"
@@ -7747,12 +7888,13 @@ function renderStandingsCard(throughRound, opts) {
     tbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankCell(i),
       el("td", { class: "name" }, s.name, partnerChip, partnerBadge),
-      el("td", { class: "num" }, "" + s.points),
-      el("td", { class: "num" }, "" + s.wins),
+      el("td", { class: "num" }, "" + s.gp),
+      el("td", { class: "num" }, s.avgPoints.toFixed(1)),
+      el("td", { class: "num" }, s.winRate.toFixed(1)),
       el("td", {
         class: "num col-hide-mobile",
-        style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : ""),
-      }, (s.diff > 0 ? "+" : "") + s.diff),
+        style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : ""),
+      }, (s.avgDiff > 0 ? "+" : "") + s.avgDiff.toFixed(1)),
     ));
   });
   table.appendChild(tbody);
@@ -7773,6 +7915,7 @@ function renderStackStandingsCard(throughRound, opts) {
   const colgroup = el("colgroup", null,
     el("col", { class: "c-rank" }),
     el("col", { class: "c-name" }),
+    el("col", { class: "c-stack-extra" }),
     el("col", { class: "c-pts" }),
     el("col", { class: "c-w" }),
     el("col", { class: "c-stack-extra" }),
@@ -7782,8 +7925,9 @@ function renderStackStandingsCard(throughRound, opts) {
   table.appendChild(el("thead", null, el("tr", null,
     el("th", { style: "text-align: center;" }, "#"),
     el("th", null, "Player"),
-    el("th", { class: "num", title: "Stack Score" }, "SS"),
-    el("th", { class: "num", title: "Wins–Losses" }, "W–L"),
+    el("th", { class: "num", title: "Games played" }, "GP"),
+    el("th", { class: "num", title: "Stack Score per game" }, "SS/G"),
+    el("th", { class: "num", title: "Wins per game" }, "W/G"),
     el("th", { class: "num col-hide-mobile", title: "Court climbs (C2 → C1)" }, "Climbs"),
     el("th", { class: "num col-hide-mobile", title: "Games on Court 1" }, "C1"),
   )));
@@ -7797,8 +7941,9 @@ function renderStackStandingsCard(throughRound, opts) {
     tbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankTd,
       el("td", { class: "name" }, s.name),
-      el("td", { class: "num" }, s.stackScore.toFixed(1)),
-      el("td", { class: "num" }, s.wins + "–" + s.losses),
+      el("td", { class: "num" }, "" + s.gp),
+      el("td", { class: "num" }, s.stackRate.toFixed(1)),
+      el("td", { class: "num" }, s.winRate.toFixed(1)),
       el("td", { class: "num col-hide-mobile" }, "" + s.courtClimbs),
       el("td", { class: "num col-hide-mobile" }, "" + s.gamesOnCourt1),
     ));
@@ -7866,10 +8011,10 @@ function renderFinalsScreen() {
   const grid = el("div", { class: "seeds-grid" });
   ranked.forEach((s, i) => {
     const meta = isStack
-      ? s.stackScore.toFixed(1) + " SS · " + s.wins + "W"
+      ? s.stackRate.toFixed(1) + " SS/G · GP " + s.gp
       : isKing
-        ? s.kingScore + " KS · " + s.wins + "W"
-        : s.points + " pts · " + s.wins + "W";
+        ? s.kingRate.toFixed(1) + " KS/G · GP " + s.gp
+        : s.avgPoints.toFixed(1) + " pts/G · GP " + s.gp;
     grid.appendChild(el("div", { class: "seed-row" },
       el("span", { class: "seed-rank" }, "#" + (i + 1)),
       el("span", null, s.name),
@@ -7922,13 +8067,13 @@ function renderPodium(ranking) {
   let labelBySlot;
   if (isStack) {
     const stackStats = computeStackStats(state.rounds.length);
-    labelBySlot = new Map(stackStats.map(s => [s.slot, s.stackScore.toFixed(1) + " SS"]));
+    labelBySlot = new Map(stackStats.map(s => [s.slot, s.stackRate.toFixed(1) + " SS/G"]));
   } else if (state.format === "king") {
     const ks = computeKingStats(state.rounds.length);
-    labelBySlot = new Map(ks.map(s => [s.slot, s.kingScore + " KS"]));
+    labelBySlot = new Map(ks.map(s => [s.slot, s.kingRate.toFixed(1) + " KS/G"]));
   } else {
     const stats = computeStats(totalRegularRounds(), true);
-    labelBySlot = new Map(stats.map(s => [s.slot, s.points + " pts"]));
+    labelBySlot = new Map(stats.map(s => [s.slot, s.avgPoints.toFixed(1) + " pts/G"]));
   }
   const order = ["silver", "gold", "bronze"]; // visual left/center/right
   const ranks = [ranking[1], ranking[0], ranking[2]]; // map to visual order
@@ -7962,27 +8107,27 @@ function renderScorecard(game) {
 function computeAwards() {
   const isStack = state.format === "stack";
 
-  // MVP — format-aware: Stack uses Stack Score, King uses King Score, RR uses raw points.
+  // MVP — format-aware: Stack/King/RR use per-game rates; raw event awards below stay raw.
   let mvp;
   if (isStack) {
     const ss = computeStackStats(state.rounds.length);
-    const maxSS = ss.reduce((m, s) => Math.max(m, s.stackScore), 0);
-    const winners = ss.filter(s => s.stackScore === maxSS && maxSS > 0);
+    const maxSS = ss.reduce((m, s) => Math.max(m, s.stackRate), 0);
+    const winners = ss.filter(s => s.stackRate === maxSS && maxSS > 0);
     mvp = winners.length
-      ? { names: winners.map(s => nameOf(s.slot)), detail: maxSS.toFixed(1) + " SS" }
+      ? { names: winners.map(s => nameOf(s.slot)), detail: maxSS.toFixed(1) + " SS/game" }
       : { names: [], detail: null };
   } else if (state.format === "king") {
     const ks = computeKingStats(state.rounds.length);
-    const maxKS = ks.reduce((m, s) => Math.max(m, s.kingScore), 0);
-    const winners = ks.filter(s => s.kingScore === maxKS && maxKS > 0);
+    const maxKS = ks.reduce((m, s) => Math.max(m, s.kingRate), 0);
+    const winners = ks.filter(s => s.kingRate === maxKS && maxKS > 0);
     mvp = winners.length
-      ? { names: winners.map(s => nameOf(s.slot)), detail: maxKS + " KS" }
+      ? { names: winners.map(s => nameOf(s.slot)), detail: maxKS.toFixed(1) + " KS/game" }
       : { names: [], detail: null };
   } else {
     const stats = computeStats(totalRegularRounds(), true);
-    const maxPts = stats.reduce((m, s) => Math.max(m, s.points), 0);
-    const mvpNames = stats.filter(s => s.points === maxPts).map(s => nameOf(s.slot));
-    mvp = { names: mvpNames, detail: maxPts + " pts" };
+    const maxPts = stats.reduce((m, s) => Math.max(m, s.avgPoints), 0);
+    const mvpNames = stats.filter(s => s.avgPoints === maxPts).map(s => nameOf(s.slot));
+    mvp = { names: mvpNames, detail: maxPts.toFixed(1) + " pts/game" };
   }
 
   // Build chronological game list: regular rounds (each has c1, c2), then champ, cons.
@@ -8104,7 +8249,7 @@ function computeAwards() {
   // Closer — best W-L in 1-point games (both formats). Hidden if no 1-pt games.
   // "Best" = most wins, tiebreak fewest losses; ties listed.
   const opg = new Map();
-  for (let s = 1; s <= 8; s++) opg.set(s, { wins: 0, losses: 0 });
+  for (let s = 1; s <= statsSlotCount(totalRegularRounds(), true); s++) opg.set(s, { wins: 0, losses: 0 });
   let anyOPG = false;
   for (const g of decided) {
     if (Math.abs(g.score1 - g.score2) !== 1) continue;
@@ -8181,7 +8326,7 @@ function computeAwards() {
   let theWall = { names: [], detail: null };
   {
     const conceded = new Map(); // slot -> { totalAg, games }
-    for (let s = 1; s <= 8; s++) conceded.set(s, { totalAg: 0, games: 0 });
+    for (let s = 1; s <= statsSlotCount(totalRegularRounds(), true); s++) conceded.set(s, { totalAg: 0, games: 0 });
     for (const g of completed) {
       for (const slot of g.team1) { const e = conceded.get(slot); e.totalAg += g.score2; e.games++; }
       for (const slot of g.team2) { const e = conceded.get(slot); e.totalAg += g.score1; e.games++; }
@@ -8699,7 +8844,7 @@ function renderDoneScreen() {
 
   const isStack = state.format === "stack";
   const isKing  = state.format === "king";
-  const colSpan = (isStack || isKing) ? 6 : 5;
+  const colSpan = (isStack || isKing) ? 7 : 6;
   // Tier dividers go BEFORE the listed rank index (0-based). Tier boundaries:
   // 0–1 champ-W, 2–3 champ-L, 4–5 cons-W, 6–7 cons-L.
   const dividerLabels = {
@@ -8717,6 +8862,7 @@ function renderDoneScreen() {
     const colgroup = el("colgroup", null,
       el("col", { class: "c-rank" }),
       el("col", { class: "c-name" }),
+      el("col", { class: "c-stack-extra" }),
       el("col", { class: "c-pts" }),
       el("col", { class: "c-w" }),
       el("col", { class: "c-stack-extra" }),
@@ -8726,8 +8872,9 @@ function renderDoneScreen() {
     table.appendChild(el("thead", null, el("tr", null,
       el("th", { style: "text-align: center;" }, "#"),
       el("th", null, "Player"),
-      el("th", { class: "num", title: "Stack Score" }, "SS"),
-      el("th", { class: "num", title: "Wins–Losses" }, "W–L"),
+      el("th", { class: "num", title: "Games played" }, "GP"),
+      el("th", { class: "num", title: "Stack Score per game" }, "SS/G"),
+      el("th", { class: "num", title: "Wins per game" }, "W/G"),
       el("th", { class: "num col-hide-mobile", title: "Court climbs" }, "Climbs"),
       el("th", { class: "num col-hide-mobile", title: "Games on Court 1" }, "C1"),
     )));
@@ -8738,8 +8885,9 @@ function renderDoneScreen() {
       tbody.appendChild(el("tr", { class: "r" + (i + 1) },
         rankCell(i),
         el("td", { class: "name" }, s.name),
-        el("td", { class: "num" }, s.stackScore.toFixed(1)),
-        el("td", { class: "num" }, s.wins + "–" + s.losses),
+        el("td", { class: "num" }, "" + s.gp),
+        el("td", { class: "num" }, s.stackRate.toFixed(1)),
+        el("td", { class: "num" }, s.winRate.toFixed(1)),
         el("td", { class: "num col-hide-mobile" }, "" + s.courtClimbs),
         el("td", { class: "num col-hide-mobile" }, "" + s.gamesOnCourt1),
       ));
@@ -8751,6 +8899,7 @@ function renderDoneScreen() {
     const colgroup = el("colgroup", null,
       el("col", { class: "c-rank" }),
       el("col", { class: "c-name" }),
+      el("col", { class: "c-stack-extra" }),
       el("col", { class: "c-pts" }),
       el("col", { class: "c-w" }),
       el("col", { class: "c-stack-extra" }),
@@ -8760,10 +8909,11 @@ function renderDoneScreen() {
     table.appendChild(el("thead", null, el("tr", null,
       el("th", { style: "text-align: center;" }, "#"),
       el("th", null, "Player"),
-      el("th", { class: "num", title: "King Score" }, "Score"),
-      el("th", { class: "num", title: "Total wins" }, "W"),
+      el("th", { class: "num", title: "Games played" }, "GP"),
+      el("th", { class: "num", title: "King Score per game" }, "KS/G"),
+      el("th", { class: "num", title: "Wins per game" }, "W/G"),
       el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
-      el("th", { class: "num col-hide-mobile", title: "Points scored" }, "PTS"),
+      el("th", { class: "num col-hide-mobile", title: "Points per game" }, "PPG"),
     )));
     const tbody = el("tbody");
     ranking.forEach((rs, i) => {
@@ -8772,10 +8922,11 @@ function renderDoneScreen() {
       tbody.appendChild(el("tr", { class: "r" + (i + 1) },
         rankCell(i),
         el("td", { class: "name" }, s.name),
-        el("td", { class: "num" }, "" + s.kingScore),
-        el("td", { class: "num" }, "" + s.wins),
+        el("td", { class: "num" }, "" + s.gp),
+        el("td", { class: "num" }, s.kingRate.toFixed(1)),
+        el("td", { class: "num" }, s.winRate.toFixed(1)),
         el("td", { class: "num col-hide-mobile" }, "" + s.kingCourtWins),
-        el("td", { class: "num col-hide-mobile" }, "" + s.pointsScored),
+        el("td", { class: "num col-hide-mobile" }, (s.pointsScored / Math.max(1, s.gp)).toFixed(1)),
       ));
     });
     table.appendChild(tbody);
@@ -8784,6 +8935,7 @@ function renderDoneScreen() {
     const colgroup = el("colgroup", null,
       el("col", { class: "c-rank" }),
       el("col", { class: "c-name" }),
+      el("col", { class: "c-stack-extra" }),
       el("col", { class: "c-pts" }),
       el("col", { class: "c-w" }),
       el("col", { class: "c-diff" }),
@@ -8792,9 +8944,10 @@ function renderDoneScreen() {
     table.appendChild(el("thead", null, el("tr", null,
       el("th", { style: "text-align: center;" }, "#"),
       el("th", null, "Player"),
-      el("th", { class: "num", title: "Points scored" }, "PTS"),
-      el("th", { class: "num", title: "Wins" }, "W"),
-      el("th", { class: "num col-hide-mobile", title: "Points differential" }, "+/–"),
+      el("th", { class: "num", title: "Games played" }, "GP"),
+      el("th", { class: "num", title: "Points per game" }, "PPG"),
+      el("th", { class: "num", title: "Wins per game" }, "W/G"),
+      el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
     )));
     const tbody = el("tbody");
     ranking.forEach((rs, i) => {
@@ -8803,18 +8956,21 @@ function renderDoneScreen() {
       tbody.appendChild(el("tr", { class: "r" + (i + 1) },
         rankCell(i),
         el("td", { class: "name" }, s.name),
-        el("td", { class: "num" }, "" + s.points),
-        el("td", { class: "num" }, "" + s.wins),
-        el("td", { class: "num col-hide-mobile", style: s.diff > 0 ? "color: var(--good);" : (s.diff < 0 ? "color: var(--bad);" : "") },
-          (s.diff > 0 ? "+" : "") + s.diff),
+        el("td", { class: "num" }, "" + s.gp),
+        el("td", { class: "num" }, s.avgPoints.toFixed(1)),
+        el("td", { class: "num" }, s.winRate.toFixed(1)),
+        el("td", { class: "num col-hide-mobile", style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : "") },
+          (s.avgDiff > 0 ? "+" : "") + s.avgDiff.toFixed(1)),
       ));
     });
     table.appendChild(tbody);
   }
   finalCard.appendChild(table);
   const footerText = isKing
-    ? "Within each tier, King Score (wins + points + Court 1 wins) breaks ties."
-    : "Within each tier, season points → wins → differential break ties.";
+    ? "Within each tier, King Score per game breaks ties."
+    : isStack
+      ? "Within each tier, Stack Score per game breaks ties."
+      : "Within each tier, points/game → wins/game → differential/game break ties.";
   finalCard.appendChild(el("p", { class: "standings-footer" }, footerText));
   wrap.appendChild(finalCard);
 
