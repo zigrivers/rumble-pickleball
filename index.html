@@ -116,6 +116,80 @@
     padding: 16px;
     margin-bottom: 14px;
   }
+  .app.display-app {
+    max-width: none;
+    min-height: 100vh;
+    padding: clamp(18px, 3vw, 44px);
+  }
+  .display-shell {
+    min-height: calc(100vh - 36px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(16px, 2vw, 28px);
+  }
+  .display-top {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: end;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 18px;
+  }
+  .display-title {
+    font-size: clamp(34px, 5vw, 72px);
+    line-height: 1;
+    font-weight: 900;
+  }
+  .display-status {
+    font-size: clamp(22px, 3vw, 42px);
+    color: var(--accent);
+    font-weight: 800;
+    text-align: right;
+  }
+  .display-meta {
+    color: var(--muted);
+    font-size: clamp(15px, 1.6vw, 22px);
+    margin-top: 8px;
+  }
+  .display-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: clamp(14px, 2vw, 24px);
+    align-items: start;
+  }
+  .display-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: clamp(16px, 2vw, 26px);
+  }
+  .display-panel h2 {
+    margin: 0 0 14px;
+    font-size: clamp(22px, 2.4vw, 34px);
+  }
+  .display-line,
+  .display-standing {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    border-top: 1px solid var(--border);
+    padding: 12px 0;
+    font-size: clamp(18px, 2vw, 30px);
+  }
+  .display-line:first-of-type,
+  .display-standing:first-of-type { border-top: 0; }
+  .display-line strong,
+  .display-standing strong { font-weight: 850; }
+  .display-score {
+    color: var(--accent);
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  @media (max-width: 780px) {
+    .display-top,
+    .display-grid { grid-template-columns: 1fr; }
+    .display-status { text-align: left; }
+  }
   .court-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
@@ -3664,6 +3738,15 @@ function runSelfTests() {
       "qrMatrixForText returns square matrix", matrix);
   }
 
+  // Player-facing/trust Task 6 - display mode
+  {
+    console.assert(typeof isDisplayMode === "function", "isDisplayMode exists");
+    console.assert(typeof displayModeModel === "function", "displayModeModel exists");
+    const model = displayModeModel(buildTournamentSnapshot("live", { now: 1790000000000 }));
+    console.assert(model.title && Array.isArray(model.panels),
+      "displayModeModel creates display panels", model);
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -3949,7 +4032,9 @@ function runSimulation() {
   console.assert = _origAssert;
   return failures;
 }
-let state = isSnapshotRoute() ? newState() : (load() || newState());
+let state = isSnapshotRoute() ? newState() : (isDisplayMode() ? (readDisplayState() || newState()) : (load() || newState()));
+let displayRefreshStarted = false;
+let displayLastSaved = null;
 
 function newState() {
   return {
@@ -4439,6 +4524,16 @@ function load() {
     return null;
   } catch (e) { return null; }
 }
+
+function readDisplayState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    return obj && obj.phase ? backfillStateDefaults(obj) : null;
+  } catch (e) { return null; }
+}
+
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { console.warn("save failed", e); }
@@ -6240,6 +6335,108 @@ function isSnapshotRoute() {
   return typeof location !== "undefined" && location.hash && location.hash.indexOf("#snapshot=") === 0;
 }
 
+function isDisplayMode() {
+  return typeof location !== "undefined" && location.search.indexOf("display") !== -1;
+}
+
+function displayModeUrl() {
+  return location.href.replace(/[?#].*$/, "") + "?display";
+}
+
+function displayScoreText(g) {
+  const s1 = g.score1 == null ? "–" : g.score1;
+  const s2 = g.score2 == null ? "–" : g.score2;
+  return s1 + "-" + s2;
+}
+
+function displayMatchLine(g) {
+  return {
+    label: (g.court ? "Court " + g.court + ": " : "") + (g.team1 || []).join(" & ") + " vs " + (g.team2 || []).join(" & "),
+    value: displayScoreText(g)
+  };
+}
+
+function displayModeModel(snapshot) {
+  const phase = snapshot.phase || "setup";
+  const panels = [];
+  let status = "Waiting to start";
+  if (phase === "playing") status = "Round " + (snapshot.currentRound || 1);
+  else if (phase === "finals") status = "Finals";
+  else if (phase === "crown") status = "Crown Match";
+  else if (phase === "done") status = "Final Results";
+
+  if (phase === "setup") {
+    panels.push({
+      title: "Event",
+      rows: [
+        { label: "Format", value: formatNameForSnapshot(snapshot.format) },
+        { label: "Field", value: snapshot.summary || "" },
+        { label: "Status", value: "Waiting to start" }
+      ]
+    });
+  } else if (phase === "finals" && snapshot.finals && snapshot.finals.length) {
+    panels.push({
+      title: "Finals",
+      rows: snapshot.finals.map(g => ({
+        label: (g.name || "Final") + (g.court ? " · Court " + g.court : ""),
+        value: (g.team1 || []).join(" & ") + " vs " + (g.team2 || []).join(" & ") + " · " + displayScoreText(g)
+      }))
+    });
+  } else if (phase === "done") {
+    panels.push({
+      title: "Podium",
+      rows: (snapshot.podium || []).map(p => ({ label: "#" + p.rank, value: p.name }))
+    });
+  } else if (snapshot.courts && snapshot.courts.length) {
+    panels.push({ title: "Courts", rows: snapshot.courts.map(displayMatchLine) });
+  }
+
+  if (snapshot.byes && snapshot.byes.length) {
+    panels.push({ title: "Sitting This Round", rows: snapshot.byes.map(name => ({ label: name, value: "Bye" })) });
+  }
+  panels.push({
+    title: phase === "done" ? "Final Standings" : "Top Standings",
+    rows: (snapshot.standings || []).slice(0, 8).map(s => ({
+      label: "#" + s.rank + " " + s.name,
+      value: s.gp ? "GP " + s.gp + (s.score ? " · " + s.score : "") : (s.score || "")
+    }))
+  });
+  return {
+    title: snapshot.title || "Rumble Pickleball",
+    summary: snapshot.summary || "",
+    status,
+    updatedAt: snapshot.createdAt || Date.now(),
+    panels
+  };
+}
+
+function renderDisplayMode(model) {
+  const shell = el("div", { class: "display-shell" });
+  const top = el("div", { class: "display-top" });
+  const titleWrap = el("div");
+  titleWrap.appendChild(el("div", { class: "display-title" }, model.title));
+  if (model.summary) titleWrap.appendChild(el("div", { class: "display-meta" }, model.summary));
+  top.appendChild(titleWrap);
+  top.appendChild(el("div", null,
+    el("div", { class: "display-status" }, model.status),
+    el("div", { class: "display-meta" }, "Live from this device · " + new Date(model.updatedAt).toLocaleTimeString())));
+  shell.appendChild(top);
+
+  const grid = el("div", { class: "display-grid" });
+  (model.panels || []).forEach(panel => {
+    const card = el("section", { class: "display-panel" });
+    card.appendChild(el("h2", null, panel.title));
+    (panel.rows || []).forEach(row => {
+      card.appendChild(el("div", { class: "display-line" },
+        el("strong", null, row.label),
+        el("span", { class: "display-score" }, row.value || "")));
+    });
+    grid.appendChild(card);
+  });
+  shell.appendChild(grid);
+  return shell;
+}
+
 function renderSnapshotView(payload) {
   const wrap = el("div");
   const card = el("div", { class: "card" });
@@ -7100,6 +7297,7 @@ function render() {
   document.querySelectorAll(".modal-bg").forEach(n => n.remove());
   const app = document.getElementById("app");
   app.innerHTML = "";
+  app.classList.toggle("display-app", isDisplayMode());
   if (isSnapshotRoute()) {
     try {
       app.appendChild(renderSnapshotView(decodeSnapshotHash(location.hash)));
@@ -7108,6 +7306,11 @@ function render() {
         el("h2", null, "Snapshot unavailable"),
         el("p", { class: "muted" }, "This snapshot link could not be decoded.")));
     }
+    return;
+  }
+  if (isDisplayMode()) {
+    state = readDisplayState() || newState();
+    app.appendChild(renderDisplayMode(displayModeModel(buildTournamentSnapshot("live"))));
     return;
   }
   app.appendChild(renderHeader());
@@ -10900,6 +11103,11 @@ function openSettings() {
     onclick: () => { close(); openHowItWorksModal(); },
   }, "How this works"));
 
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-bottom: 12px;",
+    onclick: () => { window.open(displayModeUrl(), "_blank", "noopener"); },
+  }, "TV / Projector Mode"));
+
   if (state.phase !== "setup") {
     modal.appendChild(el("button", {
       style: "width: 100%; margin-bottom: 12px;",
@@ -11685,6 +11893,24 @@ setInterval(() => {
   state.timeBudget.lastSeenAt = now;
 }, 1000);
 
+function setupDisplayModeRefresh() {
+  if (!isDisplayMode() || displayRefreshStarted) return;
+  displayRefreshStarted = true;
+  displayLastSaved = localStorage.getItem(STORAGE_KEY);
+  const refreshIfChanged = raw => {
+    const nextRaw = raw === undefined ? localStorage.getItem(STORAGE_KEY) : raw;
+    if (nextRaw === displayLastSaved) return;
+    displayLastSaved = nextRaw;
+    state = readDisplayState() || newState();
+    render();
+  };
+  setInterval(() => refreshIfChanged(), 2000);
+  window.addEventListener("storage", e => {
+    if (e.key === STORAGE_KEY) refreshIfChanged(e.newValue);
+  });
+}
+
+setupDisplayModeRefresh();
 render();
 window.addEventListener("hashchange", () => {
   if (!isSnapshotRoute()) state = load() || newState();

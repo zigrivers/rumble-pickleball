@@ -458,7 +458,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 6 - display mode
@@ -471,11 +471,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because display helpers do not exist.
 
-- [ ] **Step 3: Implement display route and model**
+- [x] **Step 3: Implement display route and model**
 
   Add:
 
@@ -487,19 +487,19 @@
 
   Add `displayModeModel(snapshot)` and `renderDisplayMode(model)`.
 
-- [ ] **Step 4: Wire read-only display rendering**
+- [x] **Step 4: Wire read-only display rendering**
 
   In `render()`, if `isDisplayMode()` is true, load state from localStorage, build `buildTournamentSnapshot("live")`, and render display mode only. Poll `load()` every two seconds and re-render if the saved JSON changed. Also listen for `storage` events.
 
-- [ ] **Step 5: Add organizer entry point**
+- [x] **Step 5: Add organizer entry point**
 
   Add a Display / Projector button in Settings or results surfaces that opens `index.html?display` in a new tab/window. Do not show score inputs, Settings, reset, roster controls, or text buttons in display mode.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
   Run `?test` and `?simulate`. Manually verify display mode for setup, playing, finals, done, 1920x1080, and mobile portrait. In a second browser tab, enter a score in the normal app and verify display updates.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
   ```bash
   git add index.html
