@@ -134,10 +134,10 @@
 
 ## Phase 10 — Mid-event roster management
 
-- [ ] Tests: join (slot N+1, active-cap 24, `tiebreakRandom` insertion, next-round effect, RR future-round regeneration, golden-path exit); leave (≥4 actives guard, greyed standings, departed in final ranking); return; court-count change mid-event (§8.1–§8.3). Churn simulation: random joins/leaves/court changes across formats × seeds → no crashes, fairness bounds hold, every slot appears exactly once in final standings.
-- [ ] Implement Manage Players UI (Settings) + `regenerateFutureRounds()`.
-- [ ] Verify `?test` + `?simulate` + manual churn session.
-- [ ] Commit: `feat(roster): mid-tournament join/leave/return + court-count changes`
+- [x] Tests: join (slot N+1, active-cap 24, `tiebreakRandom` insertion, next-round effect, RR future-round regeneration, golden-path exit); leave (≥4 actives guard, greyed standings, departed in final ranking); return; court-count change mid-event (§8.1–§8.3). Churn simulation: random joins/leaves/court changes across formats × seeds → no crashes, fairness bounds hold, every slot appears exactly once in final standings.
+- [x] Implement Manage Players UI (Settings) + `regenerateFutureRounds()`.
+- [x] Verify `?test` + `?simulate` + manual churn session.
+- [x] Commit: `feat(roster): mid-tournament join/leave/return + court-count changes`
 
 ## Phase 11 — Time budget
 
