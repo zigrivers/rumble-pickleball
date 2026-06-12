@@ -3589,6 +3589,19 @@ function runSelfTests() {
     state = saved;
   }
 
+  // Player-facing/trust Task 2 - event labels
+  {
+    console.assert(typeof scoreChangeEventLabel === "function", "scoreChangeEventLabel exists");
+    const label = scoreChangeEventLabel({ round: 2, court: 1, before: [11, 8], after: [9, 11] });
+    console.assert(label === "R2 Court 1 score changed from 11-8 to 9-11",
+      "scoreChangeEventLabel describes score edit", label);
+  }
+  {
+    console.assert(typeof mutationEventLabel === "function", "mutationEventLabel exists");
+    console.assert(mutationEventLabel("buildFinals", { round: 7 }).includes("Built finals"),
+      "mutationEventLabel names finals build");
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -4428,6 +4441,54 @@ function undoLastEvent() {
   save();
   render();
   return { ok: true };
+}
+
+function scoreChangeEventLabel(info) {
+  const before = info.before.map(v => Number.isInteger(v) ? v : "blank").join("-");
+  const after = info.after.map(v => Number.isInteger(v) ? v : "blank").join("-");
+  const roundLabel = Number.isInteger(info.round) ? "R" + info.round : (info.round || "Round");
+  return roundLabel + " Court " + info.court + " score changed from " + before + " to " + after;
+}
+
+function mutationEventLabel(kind, info) {
+  info = info || {};
+  if (kind === "advance") return "Advanced to Round " + info.round;
+  if (kind === "buildFinals") return "Built finals after Round " + info.round;
+  if (kind === "buildCrown") return "Built Crown Match";
+  if (kind === "finish") return "Finished tournament";
+  if (kind === "rosterAdd") return "Added " + info.name;
+  if (kind === "rosterLeave") return info.name + " left after Round " + info.round;
+  if (kind === "rosterReturn") return info.name + " returned for Round " + info.round;
+  if (kind === "courtCount") return "Changed courts to " + info.courts;
+  return "Updated tournament";
+}
+
+function scorePairForEvent(game) {
+  return [game.score1, game.score2].map(v => Number.isInteger(v) ? v : null);
+}
+
+function scoreEventInfoForGame(game) {
+  for (let i = 0; i < (state.rounds || []).length; i++) {
+    if (gamesOf(state.rounds[i]).includes(game)) {
+      return { round: state.rounds[i].round || i + 1, court: game.court || 1 };
+    }
+  }
+  if (state.finals && finalTiers().includes(game)) {
+    return { round: "Finals", court: game.court || 1 };
+  }
+  return { round: state.format === "crown" ? "Crown" : "Round", court: game.court || 1 };
+}
+
+function recordScoreChange(game, before, beforeState) {
+  const after = scorePairForEvent(game);
+  if (!beforeState || (before[0] === after[0] && before[1] === after[1])) return;
+  const info = scoreEventInfoForGame(game);
+  recordEvent({
+    kind: "score",
+    label: scoreChangeEventLabel({ round: info.round, court: info.court, before, after }),
+    beforeState,
+    reversible: true,
+  });
 }
 
 // ---------- KeepAwake: defeats display sleep on AirPlay-mirrored TVs ----------
@@ -7997,8 +8058,16 @@ function renderCrownPlaying() {
       disabled: !matchComplete,
       onclick: () => {
         if (!isCrownMatchComplete(state.crownMatches[state.currentMatch])) return;
+        const beforeState = stateSnapshotForUndo();
+        const nextMatch = state.currentMatch + 2;
         maybeTightenCrownPreset(state.currentMatch);
         state.currentMatch++;
+        recordEvent({
+          kind: "advance",
+          label: "Advanced to Crown Match " + nextMatch,
+          beforeState,
+          reversible: true,
+        });
         save();
         render();
       }
@@ -8012,7 +8081,14 @@ function renderCrownPlaying() {
       disabled: !state.crownMatches.every(isCrownMatchComplete),
       onclick: () => {
         if (!state.crownMatches.every(isCrownMatchComplete)) return;
+        const beforeState = stateSnapshotForUndo();
         buildCrownMatch();
+        recordEvent({
+          kind: "finals",
+          label: mutationEventLabel("buildCrown", {}),
+          beforeState,
+          reversible: true,
+        });
         render();
       }
     }, "Advance to Crown Match →");
@@ -8101,7 +8177,15 @@ function renderCrownPhaseScreen() {
     style: "width:100%;margin-bottom:8px;",
     onclick: () => {
       if (!isCrownMatchComplete(state.crownFinal)) return;
-      state.phase = "done"; save(); render();
+      const beforeState = stateSnapshotForUndo();
+      state.phase = "done";
+      recordEvent({
+        kind: "finals",
+        label: mutationEventLabel("finish", {}),
+        beforeState,
+        reversible: true,
+      });
+      save(); render();
     }
   }, "👑 Crown Champions");
   finishBtn.disabled = !matchComplete;
@@ -8364,6 +8448,7 @@ function renderPlaying() {
       onclick: () => {
         if (isIncremental) {
           if (!isRoundDecided(round)) return;
+          const beforeState = stateSnapshotForUndo();
           // Build the next round if it doesn't already exist (e.g. user went
           // back, then advanced again — keep the existing pairing). previousRanks
           // is snapshotted only on first-time advance so backward navigation
@@ -8384,12 +8469,25 @@ function renderPlaying() {
             }
           }
           state.currentRound++;
+          recordEvent({
+            kind: "advance",
+            label: mutationEventLabel("advance", { round: state.currentRound }),
+            beforeState,
+            reversible: true,
+          });
           save();
           render();
           if (toastMsg) showToast(toastMsg);
         } else {
           if (!isRoundDecided(round)) return;
+          const beforeState = stateSnapshotForUndo();
           state.currentRound++;
+          recordEvent({
+            kind: "advance",
+            label: mutationEventLabel("advance", { round: state.currentRound }),
+            beforeState,
+            reversible: true,
+          });
           save();
           render();
         }
@@ -8402,7 +8500,17 @@ function renderPlaying() {
       onclick: () => {
         // Re-evaluate at click time — score inputs may have decided the
         // round since this button was rendered.
-        if (allRoundsDecided()) { buildFinals(); render(); }
+        if (allRoundsDecided()) {
+          const beforeState = stateSnapshotForUndo();
+          buildFinals();
+          recordEvent({
+            kind: "finals",
+            label: mutationEventLabel("buildFinals", { round: totalRegularRounds() }),
+            beforeState,
+            reversible: true,
+          });
+          render();
+        }
       }
     }, "Build Finals →");
     primaryBtn.disabled = !allRoundsAdvanceable;
@@ -8597,11 +8705,19 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
     value: Number.isInteger(game[scoreKey]) ? String(game[scoreKey]) : "",
     "aria-label": "Score for " + nameOf(team[0]) + " and " + nameOf(team[1]),
   });
+  let scoreSession = null;
+  input.addEventListener("focus", () => {
+    scoreSession = { before: scorePairForEvent(game), beforeState: stateSnapshotForUndo() };
+  });
   // Normalize the displayed value to the recorded integer on blur, so a stray
   // "-5"/"7.5" left in the field (rejected or truncated when parsed) doesn't
   // linger visually out of sync with the recorded score.
   input.addEventListener("blur", () => {
     input.value = Number.isInteger(game[scoreKey]) ? String(game[scoreKey]) : "";
+    if (scoreSession) {
+      recordScoreChange(game, scoreSession.before, scoreSession.beforeState);
+      scoreSession = null;
+    }
   });
   input.addEventListener("input", () => {
     const v = input.value.trim();
@@ -8675,10 +8791,13 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
       title: "Fill " + quickFillTarget + " pts for this team — still enter the other score",
     }, "× " + quickFillTarget);
     pill.addEventListener("click", () => {
+      const beforeState = stateSnapshotForUndo();
+      const before = scorePairForEvent(game);
       game[scoreKey] = quickFillTarget;
       // Reflect the value into this team's own input — refreshes don't re-render
       // the court cards, so without this the box stayed blank after a tap.
       input.value = String(quickFillTarget);
+      recordScoreChange(game, before, beforeState);
       save();
       refreshes.forEach(fn => fn());
       // Focus the opponent's input so the user can type the loser's score.
@@ -8975,7 +9094,14 @@ function renderFinalsScreen() {
     style: "width: 100%; margin-bottom: 8px;",
     onclick: () => {
       if (finalsReady()) {
+        const beforeState = stateSnapshotForUndo();
         state.phase = "done";
+        recordEvent({
+          kind: "finals",
+          label: mutationEventLabel("finish", {}),
+          beforeState,
+          reversible: true,
+        });
         save();
         render();
       }
@@ -10160,8 +10286,17 @@ function openSettings() {
         courtSelect.appendChild(opt);
       });
       courtSelect.addEventListener("change", () => {
+        const beforeState = stateSnapshotForUndo();
         const result = changeCourtCountMidEvent(parseInt(courtSelect.value, 10));
         if (!result || !result.ok) courtSelect.value = String(state.courtCount);
+        if (result && result.ok && result.changed) {
+          recordEvent({
+            kind: "courtCount",
+            label: mutationEventLabel("courtCount", { courts: state.courtCount }),
+            beforeState,
+            reversible: true,
+          });
+        }
         applyRosterResult(result, "Courts updated for Round " + nextRosterRound() + ".");
       });
       courtRow.appendChild(courtSelect);
@@ -10192,7 +10327,18 @@ function openSettings() {
           title: activeTotal <= 4 ? "At least 4 active players are required." : "",
         }, "Leave");
         leaveBtn.addEventListener("click", () => {
-          applyRosterResult(markPlayerLeft(p.slot), (p.name || "Player") + " leaves after Round " + (parseInt(state.currentRound, 10) || 1) + ".");
+          const beforeState = stateSnapshotForUndo();
+          const round = parseInt(state.currentRound, 10) || 1;
+          const result = markPlayerLeft(p.slot);
+          if (result && result.ok) {
+            recordEvent({
+              kind: "roster",
+              label: mutationEventLabel("rosterLeave", { name: p.name || "Player", round }),
+              beforeState,
+              reversible: true,
+            });
+          }
+          applyRosterResult(result, (p.name || "Player") + " leaves after Round " + round + ".");
         });
         row.appendChild(leaveBtn);
         activeList.appendChild(row);
@@ -10214,7 +10360,17 @@ function openSettings() {
             title: activeTotal >= 24 ? "Active player cap is 24." : "",
           }, "Return");
           returnBtn.addEventListener("click", () => {
-            applyRosterResult(returnMidEventPlayer(p.slot), (p.name || "Player") + " returns in Round " + nextRosterRound() + ".");
+            const beforeState = stateSnapshotForUndo();
+            const result = returnMidEventPlayer(p.slot);
+            if (result && result.ok) {
+              recordEvent({
+                kind: "roster",
+                label: mutationEventLabel("rosterReturn", { name: p.name || "Player", round: nextRosterRound() }),
+                beforeState,
+                reversible: true,
+              });
+            }
+            applyRosterResult(result, (p.name || "Player") + " returns in Round " + nextRosterRound() + ".");
           });
           row.appendChild(returnBtn);
           leftList.appendChild(row);
@@ -10245,7 +10401,18 @@ function openSettings() {
         title: activeTotal >= 24 ? "Active player cap is 24." : "",
       }, "Add");
       addBtn.addEventListener("click", () => {
-        applyRosterResult(addMidEventPlayer(nameInput.value, phoneInput.value), "Player added for Round " + nextRosterRound() + ".");
+        const beforeState = stateSnapshotForUndo();
+        const cleanName = (nameInput.value || "").trim();
+        const result = addMidEventPlayer(nameInput.value, phoneInput.value);
+        if (result && result.ok) {
+          recordEvent({
+            kind: "roster",
+            label: mutationEventLabel("rosterAdd", { name: cleanName || "Player" }),
+            beforeState,
+            reversible: true,
+          });
+        }
+        applyRosterResult(result, "Player added for Round " + nextRosterRound() + ".");
       });
       nameInput.addEventListener("keydown", e => { if (e.key === "Enter") addBtn.click(); });
       phoneInput.addEventListener("keydown", e => { if (e.key === "Enter") addBtn.click(); });

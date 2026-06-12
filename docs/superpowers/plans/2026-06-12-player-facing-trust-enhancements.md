@@ -186,7 +186,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 2 - event labels
@@ -203,11 +203,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because label helpers do not exist.
 
-- [ ] **Step 3: Implement label helpers**
+- [x] **Step 3: Implement label helpers**
 
   Add:
 
@@ -230,7 +230,7 @@
   }
   ```
 
-- [ ] **Step 4: Wire mutation events**
+- [x] **Step 4: Wire mutation events**
 
   Record events around:
 
@@ -246,11 +246,11 @@
 
   Capture `const before = stateSnapshotForUndo()` immediately before the mutation and call `recordEvent()` after successful mutation.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually verify score edit undo, round advance undo, finals build undo, roster add undo, leave undo, return undo, and court-count undo.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
