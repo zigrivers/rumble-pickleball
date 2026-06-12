@@ -109,9 +109,9 @@
 
 ## Phase 6 — Gauntlet
 
-- [ ] Tests: per §6.3 at N=10/C=2 — byes chosen by the `rotation` policy (bye history, NOT rank: any rank can sit), then the remaining 8 players, in rank order, fill blocks of four (best 4 → court 1 as #1+#4 vs #2+#3, next 4 → court 2); round 1 ranks by `tiebreakRandom`.
-- [ ] Generalize `buildGauntletPairing` to N/C.
-- [ ] Verify + commit: `feat(gauntlet): rank-block pairing for arbitrary N/courts`
+- [x] Tests: per §6.3 at N=10/C=2 — byes chosen by the `rotation` policy (bye history, NOT rank: any rank can sit), then the remaining 8 players, in rank order, fill blocks of four (best 4 → court 1 as #1+#4 vs #2+#3, next 4 → court 2); round 1 ranks by `tiebreakRandom`.
+- [x] Generalize `buildGauntletPairing` to N/C.
+- [x] Verify + commit: `feat(gauntlet): rank-block pairing for arbitrary N/courts`
 
 ## Phase 7 — Per-game-average standings
 

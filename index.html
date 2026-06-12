@@ -1915,6 +1915,67 @@ function runSelfTests() {
       "computeStackStats uses round active-court count and supports N players", { statsLength: stats.length, s9 });
     state = savedState;
   }
+  // Flex Phase 6 — Gauntlet generalized pairing
+  {
+    const savedState = state;
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    const scoredGame = (court, team1, team2, score1, score2) => {
+      const g = makeGame(court, team1, team2);
+      g.score1 = score1; g.score2 = score2;
+      return g;
+    };
+    const sig = r => ({
+      byes: byesOf(r),
+      games: gamesOf(r).map(g => ({ court: g.court, team1: g.team1, team2: g.team2 })),
+    });
+    state = {
+      phase: "playing", format: "gauntlet", courtCount: 2, scheduleSeed: 601,
+      slots: Array.from({ length: 10 }, (_, i) => "P" + (i + 1)),
+      players: makePlayers(10), rounds: [], currentRound: 1,
+      tiebreakRandom: Array.from({ length: 10 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    const ranked = [1,2,3,4,5,6,7,8,9,10];
+    const expectedByes = allocateByes("rotation", {
+      activeSlots: ranked,
+      players: state.players,
+      rounds: [],
+      round: 1,
+      courtCount: 2,
+      rng: ladderRoundRng(1),
+    }).byes;
+    const expectedPlaying = ranked.filter(slot => !expectedByes.includes(slot));
+    const gauntlet = buildGauntletPairing(ranked, 1);
+    console.assert(JSON.stringify(byesOf(gauntlet)) === JSON.stringify(expectedByes)
+      && JSON.stringify(gamesOf(gauntlet).map(g => [g.team1, g.team2])) === JSON.stringify([
+        [[expectedPlaying[0], expectedPlaying[3]], [expectedPlaying[1], expectedPlaying[2]]],
+        [[expectedPlaying[4], expectedPlaying[7]], [expectedPlaying[5], expectedPlaying[6]]],
+      ]),
+      "gauntlet 10/2 uses rotation byes then rank blocks", sig(gauntlet));
+
+    state.tiebreakRandom = [9,8,7,6,5,4,3,2,1,0];
+    const first = assignInitialGauntletCourts();
+    const firstRanked = [10,9,8,7,6,5,4,3,2,1];
+    const firstPlaying = firstRanked.filter(slot => !byesOf(first).includes(slot));
+    console.assert(JSON.stringify(gamesOf(first).map(g => [g.team1, g.team2])) === JSON.stringify([
+      [[firstPlaying[0], firstPlaying[3]], [firstPlaying[1], firstPlaying[2]]],
+      [[firstPlaying[4], firstPlaying[7]], [firstPlaying[5], firstPlaying[6]]],
+    ]), "gauntlet round 1 ranks by tiebreakRandom", sig(first));
+
+    const r = makeRound(1, [
+      scoredGame(1, [1,4], [2,3], 11, 7),
+      scoredGame(2, [10,7], [9,8], 11, 9),
+    ], [5,6]);
+    state.rounds = [r];
+    const stats = computeStats(1, false);
+    const s10 = stats.find(s => s.slot === 10);
+    console.assert(stats.length === 10 && s10 && s10.points === 11 && s10.wins === 1,
+      "gauntlet computeStats supports N players", { statsLength: stats.length, s10 });
+    state = savedState;
+  }
   // Task 3 — parsePastedNames
   {
     const a = parsePastedNames("Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd");
@@ -4346,20 +4407,36 @@ function kingMovementToastText(prevRound) {
 // Reuses existing rankPlayers() (points scored → wins → diff → h2h) — no new stats needed.
 
 function buildGauntletPairing(ranked, roundNum) {
-  return makeRound(roundNum, [
-    makeGame(1, [ranked[0], ranked[3]], [ranked[1], ranked[2]]),
-    makeGame(2, [ranked[4], ranked[7]], [ranked[5], ranked[6]]),
-  ]);
+  const active = ladderActiveSlots(roundNum, null);
+  const activeSet = new Set(active.length ? active : ranked);
+  const rankedActive = ranked.filter(slot => activeSet.has(slot));
+  const rng = ladderRoundRng(roundNum);
+  const alloc = allocateByes("rotation", {
+    activeSlots: [...activeSet].sort((a, b) => a - b),
+    players: ladderPlayersFor([...activeSet]),
+    rounds: ladderHistoryThrough(roundNum - 1),
+    round: roundNum,
+    courtCount: ladderCourtCount(null),
+    rng,
+  });
+  const playing = rankedActive.filter(slot => !alloc.byes.includes(slot));
+  const games = [];
+  for (let c = 0; c < alloc.activeCourts; c++) {
+    const block = playing.slice(c * 4, c * 4 + 4);
+    if (block.length === 4) games.push(makeGame(c + 1, [block[0], block[3]], [block[1], block[2]]));
+  }
+  return makeRound(roundNum, games, alloc.byes);
 }
 
 function assignInitialGauntletCourts() {
-  // rankPlayers(0) returns all players with 0 stats → sorted by tiebreakRandom (already set in startTournament).
-  const ranked = rankPlayers(0).map(s => s.slot);
+  const ranked = ladderActiveSlots(1, null).slice()
+    .sort((a, b) => tiebreakOrder(a) - tiebreakOrder(b));
   return buildGauntletPairing(ranked, 1);
 }
 
 function buildNextGauntletRound(prevRound) {
-  const ranked = rankPlayers(prevRound.round).map(s => s.slot);
+  const activeSet = new Set(ladderActiveSlots(prevRound.round + 1, prevRound));
+  const ranked = rankPlayers(prevRound.round).map(s => s.slot).filter(slot => activeSet.has(slot));
   return buildGauntletPairing(ranked, prevRound.round + 1);
 }
 
@@ -4993,9 +5070,22 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
 function teamName(team) { return nameOf(team[0]) + " & " + nameOf(team[1]); }
 function isGameComplete(g) { return Number.isInteger(g.score1) && Number.isInteger(g.score2); }
 
+function statsSlotCount(throughRound, includeFinals) {
+  let count = Math.max(playerCount(), (state.slots || []).length);
+  const scanGame = g => [...(g.team1 || []), ...(g.team2 || [])]
+    .forEach(slot => { if (slot > count) count = slot; });
+  for (let i = 0; i < (throughRound || 0) && i < state.rounds.length; i++) {
+    gamesOf(state.rounds[i]).forEach(scanGame);
+    byesOf(state.rounds[i]).forEach(slot => { if (slot > count) count = slot; });
+  }
+  if (includeFinals && state.finals) finalTiers().forEach(scanGame);
+  return count;
+}
+
 function computeStats(throughRound, includeFinals) {
   const stats = [];
-  for (let s = 1; s <= 8; s++) {
+  const count = statsSlotCount(throughRound, includeFinals);
+  for (let s = 1; s <= count; s++) {
     stats.push({ slot: s, name: nameOf(s), points: 0, wins: 0, losses: 0, diff: 0, played: 0, partnersUsed: new Set() });
   }
   const games = [];
@@ -5053,14 +5143,13 @@ function headToHead(slotA, slotB, throughRound) {
 
 function rankPlayers(throughRound) {
   const stats = computeStats(throughRound, false);
-  const tieRand = (state.tiebreakRandom && state.tiebreakRandom.length === 8) ? state.tiebreakRandom : [0,1,2,3,4,5,6,7];
   stats.sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points;
     if (b.wins   !== a.wins)   return b.wins   - a.wins;
     if (b.diff   !== a.diff)   return b.diff   - a.diff;
     const h2h = headToHead(a.slot, b.slot, throughRound);
     if (h2h !== 0) return -h2h;
-    return tieRand.indexOf(a.slot - 1) - tieRand.indexOf(b.slot - 1);
+    return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
   });
   return stats;
 }
