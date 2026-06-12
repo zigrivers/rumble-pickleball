@@ -3627,6 +3627,20 @@ function runSelfTests() {
     state = saved;
   }
 
+  // Player-facing/trust Task 4 - share card models
+  {
+    console.assert(typeof buildShareCardModel === "function", "buildShareCardModel exists");
+    const model = buildShareCardModel("podium", { title: "Rumble Pickleball" });
+    console.assert(model.type === "podium" && Array.isArray(model.lines),
+      "share card model returns printable lines", model);
+  }
+  {
+    console.assert(typeof renderShareCardSvg === "function", "renderShareCardSvg exists");
+    const svg = renderShareCardSvg({ type: "round", title: "Round 2", lines: ["Court 1: A/B def C/D"], footer: "Rumble" });
+    console.assert(svg.includes("<svg") && svg.includes("Round 2") && svg.includes("Court 1"),
+      "renderShareCardSvg returns svg markup", svg);
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -5829,6 +5843,125 @@ function ordinal(n) {
   return n + suffix;
 }
 
+function shareCardEscape(text) {
+  return String(text == null ? "" : text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildShareCardModel(type, opts) {
+  opts = opts || {};
+  const title = opts.title || (type === "round" ? "Round Recap" : type === "player" ? "Player Recap" : "Rumble Pickleball");
+  const lines = [];
+  let footer = opts.footer || "Rumble Pickleball";
+  if (type === "round") {
+    const roundNum = opts.round || state.currentRound || 1;
+    const round = state.rounds[roundNum - 1];
+    lines.push("Round " + roundNum);
+    gamesOf(round).forEach(g => {
+      const score = (Number.isInteger(g.score1) ? g.score1 : "–") + "-" + (Number.isInteger(g.score2) ? g.score2 : "–");
+      const winner = isGameDecided(g) ? (g.score1 > g.score2 ? teamName(g.team1) : teamName(g.team2)) : "in progress";
+      lines.push("Court " + (g.court || 1) + ": " + winner + " · " + score);
+    });
+    const byes = byesOf(round);
+    if (byes.length) lines.push("Sitting: " + byes.map(nameOf).join(", "));
+    footer = "Standings through Round " + roundNum;
+  } else if (type === "player") {
+    const slot = opts.slot || 1;
+    const recap = buildPersonalRecap(slot, { final: state.phase === "done", throughRound: opts.throughRound || state.currentRound });
+    lines.push(recap.name);
+    lines.push(recap.headline);
+    lines.push("Record: " + recap.record + " · GP " + recap.gp);
+    if (recap.bestWin) lines.push("Best win: Round " + recap.bestWin.round + " (" + recap.bestWin.score + ")");
+    if (recap.mostCommonPartner) lines.push("Most common partner: " + recap.mostCommonPartner.name);
+    if (recap.byeCount) lines.push("Byes: " + recap.byeCount);
+  } else {
+    const ranking = state.format === "crown" ? finalRankingCrown() : finalRanking();
+    const champ = finalTier(0);
+    const champWin = champ && champ.score1 > champ.score2 ? champ.team1 : (champ && champ.score2 > champ.score1 ? champ.team2 : null);
+    if (champWin) lines.push("Champions: " + teamName(champWin));
+    ranking.slice(0, opts.topCount || 6).forEach((s, i) => {
+      lines.push((i + 1) + ". " + s.name);
+    });
+    footer = playerCount() + " players · " + effectiveCourtCountForFormat(state.format, state.courtCount) + " courts";
+  }
+  return { type: type || "podium", title, lines, footer };
+}
+
+function renderShareCardSvg(model) {
+  const width = 1080, height = 1350;
+  const lines = (model.lines || []).slice(0, 16);
+  const bg = "#111827", panel = "#1f2937", text = "#f9fafb", muted = "#cbd5e1", gold = "#fbbf24";
+  const lineNodes = lines.map((line, i) => {
+    const size = i === 0 && model.type !== "podium" ? 48 : 38;
+    return '<text x="96" y="' + (338 + i * 64) + '" font-size="' + size + '" font-weight="' + (i === 0 ? "800" : "600") + '" fill="' + text + '">' +
+      shareCardEscape(line).slice(0, 76) + '</text>';
+  }).join("");
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">' +
+    '<rect width="1080" height="1350" rx="0" fill="' + bg + '"/>' +
+    '<rect x="54" y="54" width="972" height="1242" rx="36" fill="' + panel + '" stroke="' + gold + '" stroke-width="6"/>' +
+    '<text x="96" y="150" font-size="34" font-weight="800" fill="' + gold + '">RUMBLE PICKLEBALL</text>' +
+    '<text x="96" y="238" font-size="66" font-weight="900" fill="' + text + '">' + shareCardEscape(model.title).slice(0, 36) + '</text>' +
+    lineNodes +
+    '<text x="96" y="1228" font-size="30" font-weight="700" fill="' + muted + '">' + shareCardEscape(model.footer || "Rumble").slice(0, 72) + '</text>' +
+    '</svg>';
+}
+
+function shareCardFileName(model, ext) {
+  return "rumble-" + (model.type || "card") + "-" + Date.now() + "." + ext;
+}
+
+function downloadShareCard(model, format) {
+  const svg = renderShareCardSvg(model);
+  if (format === "png") {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1080; canvas.height = 1350;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(img.src);
+      canvas.toBlob(blob => downloadBlob(blob, shareCardFileName(model, "png")), "image/png");
+    };
+    img.src = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  } else {
+    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), shareCardFileName(model, "svg"));
+  }
+}
+
+function downloadBlob(blob, name) {
+  if (!blob) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+}
+
+function copyShareCardImage(model) {
+  if (!navigator.clipboard || !window.ClipboardItem) {
+    showToast("Image copy is not available here — download instead.");
+    return;
+  }
+  const svg = renderShareCardSvg(model);
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080; canvas.height = 1350;
+    canvas.getContext("2d").drawImage(img, 0, 0);
+    URL.revokeObjectURL(img.src);
+    canvas.toBlob(blob => {
+      navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+        .then(() => showToast("Share card copied"))
+        .catch(() => showToast("Copy failed — download instead."));
+    }, "image/png");
+  };
+  img.src = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+}
+
 // Personalized recap for the player in `slot`. mode = "final" | { throughRound: N }.
 // State-dependent: reads slots/finals/stats. Final-mode numbers come from
 // computeStats(total, true) + finalRanking() order, matching the done screen.
@@ -7384,6 +7517,85 @@ function openEventLogModal() {
   mountModal(bg, modal);
 }
 
+function openShareCardsModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Share Cards"));
+  modal.appendChild(el("p", { class: "muted", style: "margin-top:0;" },
+    "Generate a static image from the current tournament state."));
+
+  const typeRow = el("div", { class: "settings-row" });
+  typeRow.appendChild(el("label", null, "Card"));
+  const typeSelect = el("select");
+  [["podium", "Final Podium"], ["round", "Round Recap"], ["player", "Player Recap"]].forEach(([value, label]) => {
+    typeSelect.appendChild(el("option", { value }, label));
+  });
+  typeRow.appendChild(typeSelect);
+  modal.appendChild(typeRow);
+
+  const roundRow = el("div", { class: "settings-row" });
+  roundRow.appendChild(el("label", null, "Round"));
+  const roundSelect = el("select");
+  const roundCount = Math.max(1, (state.rounds || []).length);
+  for (let i = 1; i <= roundCount; i++) roundSelect.appendChild(el("option", { value: String(i) }, "Round " + i));
+  roundSelect.value = String(Math.min(state.currentRound || 1, roundCount));
+  roundRow.appendChild(roundSelect);
+  modal.appendChild(roundRow);
+
+  const playerRow = el("div", { class: "settings-row" });
+  playerRow.appendChild(el("label", null, "Player"));
+  const playerSelect = el("select");
+  (state.players || []).forEach(p => {
+    if (p && p.name) playerSelect.appendChild(el("option", { value: String(p.slot) }, p.name));
+  });
+  if (!playerSelect.children.length) {
+    (state.slots || []).forEach((name, i) => {
+      if (name) playerSelect.appendChild(el("option", { value: String(i + 1) }, name));
+    });
+  }
+  playerRow.appendChild(playerSelect);
+  modal.appendChild(playerRow);
+
+  const preview = el("div", { class: "rules", style: "margin:10px 0 14px;padding:10px;" });
+  modal.appendChild(preview);
+
+  const currentModel = () => buildShareCardModel(typeSelect.value, {
+    round: parseInt(roundSelect.value, 10) || state.currentRound || 1,
+    slot: parseInt(playerSelect.value, 10) || 1,
+  });
+  const refresh = () => {
+    roundRow.style.display = typeSelect.value === "round" ? "" : "none";
+    playerRow.style.display = typeSelect.value === "player" ? "" : "none";
+    const model = currentModel();
+    preview.textContent = model.title + "\n" + (model.lines || []).slice(0, 5).join("\n");
+  };
+  [typeSelect, roundSelect, playerSelect].forEach(sel => sel.addEventListener("change", refresh));
+  refresh();
+
+  const pngBtn = el("button", { class: "primary", style: "width:100%;margin-bottom:8px;" }, "Download PNG");
+  pngBtn.addEventListener("click", () => downloadShareCard(currentModel(), "png"));
+  const svgBtn = el("button", { style: "width:100%;margin-bottom:8px;" }, "Download SVG");
+  svgBtn.addEventListener("click", () => downloadShareCard(currentModel(), "svg"));
+  const copyBtn = el("button", { style: "width:100%;margin-bottom:8px;" }, "Copy image");
+  copyBtn.addEventListener("click", () => copyShareCardImage(currentModel()));
+  const closeBtn = el("button", { class: "ghost", style: "width:100%;", onclick: close }, "Close");
+  modal.appendChild(pngBtn);
+  modal.appendChild(svgBtn);
+  modal.appendChild(copyBtn);
+  modal.appendChild(closeBtn);
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+
+function renderShareCardsButtonCard() {
+  const card = el("div", { class: "card" });
+  card.appendChild(el("button", { class: "primary", style: "width:100%;", onclick: openShareCardsModal },
+    "Share Cards"));
+  return card;
+}
+
 function renderTimeBudgetBlock() {
   const enabled = !!(state.timeBudget && state.timeBudget.enabled);
 
@@ -8447,6 +8659,7 @@ function renderDoneScreenCrown() {
   wrap.appendChild(card);
 
   wrap.appendChild(renderPodiumCrown(ranking));
+  wrap.appendChild(renderShareCardsButtonCard());
   wrap.appendChild(renderAwardsStrip());
 
   const standings = el("div", { class: "card", style: "margin-top:14px;" });
@@ -9920,6 +10133,11 @@ function renderTextResultsCard(mode) {
   const card = el("div", { class: "card" });
   card.appendChild(el("h3", { style: "margin:0 0 10px;" },
     mode === "final" ? "📱 Text results" : "📱 Text standings"));
+  card.appendChild(el("button", {
+    class: "secondary",
+    style: "width:100%;margin:0 0 10px;",
+    onclick: openShareCardsModal,
+  }, "Share Cards"));
   if (!textResultsSupported()) {
     card.appendChild(el("p", { class: "muted", style: "margin:0;" },
       "Texting results isn't available for this format yet."));
@@ -9996,6 +10214,7 @@ function renderDoneScreen() {
   // texting (RR/Gauntlet) get the card — others skip it rather than show a
   // dead "not available" placeholder.
   if (textResultsSupported()) wrap.appendChild(renderTextResultsCard("final"));
+  else wrap.appendChild(renderShareCardsButtonCard());
   // Awards collapsed by default to shorten the results scroll — champions and
   // podium carry the celebration; tap to explore the full awards.
   const awardsDetails = el("details", { class: "history" });

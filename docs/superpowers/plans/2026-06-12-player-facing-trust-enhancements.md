@@ -333,7 +333,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 4 - share card models
@@ -351,11 +351,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because share-card helpers do not exist.
 
-- [ ] **Step 3: Implement card model and SVG renderer**
+- [x] **Step 3: Implement card model and SVG renderer**
 
   Add:
 
@@ -365,15 +365,15 @@
 
   Supported `type` values are `"podium"`, `"round"`, and `"player"`. SVG size is `1080 x 1350`. Use escaped text only; do not inject raw HTML into SVG.
 
-- [ ] **Step 4: Add Share Cards UI**
+- [x] **Step 4: Add Share Cards UI**
 
   Add a Share Cards button on the done screen and in the mid-event text results card. The modal lets the organizer choose Final Podium, Round Recap, or Player Recap and then download PNG, download SVG, or copy image when `navigator.clipboard.write()` supports it.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually generate each card type, inspect the downloaded SVG/PNG, and verify fallback when clipboard image copy is unavailable.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
