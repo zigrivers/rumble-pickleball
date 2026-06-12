@@ -1489,6 +1489,82 @@ function runSelfTests() {
     if (savedStores.v1 !== null) localStorage.setItem(STORAGE_KEY_V1, savedStores.v1);
     state = savedState;
   }
+  // Flex Task 1.2 — roster writers and accessors
+  {
+    const savedState = state;
+    const savedRoster = localStorage.getItem(ROSTER_KEY);
+    localStorage.removeItem(ROSTER_KEY);
+    const names = ["Ava","Ben","Cy","Dee","Eli","Fay","Gus","Hal"];
+    const phones = names.map((_, i) => "555100000" + (i + 1));
+    for (const fmt of ["rr", "stack", "king", "gauntlet", "crown"]) {
+      state = newState();
+      state.format = fmt;
+      state.rawNames = names.slice();
+      state.rawPhones = phones.slice();
+      startTournament();
+      const expectedN = fmt === "crown" ? 4 : 8;
+      console.assert(Array.isArray(state.players) && state.players.length === expectedN,
+        "startTournament " + fmt + ": players[] length", state.players);
+      const players = Array.isArray(state.players) ? state.players : [];
+      for (let i = 0; i < expectedN; i++) {
+        const p = players[i] || {};
+        console.assert(p.slot === i + 1 && p.status === "active" && p.eligibleFromRound === 1
+          && p.joinedRound === 1 && p.leftRound === null,
+          "startTournament " + fmt + ": player metadata " + (i + 1), p);
+        console.assert(p.name === state.slots[i] && p.phone === state.phones[i],
+          "startTournament " + fmt + ": player mirrors slot/phone " + (i + 1), { p, slots: state.slots, phones: state.phones });
+      }
+    }
+    state = newState();
+    console.assert(Array.isArray(state.players) && state.players.length === 0,
+      "newState/reset clears players[]", state.players);
+
+    state = {
+      slots: ["Legacy"], phones: ["000"],
+      players: [{ slot: 1, name: "Player One", phone: "1112223333", status: "active", eligibleFromRound: 1, joinedRound: 1, leftRound: null }],
+    };
+    console.assert(nameOf(1) === "Player One", "nameOf reads players[] before slots[]");
+    console.assert(typeof phoneOf === "function" && phoneOf(1) === "1112223333",
+      "phoneOf reads players[] before phones[]");
+    console.assert(nameOf(2) === "P2" && (typeof phoneOf !== "function" || phoneOf(2) === ""),
+      "nameOf/phoneOf fallback for missing slot");
+
+    const c1 = { court: 1, team1: [1,2], team2: [3,4] };
+    const c2 = { court: 2, team1: [5,6], team2: [7,8] };
+    const sortedGames = gamesOf({ games: [c2, c1], byes: [9] });
+    console.assert(sortedGames[0] === c1 && sortedGames[1] === c2,
+      "gamesOf sorts games by court", sortedGames);
+    console.assert(gamesOf({ court1: c1, court2: c2 })[0] === c1,
+      "gamesOf synthesizes legacy court keys");
+    console.assert(JSON.stringify(byesOf({ games: [], byes: [9,10] })) === JSON.stringify([9,10]),
+      "byesOf returns byes array");
+
+    state = {
+      players: [
+        { slot: 1, status: "left",   eligibleFromRound: 99 },
+        { slot: 2, status: "active", eligibleFromRound: 1 },
+        { slot: 3, status: "active", eligibleFromRound: 5 },
+        { slot: 4, status: "active", eligibleFromRound: 3 },
+        { slot: 5, status: "active", eligibleFromRound: 1 },
+        { slot: 6, status: "left",   eligibleFromRound: 1 },
+      ],
+      rounds: [{ round: 2, games: [{ court: 1, team1: [1,2], team2: [3,4] }], byes: [5] }],
+    };
+    const past = typeof activeSlots === "function" ? activeSlots(2).slice().sort((a,b)=>a-b) : [];
+    console.assert(JSON.stringify(past) === JSON.stringify([1,2,3,4,5]),
+      "activeSlots past round derives from games ∪ byes", past);
+    const future = typeof activeSlots === "function" ? activeSlots(3).slice().sort((a,b)=>a-b) : [];
+    console.assert(JSON.stringify(future) === JSON.stringify([2,4,5]),
+      "activeSlots future round derives from status + eligibleFromRound", future);
+    console.assert(typeof playerCount === "function" && playerCount() === 6,
+      "playerCount reads players[] length");
+    console.assert(typeof activeCount === "function" && activeCount() === 4,
+      "activeCount counts active players");
+
+    if (savedRoster !== null) localStorage.setItem(ROSTER_KEY, savedRoster);
+    else localStorage.removeItem(ROSTER_KEY);
+    state = savedState;
+  }
   // Task 3 — parsePastedNames
   {
     const a = parsePastedNames("Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd");
@@ -2849,6 +2925,24 @@ function legacyPlayersFrom(obj) {
   }
   return players;
 }
+function writePlayersFromSlots(count, phoneByName) {
+  const n = Number.isInteger(count) ? count : (Array.isArray(state.slots) ? state.slots.length : 0);
+  const previousPhones = Array.isArray(state.phones) ? state.phones : [];
+  state.phones = (state.slots || []).map((name, i) =>
+    phoneByName ? (phoneByName[name] || "") : (previousPhones[i] || ""));
+  state.players = [];
+  for (let i = 0; i < n; i++) {
+    state.players.push({
+      slot: i + 1,
+      name: state.slots[i] || "",
+      phone: state.phones[i] || "",
+      status: "active",
+      eligibleFromRound: 1,
+      joinedRound: 1,
+      leftRound: null,
+    });
+  }
+}
 function normalizeRoundV5(r) {
   if (!r) return r;
   if (!Array.isArray(r.games)) {
@@ -3949,11 +4043,13 @@ function startTournament() {
     }
     // slots always stays 8 elements so nameOf()/format-switching never breaks
     state.slots = [...shuffled, "", "", "", ""];
+    writePlayersFromSlots(count, phoneByName);
     state.phase = "playing";
     save();
     runShuffleReveal(shuffled.slice(), () => render());
   } else if (state.format === "stack") {
     state.slots = shuffled;
+    writePlayersFromSlots(count, phoneByName);
     state.rounds = [assignInitialStackCourts()];
     state.phase = "playing";
     save();
@@ -3970,6 +4066,7 @@ function startTournament() {
     });
   } else if (state.format === "king") {
     state.slots = shuffled;
+    writePlayersFromSlots(count, phoneByName);
     state.rounds = [assignInitialKingCourts()];
     state.phase = "playing";
     save();
@@ -3986,6 +4083,7 @@ function startTournament() {
     });
   } else if (state.format === "gauntlet") {
     state.slots = shuffled;
+    writePlayersFromSlots(count, phoneByName);
     state.rounds = [assignInitialGauntletCourts()];
     state.phase = "playing";
     save();
@@ -4002,13 +4100,13 @@ function startTournament() {
     });
   } else {
     state.slots = shuffled;
+    writePlayersFromSlots(count, phoneByName);
     state.rounds = generateRounds();
     state.phase = "playing";
     save();
     runShuffleReveal(state.slots.slice(), () => render());
   }
   // Derive per-slot phones from the final slot order, and remember name→phone in the roster.
-  state.phones = state.slots.map(n => phoneByName[n] || "");
   for (let i = 0; i < count; i++) saveRosterEntry(names[i], state.rawPhones[i] || "");
   save();
 }
@@ -4097,7 +4195,17 @@ function buildResultsMessage(slot, mode) {
   return lines.join("\n");
 }
 
-function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
+function playerBySlot(slot) {
+  return Array.isArray(state.players) ? state.players.find(p => p.slot === slot) : null;
+}
+function nameOf(slot) {
+  const p = playerBySlot(slot);
+  return (p && p.name) || (state.slots && state.slots[slot - 1]) || ("P" + slot);
+}
+function phoneOf(slot) {
+  const p = playerBySlot(slot);
+  return (p && p.phone) || ((state.phones || [])[slot - 1] || "");
+}
 function gamesOf(r) {
   if (!r) return [];
   if (Array.isArray(r.games)) return r.games.slice().sort((a, b) => (a.court || 0) - (b.court || 0));
@@ -4107,6 +4215,26 @@ function gamesOf(r) {
   });
 }
 function byesOf(r) { return r && Array.isArray(r.byes) ? r.byes : []; }
+function playerCount() {
+  return Array.isArray(state.players) ? state.players.length : ((state.slots || []).filter(Boolean).length || 0);
+}
+function activeCount() {
+  return Array.isArray(state.players) ? state.players.filter(p => p.status === "active").length : playerCount();
+}
+function activeSlots(round) {
+  const pastRound = (state.rounds || []).find(r => r && r.round === round);
+  if (pastRound) {
+    const slots = new Set();
+    for (const g of gamesOf(pastRound)) {
+      [...(g.team1 || []), ...(g.team2 || [])].forEach(s => slots.add(s));
+    }
+    byesOf(pastRound).forEach(s => slots.add(s));
+    return [...slots];
+  }
+  return (state.players || [])
+    .filter(p => p.status === "active" && p.eligibleFromRound <= round)
+    .map(p => p.slot);
+}
 function teamName(team) { return nameOf(team[0]) + " & " + nameOf(team[1]); }
 function isGameComplete(g) { return Number.isInteger(g.score1) && Number.isInteger(g.score2); }
 
@@ -8428,6 +8556,9 @@ function openSettings() {
         const playerCount = isCrown ? 4 : 8;
         showConfirm("Reset scores and re-shuffle the schedule? Your " + playerCount + " names will be kept.", () => {
         const keptNames = state.slots.slice();
+        const keptPhones = (state.phones || []).slice();
+        const keptPhoneByName = {};
+        keptNames.forEach((n, i) => { if (n) keptPhoneByName[n] = keptPhones[i] || ""; });
         const keptWinScore = state.winScore;
         const keptWinBy = state.winBy;
         const keptScoringSystem = state.scoringSystem;
@@ -8453,7 +8584,9 @@ function openSettings() {
           const crowNames = keptNames.slice(0, 4);
           const shuffled = shuffle(crowNames.slice());
           state.rawNames = [...crowNames, "", "", "", ""];
+          state.rawPhones = crowNames.map(n => keptPhoneByName[n] || "").concat(["", "", "", ""]);
           state.slots = [...shuffled, "", "", "", ""];
+          writePlayersFromSlots(4, keptPhoneByName);
           state.tiebreakRandom = shuffle([0,1,2,3]);
           state.crownMatches = CROWN_SCHEDULE.map(s => ({
             team1: s.team1.slice(), team2: s.team2.slice(), theme: s.theme,
@@ -8463,7 +8596,9 @@ function openSettings() {
           state.crownFinal = null;
         } else {
           state.rawNames = keptNames.slice();
+          state.rawPhones = keptNames.map(n => keptPhoneByName[n] || "");
           state.slots = shuffle(keptNames);
+          writePlayersFromSlots(8, keptPhoneByName);
           state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
           state.rounds = keptFormat === "stack"    ? [assignInitialStackCourts()]
                        : keptFormat === "king"     ? [assignInitialKingCourts()]

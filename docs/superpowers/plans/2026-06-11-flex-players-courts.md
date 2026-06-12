@@ -40,9 +40,9 @@
 
 ### Task 1.2: Accessors + roster writers
 
-- [ ] Tests: `startTournament` (all five formats) populates `players[]` from the shuffled roster — names/phones match the old `slots[]`/`phones[]` content, `status:"active"`, `eligibleFromRound:1` — and "New Tournament"/reset clears it (a fresh tournament started after this task must render names correctly with `nameOf` reading `players[]`); `activeSlots(round)` per spec §3.3 — for **past** rounds derived purely from participation (`games` ∪ `byes`; `joinedRound`/`leftRound` are display-only and must NOT drive this), for the **next** round from `status === "active"` and `eligibleFromRound ≤ round`; `gamesOf`/`byesOf`/`playerCount`/`activeCount` per spec §3.3; `nameOf`/`phoneOf` read from `players[]`.
-- [ ] Implement near `nameOf`. Convert the roster **writers** first (`startTournament` and any reset path fill `players[]` alongside the legacy `slots[]`/`phones[]`, which Phase 9 retires), then convert `nameOf`/`phoneOf` internals to read `players[]`; leave all other call sites alone.
-- [ ] Verify; commit: `feat(state): roster/round accessors (activeSlots, gamesOf, byesOf)`
+- [x] Tests: `startTournament` (all five formats) populates `players[]` from the shuffled roster — names/phones match the old `slots[]`/`phones[]` content, `status:"active"`, `eligibleFromRound:1` — and "New Tournament"/reset clears it (a fresh tournament started after this task must render names correctly with `nameOf` reading `players[]`); `activeSlots(round)` per spec §3.3 — for **past** rounds derived purely from participation (`games` ∪ `byes`; `joinedRound`/`leftRound` are display-only and must NOT drive this), for the **next** round from `status === "active"` and `eligibleFromRound ≤ round`; `gamesOf`/`byesOf`/`playerCount`/`activeCount` per spec §3.3; `nameOf`/`phoneOf` read from `players[]`.
+- [x] Implement near `nameOf`. Convert the roster **writers** first (`startTournament` and any reset path fill `players[]` alongside the legacy `slots[]`/`phones[]`, which Phase 9 retires), then convert `nameOf`/`phoneOf` internals to read `players[]`; leave all other call sites alone.
+- [x] Verify; commit: `feat(state): roster/round accessors (activeSlots, gamesOf, byesOf)`
 
 ## Phase 2 — Pure refactor: all reads go through `games[]`/`byes[]`
 
