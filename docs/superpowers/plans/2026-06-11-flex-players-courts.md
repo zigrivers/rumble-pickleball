@@ -64,9 +64,9 @@
 
 ### Task 3.1: Seeded PRNG
 
-- [ ] Tests: `mulberry32(seed)` determinism (same seed → same sequence); `seededShuffle(arr, rng)` is a permutation and deterministic under a fixed seed.
-- [ ] Implement near `shuffle`. `scheduleSeed` is set once in `startTournament`.
-- [ ] Commit: `feat(core): seeded PRNG + seededShuffle for reproducible scheduling`
+- [x] Tests: `mulberry32(seed)` determinism (same seed → same sequence); `seededShuffle(arr, rng)` is a permutation and deterministic under a fixed seed.
+- [x] Implement near `shuffle`. `scheduleSeed` is set once in `startTournament`.
+- [x] Commit: `feat(core): seeded PRNG + seededShuffle for reproducible scheduling`
 
 ### Task 3.2: Bye history derivation + allocator
 
