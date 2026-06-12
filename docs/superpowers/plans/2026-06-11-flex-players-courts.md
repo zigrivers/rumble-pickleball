@@ -141,8 +141,8 @@
 
 ## Phase 11 — Time budget
 
-- [ ] Tests: `estimateRoundMinutes` uses `activeCourts` (10 players/6 courts → 2-court variance) with the §10 variance table; `getTimeBudgetRounds()` returns `rrRounds` off golden path, 7 on it.
-- [ ] Implement; verify; commit: `feat(time-budget): activeCourts-aware estimates`
+- [x] Tests: `estimateRoundMinutes` uses `activeCourts` (10 players/6 courts → 2-court variance) with the §10 variance table; `getTimeBudgetRounds()` returns `rrRounds` off golden path, 7 on it.
+- [x] Implement; verify; commit: `feat(time-budget): activeCourts-aware estimates`
 
 ## Phase 12 — Docs, rollout, final sweep
 

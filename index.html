@@ -1345,11 +1345,18 @@ function estimateGameMinutes(target, winBy, scoring, calibration) {
   return [Math.round(mid * 0.7), Math.round(mid * 1.3)];
 }
 
+function roundVarianceFactor(activeCourts) {
+  if (activeCourts <= 1) return 1.0;
+  if (activeCourts === 2) return 1.15;
+  if (activeCourts <= 4) return 1.20;
+  return 1.25;
+}
+
 // Returns [low, high] round-duration estimate in minutes.
-// courtCount > 1: applies 1.15× slowest-court variance (parallel courts finish at different times).
-function estimateRoundMinutes(target, winBy, scoring, courtCount, calibration) {
+// activeCourts applies slowest-court variance (parallel courts finish at different times).
+function estimateRoundMinutes(target, winBy, scoring, activeCourts, calibration) {
   const [gameLow, gameHigh] = estimateGameMinutes(target, winBy, scoring, calibration);
-  const variance = courtCount > 1 ? 1.15 : 1.0;
+  const variance = roundVarianceFactor(activeCourts);
   return [
     Math.round(gameLow  * variance + 2.5),
     Math.round(gameHigh * variance + 2.5),
@@ -1360,11 +1367,11 @@ function estimateRoundMinutes(target, winBy, scoring, courtCount, calibration) {
 // Returns {target, winBy, scoring} or {error, suggestion}.
 // T_finals uses low estimate (optimistic) so tight budgets aren't prematurely rejected.
 // Round comparison uses midpoint (expected) — optimistic for rounds would bias toward overruns.
-function solveWinCondition(format, rounds, budgetMin, calibration) {
+function solveWinCondition(format, rounds, budgetMin, calibration, activeCourts = 2) {
   const SETUP_OVERHEAD = 5;
   const TARGETS = [21, 15, 11, 9, 7];  // richest first in each scoring system
 
-  const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", 2, calibration);
+  const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", activeCourts, calibration);
   const budgetForRounds = budgetMin - SETUP_OVERHEAD - finalsLo;
   if (budgetForRounds <= 0) return { error: "no_fit_finals" };
 
@@ -1374,7 +1381,7 @@ function solveWinCondition(format, rounds, budgetMin, calibration) {
   for (const scoring of ["sideout", "rally"]) {
     for (const target of TARGETS) {
       for (const winBy of [2, 1]) {
-        const [lo, hi] = estimateRoundMinutes(target, winBy, scoring, 2, calibration);
+        const [lo, hi] = estimateRoundMinutes(target, winBy, scoring, activeCourts, calibration);
         if ((lo + hi) / 2 <= targetTRound) return { target, winBy, scoring };
       }
     }
@@ -1455,8 +1462,9 @@ function projectFinishTime(state, calibration, nowTs) {
   }
 
   const remainingRounds = Math.max(0, state.rounds.length - completedRounds);
-  const [rndLo, rndHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, 2, calibration);
-  const [finLo, finHi] = estimateRoundMinutes(11, 2, "sideout", 2, calibration);
+  const activeCourts = timeBudgetActiveCourtsFor(state);
+  const [rndLo, rndHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, activeCourts, calibration);
+  const [finLo, finHi] = estimateRoundMinutes(11, 2, "sideout", activeCourts, calibration);
   const msPerMin = 60 * 1000;
 
   return [
@@ -2927,6 +2935,17 @@ function runSelfTests() {
     console.assert(Math.abs(rmHi - 34) <= 2, "estimateRoundMinutes SO/11/wb2 high≈34", rmHi);
     const [rm1Lo] = estimateRoundMinutes(11, 2, "sideout", 1, null);
     console.assert(rm1Lo < rmLo, "estimateRoundMinutes courtCount=1 skips 1.15× variance");
+    const expectedRound = activeCourts => {
+      const variance = activeCourts <= 1 ? 1.0 : (activeCourts === 2 ? 1.15 : (activeCourts <= 4 ? 1.20 : 1.25));
+      return [Math.round(egLo * variance + 2.5), Math.round(egHi * variance + 2.5)];
+    };
+    console.assert(JSON.stringify(estimateRoundMinutes(11, 2, "sideout", roundShapeFor(10, 6).activeCourts, null)) === JSON.stringify(expectedRound(2)),
+      "estimateRoundMinutes uses activeCourts: 10 players / 6 courts uses 2-court variance");
+    console.assert(JSON.stringify(estimateRoundMinutes(11, 2, "sideout", 3, null)) === JSON.stringify(expectedRound(3))
+      && JSON.stringify(estimateRoundMinutes(11, 2, "sideout", 4, null)) === JSON.stringify(expectedRound(4))
+      && JSON.stringify(estimateRoundMinutes(11, 2, "sideout", 5, null)) === JSON.stringify(expectedRound(5))
+      && JSON.stringify(estimateRoundMinutes(11, 2, "sideout", 6, null)) === JSON.stringify(expectedRound(6)),
+      "estimateRoundMinutes applies §10 variance table through 6 active courts");
 
     // solveWinCondition: error cases
     const nofit = solveWinCondition("rr", 7, 30, null);
@@ -2944,6 +2963,36 @@ function runSelfTests() {
     // Lex edge: sideout/9 must beat rally/21 (sideout primacy)
     const lexMid = solveWinCondition("rr", 7, 180, null);
     console.assert(lexMid.scoring === "sideout", "solveWinCondition lex: sideout beats rally", lexMid);
+    const oneCourtSolve = solveWinCondition("rr", 7, 170, null, 1);
+    const sixCourtSolve = solveWinCondition("rr", 7, 170, null, 6);
+    console.assert(oneCourtSolve.scoring === "sideout" && oneCourtSolve.target === 11 && oneCourtSolve.winBy === 1
+      && sixCourtSolve.scoring === "sideout" && sixCourtSolve.target === 9 && sixCourtSolve.winBy === 1,
+      "solveWinCondition uses activeCourts for rounds and finals", { oneCourtSolve, sixCourtSolve });
+
+    const savedRoundState = state;
+    state = newState();
+    state.format = "rr";
+    state.rrScheduleMode = "generated";
+    state.rrRounds = 10;
+    console.assert(getTimeBudgetRounds() === 10, "getTimeBudgetRounds uses rrRounds off golden path");
+    state.rrScheduleMode = "wh8";
+    console.assert(getTimeBudgetRounds() === 7, "getTimeBudgetRounds uses 7 on RR golden path");
+    state = savedRoundState;
+
+    const projectionState = newState();
+    projectionState.phase = "playing";
+    projectionState.format = "rr";
+    projectionState.timeBudget.enabled = true;
+    projectionState.timeBudget.plannedConfig = { target: 11, winBy: 2, scoring: "sideout" };
+    projectionState.players = Array.from({ length: 24 }, (_, i) => ({ slot: i + 1, name: "P" + (i + 1), phone: "",
+      status: "active", eligibleFromRound: 1, joinedRound: 1, leftRound: null }));
+    projectionState.rounds = [makeRound(1, [makeGame(1, [1,2], [3,4])], [])];
+    projectionState.courtCount = 2;
+    const projectedTwo = projectFinishTime(projectionState, null, 0);
+    projectionState.courtCount = 6;
+    const projectedSix = projectFinishTime(projectionState, null, 0);
+    console.assert(projectedSix && projectedTwo && projectedSix[0] > projectedTwo[0] && projectedSix[1] > projectedTwo[1],
+      "projectFinishTime uses activeCourts for remaining rounds and finals", { projectedTwo, projectedSix });
 
     // pickCrownPreset: spec verify cases
     console.assert(pickCrownPreset(60, null).error === "crown_floor", "pickCrownPreset(60)→crown_floor");
@@ -5918,21 +5967,22 @@ function maybeFireSlippagePrompt() {
 
   const avgRoundActual = elapsedMin / roundsFound;
   const cal = readCalibration();
-  const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", 2, cal);
+  const activeCourts = timeBudgetActiveCourtsFor(state);
+  const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
   const projectedTotal = elapsedMin + remainingRounds * avgRoundActual + finalsLo + 5;
 
   if (projectedTotal <= tb.minutes * 1.10) return;
 
   const remainingBudget = tb.minutes - elapsedMin;
-  const newCombo = solveWinCondition(state.format, remainingRounds, remainingBudget, cal);
+  const newCombo = solveWinCondition(state.format, remainingRounds, remainingBudget, cal, activeCourts);
   if (newCombo.error) return;
 
   const currentConfig = tb.plannedConfig;
   if (!currentConfig) return;
 
-  const [curLo, curHi] = estimateRoundMinutes(currentConfig.target, currentConfig.winBy, currentConfig.scoring, 2, cal);
+  const [curLo, curHi] = estimateRoundMinutes(currentConfig.target, currentConfig.winBy, currentConfig.scoring, activeCourts, cal);
   const curMid = (curLo + curHi) / 2;
-  const [newLo, newHi] = estimateRoundMinutes(newCombo.target, newCombo.winBy, newCombo.scoring, 2, cal);
+  const [newLo, newHi] = estimateRoundMinutes(newCombo.target, newCombo.winBy, newCombo.scoring, activeCourts, cal);
   const newMid = (newLo + newHi) / 2;
   if (newMid >= curMid) return;
 
@@ -6638,11 +6688,31 @@ function renderFormatChooser() {
 }
 
 function getTimeBudgetRounds() {
-  if (state.format === "rr")       return 7;
+  if (state.format === "rr")       return state.rrScheduleMode === "wh8" ? 7 : state.rrRounds;
   if (state.format === "stack")    return state.stackRounds;
   if (state.format === "king")     return state.kingRounds;
   if (state.format === "gauntlet") return state.gauntletRounds;
   return 3; // crown: 3 rounds + crown match
+}
+
+function timeBudgetActiveCountFor(s) {
+  if (!s || s.format === "crown") return 4;
+  if (Array.isArray(s.players) && s.players.length) {
+    return s.players.filter(p => p.status === "active").length;
+  }
+  if (Array.isArray(s.rawNames) && s.rawNames.length) return clampSetupRosterCount(s.rawNames.length);
+  if (Array.isArray(s.slots)) {
+    const count = s.slots.filter(Boolean).length;
+    if (count) return count;
+  }
+  return 8;
+}
+
+function timeBudgetActiveCourtsFor(s = state) {
+  if (!s || s.format === "crown") return 1;
+  const activeN = timeBudgetActiveCountFor(s);
+  const courtCount = effectiveCourtCountForFormat(s.format, s.courtCount);
+  return Math.max(1, roundShapeFor(activeN, courtCount).activeCourts);
 }
 
 function readCalibration() {
@@ -6705,7 +6775,7 @@ function applyTimeBudgetSolve() {
     }
   } else {
     const rounds = getTimeBudgetRounds();
-    const result = solveWinCondition(state.format, rounds, minutes, cal);
+    const result = solveWinCondition(state.format, rounds, minutes, cal, timeBudgetActiveCourtsFor(state));
     if (!result.error) {
       config = result;
     } else {
@@ -6788,8 +6858,9 @@ function formatTimeBudgetReadout(config, minutes, suggestion) {
       }
     } else {
       const rounds = getTimeBudgetRounds();
-      const [roundLo, roundHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, 2, cal);
-      const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", 2, cal);
+      const activeCourts = timeBudgetActiveCourtsFor(state);
+      const [roundLo, roundHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, activeCourts, cal);
+      const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
       loMin = rounds * roundLo + finLo + 5;
       hiMin = rounds * roundHi + finHi + 5;
     }
