@@ -3220,6 +3220,9 @@ function runSelfTests() {
   // Diagnostics button path — runSimulation must return its failure count (0 on
   // correct code). Its internal asserts chain through this suite's counter too.
   {
+    const configs = typeof simulationConfigs === "function" ? simulationConfigs() : [];
+    console.assert(configs.some(c => c.players !== 8 || c.courts !== 2 || c.churn),
+      "runSimulation includes flexible player/court churn configs", configs);
     console.assert(runSimulation() === 0, "runSimulation returns 0 failures");
   }
 
@@ -3559,6 +3562,15 @@ function runSelfTests() {
   }
 
 // -------- tournament simulation (gated by ?simulate URL param) --------
+function simulationConfigs() {
+  return [
+    { label: "RR 13/3 churn", format: "rr", players: 13, courts: 3, rounds: 4, churn: true, nextCourts: 2, seed: 4101 },
+    { label: "Stack 10/2 churn", format: "stack", players: 10, courts: 2, rounds: 4, churn: true, nextCourts: 1, seed: 4102 },
+    { label: "King 16/4 churn", format: "king", players: 16, courts: 4, rounds: 6, churn: true, nextCourts: 3, seed: 4103 },
+    { label: "Gauntlet 9/2 churn", format: "gauntlet", players: 9, courts: 2, rounds: 6, churn: true, nextCourts: 1, seed: 4104 },
+  ];
+}
+
 // Plays full random RR tournaments end-to-end through the real UI components:
 // score entry via real input events on renderPlaying()'s score inputs, then the
 // rendered Live Standings table is checked after EVERY round against an
@@ -3611,14 +3623,15 @@ function runSimulation() {
 
   const fmtRate = n => n.toFixed(1);
   const fmtDiff = d => (d > 0 ? "+" : "") + d.toFixed(1);
-  const randScore = () => Math.random() < 0.2
-    ? (w => [w, w - 2])(12 + Math.floor(Math.random() * 4))   // overtime
-    : [11, Math.floor(Math.random() * 11)];
+  const rand = rng => rng ? rng() : Math.random();
+  const randScore = rng => rand(rng) < 0.2
+    ? (w => [w, w - 2])(12 + Math.floor(rand(rng) * 4))   // overtime
+    : [11, Math.floor(rand(rng) * 11)];
 
   // Enter a game's score through the real input handlers and record it.
-  function enterGame(inputs, idx, game, entered, isFinal) {
-    const [w, l] = randScore();
-    const t1wins = Math.random() < 0.5;
+  function enterGame(inputs, idx, game, entered, isFinal, rng) {
+    const [w, l] = randScore(rng);
+    const t1wins = rand(rng) < 0.5;
     const s1 = t1wins ? w : l, s2 = t1wins ? l : w;
     inputs[idx].value = String(s1);
     inputs[idx].dispatchEvent(new Event("input"));
@@ -3644,6 +3657,108 @@ function runSimulation() {
           && r.wg === fmtRate(e.wg) && r.diff === fmtDiff(e.dg),
         label + " row " + (i + 1), { got: r, want: e });
     });
+  }
+
+  function checkWellFormedTable(root, expectedRows, label) {
+    const rows = Array.from(root.querySelectorAll("table.standings tbody tr"))
+      .filter(tr => tr.cells.length > 1);
+    const names = rows.map(tr => tr.cells[1].childNodes[0].textContent);
+    console.assert(rows.length === expectedRows, label + ": standings row count", { rows: rows.length, expectedRows });
+    console.assert(new Set(names).size === names.length, label + ": standings names unique", names);
+  }
+
+  function checkRoundParticipants(round, label) {
+    const participants = gamesOf(round).flatMap(g => [...g.team1, ...g.team2]).concat(byesOf(round));
+    console.assert(participants.length === new Set(participants).size, label + ": no duplicate round participants", participants);
+  }
+
+  function initFlexibleScenario(cfg) {
+    state = newState();
+    state.format = cfg.format;
+    state.courtCount = cfg.courts;
+    state.scheduleSeed = cfg.seed;
+    state.rawNames = Array.from({ length: cfg.players }, (_, i) => cfg.format.toUpperCase() + " " + (i + 1));
+    state.rawPhones = state.rawNames.map(() => "");
+    state.slots = seededShuffle(state.rawNames, mulberry32(cfg.seed));
+    writePlayersFromSlots(cfg.players);
+    state.tiebreakRandom = seededShuffle(Array.from({ length: cfg.players }, (_, i) => i), mulberry32(cfg.seed + 1));
+    state.currentRound = 1;
+    state.phase = "playing";
+    state.notifiedRounds = Array.from({ length: 12 }, (_, i) => i + 1);
+    state.awardsShown = true;
+    if (cfg.format === "rr") {
+      state.rrScheduleMode = cfg.players === 8 && cfg.courts === 2 ? "wh8" : "generated";
+      state.rrRounds = cfg.rounds;
+      state.rounds = state.rrScheduleMode === "wh8"
+        ? generateRounds()
+        : generateRRSchedule(activeSlotsForFutureRound(1), state.courtCount, state.rrRounds, [], mulberry32(cfg.seed + 2));
+    } else if (cfg.format === "stack") {
+      state.stackRounds = cfg.rounds;
+      state.rounds = [assignInitialStackCourts()];
+    } else if (cfg.format === "king") {
+      state.kingRounds = cfg.rounds;
+      state.rounds = [assignInitialKingCourts()];
+    } else {
+      state.gauntletRounds = cfg.rounds;
+      state.rounds = [assignInitialGauntletCourts()];
+    }
+  }
+
+  function advanceFlexibleRound() {
+    const total = totalRegularRounds();
+    const round = state.rounds[state.currentRound - 1];
+    if (state.currentRound >= total) return;
+    if (state.format !== "rr" && state.rounds.length === state.currentRound) {
+      state.previousRanks = rankPlayersForFormat(state.currentRound).map(s => s.slot);
+      if (state.format === "stack") state.rounds.push(buildNextStackRound(round));
+      else if (state.format === "king") state.rounds.push(buildNextKingRound(round));
+      else state.rounds.push(buildNextGauntletRound(round));
+    }
+    state.currentRound++;
+  }
+
+  function runFlexibleScenario(cfg, index) {
+    const rng = mulberry32(cfg.seed + 50);
+    initFlexibleScenario(cfg);
+    const entered = [];
+    let leftSlot = null;
+    const total = totalRegularRounds();
+    for (let r = 1; r <= total; r++) {
+      const wrap = renderPlaying();
+      const inputs = wrap.querySelectorAll(".score-input");
+      const round = state.rounds[state.currentRound - 1];
+      const roundGames = gamesOf(round);
+      console.assert(inputs.length === roundGames.length * 2,
+        cfg.label + " R" + r + ": input count matches games", { inputs: inputs.length, games: roundGames.length });
+      roundGames.forEach((g, i) => enterGame(inputs, i * 2, g, entered, false, rng));
+      checkRoundParticipants(round, cfg.label + " R" + r);
+      checkWellFormedTable(wrap, playerCount(), cfg.label + " R" + r);
+
+      if (cfg.churn && r === 1) {
+        leftSlot = Math.max(...(state.players || []).filter(p => p.status === "active").map(p => p.slot));
+        console.assert(markPlayerLeft(leftSlot).ok, cfg.label + ": leave succeeds", leftSlot);
+        console.assert(addMidEventPlayer(cfg.label + " Late", "").ok, cfg.label + ": add succeeds");
+        console.assert(changeCourtCountMidEvent(cfg.nextCourts).ok, cfg.label + ": court change succeeds");
+      } else if (cfg.churn && r === 2 && leftSlot) {
+        console.assert(returnMidEventPlayer(leftSlot).ok, cfg.label + ": return succeeds", leftSlot);
+      }
+      state.rounds.slice(state.currentRound).forEach((future, i) => checkRoundParticipants(future, cfg.label + " future " + (i + 1)));
+      advanceFlexibleRound();
+    }
+
+    buildFinals();
+    const tiers = finalTiers();
+    console.assert(tiers.length >= 1, cfg.label + ": finals tiers built", state.finals);
+    const finalsWrap = renderFinalsScreen();
+    const fInputs = finalsWrap.querySelectorAll(".score-input");
+    tiers.forEach((tier, i) => enterGame(fInputs, i * 2, tier, entered, true, rng));
+    state.phase = "done";
+    const doneWrap = renderDoneScreen();
+    checkWellFormedTable(doneWrap, playerCount(), cfg.label + " done");
+    const finalSlots = finalRanking().map(s => s.slot);
+    console.assert(finalSlots.length === playerCount() && finalSlots.length === new Set(finalSlots).size,
+      cfg.label + ": final ranking includes every player once", finalSlots);
+    console.log(`[simulate] flex ${index}: ${cfg.label} verified`);
   }
 
   for (let t = 1; t <= TOURNAMENTS; t++) {
@@ -3716,13 +3831,14 @@ function runSimulation() {
       `T${t}: champions banner`, winnersText && winnersText.textContent);
     console.log(`[simulate] tournament ${t}: ${failures === 0 ? "all rounds verified" : "see failures above"}`);
   }
+  simulationConfigs().forEach((cfg, i) => runFlexibleScenario(cfg, i + 1));
 
   for (const k in savedStore) {
     if (savedStore[k] === null) localStorage.removeItem(k);
     else localStorage.setItem(k, savedStore[k]);
   }
   state = savedState;
-  console.log(`[simulate] complete — ${failures} failure(s) across ${TOURNAMENTS} tournaments`);
+  console.log(`[simulate] complete — ${failures} failure(s) across ${TOURNAMENTS + simulationConfigs().length} tournaments`);
   console.assert = _origAssert;
   return failures;
 }
@@ -6401,12 +6517,12 @@ function updateStartState() {
 }
 
 const RULES_RR = [
-  "8 players, 2 courts, doubles. Every round, all 8 play.",
-  "7 rounds, one per partner — you'll partner every other player exactly once and face every player exactly twice, with a fresh foursome on your court every round.",
+  "4–24 players, 1–6 courts, doubles. Each round fills the active courts; anyone extra sits that round.",
+  "With exactly 8 players and 2 courts, Rumble keeps the classic 7-round schedule: every partner once, every opponent twice. Other setups use generated pairings with fair bye rotation.",
   "Score games however you normally would (typically first to 11, win by 2). Type any final score.",
-  "After round 7, points decide the seeds. Top 4 play the 🏆 Championship, bottom 4 play the 🥈 Consolation.",
-  "Championship is #1 + #4 vs #2 + #3 — a balanced pairing so the top players don't stomp.",
-  "Final ranking is by tournament outcome: Championship winners (1–2) → Championship losers (3–4) → Consolation winners (5–6) → Consolation losers (7–8). Within each tier, season rank (points → wins → differential) breaks the order.",
+  "Standings rank by points/game, then wins/game, differential/game, head-to-head, and the initial random draw. Players with 0 GP rank below anyone who has played.",
+  "Finals seat one four-player tier per active court: Championship, Consolation, then lower tiers as needed. Extra active players stay unseated by season rank.",
+  "Final ranking is by tournament outcome tier-by-tier: tier winners, tier runners-up, then unseated and departed players. Within each group, season rank breaks the order.",
 ];
 const RULES_CROWN = [
   "4 players, 3 themed best-of-3 matches, then a Championship Crown Match.",
@@ -6419,28 +6535,28 @@ const RULES_CROWN = [
   "Tiebreakers (within tier): match points → points scored → point differential → random draw.",
 ];
 const RULES_STACK = [
-  "8 players, 2 courts, doubles. Court 1 is the top court (🏆); Court 2 is the climbing court.",
+  "4–24 players, 1–6 courts, doubles. Court 1 is the top court (🏆); lower courts are climbing courts.",
   "Games to 11, win by 1 — quick games. Ties not allowed; play it out.",
-  "After every round: Court 1 winners stay, Court 1 losers drop to Court 2, Court 2 winners climb to Court 1, Court 2 losers stay.",
+  "After every round: winners move up or stay at the top, losers move down or stay at the bottom. Bye returners re-enter near their last played court; new players start near the bottom.",
   "Partners rotate every round. On each court, the highest + lowest Stack Score pair up vs. the middle two — and never the same partner twice in a row on the same court.",
-  "Stack Score per game: points scored + 0.5× points if on Court 1 + 3 for a win + 2 if you climbed by winning on Court 2. Highest Stack Score after the regular rounds = #1 seed.",
-  "After the regular rounds, top 4 by Stack Score play the 🏆 Championship (#1 + #4 vs #2 + #3); bottom 4 play the 🥈 Consolation.",
+  "Stack Score per game: points scored + a court multiplier + 3 for a win + 2 if you climbed by winning below Court 1. Highest Stack Score/game after regular rounds = #1 seed.",
+  "Finals seat one four-player tier per active court, seeded #1+#4 vs #2+#3 within each tier. Extra active players remain unseated by season rank.",
 ];
 const RULES_KING = [
-  "8 players, 2 courts. Court 1 is the 👑 King's Court; Court 2 is the Bottom Court.",
-  "All 8 players play every round.",
-  "After each round: Court 1 winners stay on Court 1, Court 2 winners climb to Court 1. Court 1 losers drop to Court 2, Court 2 losers stay on Court 2. All players on each court are then randomly re-paired into two new teams.",
-  "Ranking: King Score = wins + points scored + Court 1 wins. Highest King Score after all rounds = #1 seed.",
-  "After regular rounds, top 4 by King Score play the 🏆 Championship (#1+#4 vs #2+#3); bottom 4 play the 🥈 Consolation.",
+  "4–24 players, 1–6 courts. Court 1 is the 👑 King's Court; lower courts fight upward.",
+  "Each round fills the active courts; anyone extra sits that round. Byes are allocated fairly and avoid back-to-back sits unless unavoidable.",
+  "After each round: winners move up or stay on Court 1, losers move down or stay at the bottom. Players on each court are randomly re-paired into two new teams.",
+  "Ranking: King Score/game = wins + points scored + Court 1 wins, divided by games played. Highest King Score/game after regular rounds = #1 seed.",
+  "Finals seat one four-player tier per active court, seeded #1+#4 vs #2+#3 within each tier. Extra active players remain unseated by season rank.",
   "Tiebreaker: the initial random seed drawn at tournament start.",
 ];
 const RULES_GAUNTLET = [
-  "8 players, 2 courts, doubles.",
-  "After every round, all 8 players are re-ranked by performance (points scored → wins → point differential → head-to-head).",
-  "Pairing rule: Court 1 gets #1+#4 vs #2+#3; Court 2 gets #5+#8 vs #6+#7 — the best play the best, the rest play the rest.",
+  "4–24 players, 1–6 courts, doubles. Each round fills rank blocks of four; anyone extra sits by fair rotation.",
+  "After every round, players are re-ranked by per-game performance (points/game → wins/game → differential/game → head-to-head).",
+  "Pairing rule: Court 1 gets #1+#4 vs #2+#3; Court 2 gets #5+#8 vs #6+#7; lower courts continue the same rank-block pattern.",
   "Round 1 uses a random seed order.",
-  "Standard scoring (default first to 11, win by 2). Standings use the same points/wins/differential ranking as Round Robin.",
-  "After all rounds, top 4 play the 🏆 Championship, bottom 4 play the 🥈 Consolation.",
+  "Standard scoring (default first to 11, win by 2). Standings use the same per-game averages as Round Robin.",
+  "Finals seat one four-player tier per active court, seeded #1+#4 vs #2+#3 within each tier. Extra active players remain unseated by season rank.",
 ];
 function rulesForActiveFormat() {
   if (state.format === "stack")    return RULES_STACK;
@@ -10284,8 +10400,9 @@ function openSettings() {
   const simBtn = el("button", { style: "width: 100%;" }, "🧪 Verify Scoreboard");
   const simResult = el("div", { class: "ka-sub", style: "margin-top: 6px; min-height: 1em;" }, "");
   simBtn.addEventListener("click", () => {
+    const simCount = 3 + simulationConfigs().length;
     simBtn.disabled = true;
-    simBtn.textContent = "Running 3 simulated tournaments…";
+    simBtn.textContent = "Running " + simCount + " simulated tournaments…";
     simResult.textContent = "";
     // Defer so the button label paints before the synchronous simulation runs.
     setTimeout(() => {
@@ -10293,7 +10410,7 @@ function openSettings() {
       simBtn.disabled = false;
       simBtn.textContent = "🧪 Verify Scoreboard";
       simResult.textContent = fails === 0
-        ? "✅ Verified — 3 simulated tournaments, every round's standings correct."
+        ? "✅ Verified — " + simCount + " simulated tournaments, every round's standings correct."
         : "❌ " + fails + " error(s) found — open the browser console for details.";
     }, 50);
   });

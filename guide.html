@@ -194,6 +194,7 @@
   <div class="actions">
     <a class="btn" href="#install">Install</a>
     <a class="btn" href="#start">Get started</a>
+    <a class="btn" href="#flex">Players &amp; courts</a>
     <button class="btn gold" onclick="window.print()" aria-label="Print this guide">🖨 Print</button>
   </div>
 </div>
@@ -208,7 +209,7 @@
     </h1>
     <p class="lede reveal" style="animation-delay:.12s">
       A free web app that runs your whole pickleball tournament — Round&nbsp;Robin, Stack, King of the Court, Gauntlet &amp; Crown.
-      No app store, no account, works offline. Here's how to get it on any device and run your first event.
+      Use 4–24 players on 1–6 courts, no app store, no account, works offline. Here's how to get it on any device and run your first event.
     </p>
     <div class="court-rule reveal" style="animation-delay:.18s"><span class="c1"></span><span class="gd"></span><span class="c2"></span></div>
 
@@ -303,7 +304,7 @@
         <h3>Set up</h3>
         <ol>
           <li>Pick a <span class="tag">Format</span> card — Round Robin, Stack, King of the Court, Gauntlet, or Crown Court (4 players).</li>
-          <li>Type a name in each player box. <span style="color:var(--muted)">Tip: tap <b>Paste 8 names</b> to drop in a whole list at once.</span></li>
+          <li>Choose your court count, add or remove roster rows, then type a name in each player box. <span style="color:var(--muted)">Tip: tap <b>Paste names</b> to drop in a whole list at once.</span></li>
           <li><em>Optional:</em> add a phone number to text someone their results later.</li>
           <li><em>Optional:</em> flip on <b>Set a time budget</b> — it tunes the scoring to fit your clock.</li>
           <li>Tap <span class="tag">Start Tournament</span> and watch the courts get drawn.</li>
@@ -317,7 +318,7 @@
           <li>Each court shows the two teams and a score box.</li>
           <li>Type each team's <b>final score</b> — or tap the <span class="chip-x">× 11</span> pill to fill the winner instantly, then type the loser's.</li>
           <li><b>Live Standings</b> update as you go; a timer tracks each court.</li>
-          <li>When both courts are done, tap <span class="tag">Round&nbsp;2&nbsp;→</span>.</li>
+          <li>When all active courts are done, tap <span class="tag">Round&nbsp;2&nbsp;→</span>.</li>
           <li>Need a fix? Tap <span class="tag">← Round&nbsp;N</span> to edit any earlier score.</li>
         </ol>
       </div>
@@ -327,7 +328,7 @@
         <h3>Crown the champions</h3>
         <ol>
           <li>After the last round, tap <span class="tag">Build Finals →</span>.</li>
-          <li>Enter the Championship &amp; Consolation scores.</li>
+          <li>Enter the finals tier scores — Championship first, then the lower tiers.</li>
           <li>Tap <span class="tag">👑 Crown Champions</span> for the podium, awards &amp; final standings.</li>
           <li>Added phones? Use <b>📱 Text results</b> to share each recap.</li>
           <li>Tap <span class="tag">Start New Tournament</span> for round two of the day.</li>
@@ -336,10 +337,26 @@
     </div>
   </section>
 
+  <!-- ============ FLEXIBLE PLAYERS ============ -->
+  <section id="flex">
+    <div class="sec-head">
+      <span class="sec-num reveal">03</span>
+      <div><h2 class="reveal" style="animation-delay:.05s">More players &amp; courts</h2></div>
+    </div>
+    <p class="sec-sub reveal" style="animation-delay:.08s">Rumble now scales most formats beyond the classic 8-player, 2-court setup.</p>
+
+    <div class="tips">
+      <div class="tip reveal" style="animation-delay:.05s"><span class="ti">👥</span><div><b>Use 4–24 players.</b> Round Robin, Stack, King, and Gauntlet all support flexible roster sizes. Crown Court stays exactly 4 players on one court.</div></div>
+      <div class="tip reveal" style="animation-delay:.11s"><span class="ti">🏟</span><div><b>Use 1–6 courts.</b> Rumble fills as many four-player courts as the roster can support; extra configured courts wait until enough players are active.</div></div>
+      <div class="tip reveal" style="animation-delay:.17s"><span class="ti">☕</span><div><b>Byes are automatic.</b> If the roster does not divide cleanly into courts of four, the app lists who is sitting each round and rotates byes fairly.</div></div>
+      <div class="tip reveal" style="animation-delay:.23s"><span class="ti">🔁</span><div><b>Adjust during play.</b> In Settings, Manage Players can add late arrivals, mark someone left, return them later, or change court count for the next round.</div></div>
+    </div>
+  </section>
+
   <!-- ============ TIPS ============ -->
   <section id="tips">
     <div class="sec-head">
-      <span class="sec-num reveal">03</span>
+      <span class="sec-num reveal">04</span>
       <div><h2 class="reveal" style="animation-delay:.05s">Good to know</h2></div>
     </div>
 
@@ -354,7 +371,7 @@
   <footer>
     <span class="ball">🏓</span>
     <p>Ready to rumble? Open <a href="https://zigrivers.github.io/rumble-pickleball/" target="_blank" rel="noopener">zigrivers.github.io/rumble-pickleball</a></p>
-    <p style="font-size:14px; opacity:.7">Rumble Pickleball — tournament manager for 8 (or 4) players.</p>
+    <p style="font-size:14px; opacity:.7">Rumble Pickleball — tournament manager for 4–24 players on 1–6 courts.</p>
   </footer>
 
 </div>

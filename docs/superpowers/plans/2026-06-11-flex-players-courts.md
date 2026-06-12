@@ -146,20 +146,20 @@
 
 ## Phase 12 — Docs, rollout, final sweep
 
-- [ ] Update `RULES_*` strings (byes, averages, tiers, courts), add "More players & courts" to `guide.html`, bump `sw.js` cache version.
-- [ ] Extend `runSimulation` to randomized (N, C, format, churn) configs if not already done in Phase 10.
-- [ ] Full verification: `?test` = exactly 1 failure; `?simulate` = 0 failures; manual pass of all five formats including a 10-player/2-court and a 13-player/3-court event.
-- [ ] Commit: `feat: flexible players & courts — docs, sw bump, final verification`
+- [x] Update `RULES_*` strings (byes, averages, tiers, courts), add "More players & courts" to `guide.html`, bump `sw.js` cache version.
+- [x] Extend `runSimulation` to randomized (N, C, format, churn) configs if not already done in Phase 10.
+- [x] Full verification: `?test` = exactly 1 failure; `?simulate` = 0 failures; manual pass of all five formats including a 10-player/2-court and a 13-player/3-court event.
+- [x] Commit: `feat: flexible players & courts — docs, sw bump, final verification`
 
 ---
 
 ## Acceptance checklist (mirror of spec §11)
 
-- [ ] Golden path: 8/2 RR uses Wh(8); standings, finals, and movement bit-identical to v4 behavior.
-- [ ] v4 saves (all formats, mid-tournament) resume as v5.
-- [ ] Bye spread ≤ 1 (both policies, churn-free); newcomers never sit first round unless unavoidable; no back-to-back byes unless unavoidable.
-- [ ] RR pairing quality invariants hold across simulated configs.
-- [ ] Ladder movement invariants hold with byes.
-- [ ] Equal GP ⇒ average ranking ≡ totals ranking; GP=0 ranks last.
-- [ ] Roster churn simulation clean.
-- [ ] `?test` baseline 1 failure; `?simulate` 0 failures.
+- [x] Golden path: 8/2 RR uses Wh(8); standings, finals, and movement bit-identical to v4 behavior.
+- [x] v4 saves (all formats, mid-tournament) resume as v5.
+- [x] Bye spread ≤ 1 (both policies, churn-free); newcomers never sit first round unless unavoidable; no back-to-back byes unless unavoidable.
+- [x] RR pairing quality invariants hold across simulated configs.
+- [x] Ladder movement invariants hold with byes.
+- [x] Equal GP ⇒ average ranking ≡ totals ranking; GP=0 ranks last.
+- [x] Roster churn simulation clean.
+- [x] `?test` baseline 1 failure; `?simulate` 0 failures.
