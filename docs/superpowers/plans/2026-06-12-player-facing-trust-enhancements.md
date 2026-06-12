@@ -45,7 +45,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   In `runSelfTests()`, add:
 
@@ -83,13 +83,13 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Open `index.html?test`.
 
   Expected: failures increase because the event/undo helpers do not exist.
 
-- [ ] **Step 3: Implement state defaults and helpers**
+- [x] **Step 3: Implement state defaults and helpers**
 
   Add defaults:
 
@@ -164,15 +164,15 @@
   }
   ```
 
-- [ ] **Step 4: Add Event Log UI**
+- [x] **Step 4: Add Event Log UI**
 
   Add `openEventLogModal()` and a compact Undo chip near the header when `state.undoStack.length > 0`. The modal lists `state.eventLog` entries newest first and shows an Undo button for the newest reversible event only.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually open the Event Log with no events, with one event, and after undo.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
