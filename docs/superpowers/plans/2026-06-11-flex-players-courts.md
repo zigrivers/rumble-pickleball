@@ -97,9 +97,9 @@
 
 ### Task 5.1: Generalized ladder movement
 
-- [ ] Tests: **two-pass fill** per §6.2 — pass 1 places winners/losers (movement invariants hold by construction on stable court counts), pass 2 places returners/joiners only into free seats (a returner can never displace a mover); at 8/2, output matches today's `buildNextKingRound`/`buildNextStackRound` exactly (fixture comparison); winners never move down / losers never move up across simulated stable-court-count configs; bye returners land at or nearest their last-played court (new joiners bottom-up); court-count change clamps targets with spill-down-then-up overflow.
-- [ ] Implement `buildNextLadderRound(prevRound, format)` replacing both format-specific builders; round 1 = seeded shuffle + `rotation` byes.
-- [ ] Commit: `feat(ladder): C-court ladder movement with losersSitCapped byes (king+stack)`
+- [x] Tests: **two-pass fill** per §6.2 — pass 1 places winners/losers (movement invariants hold by construction on stable court counts), pass 2 places returners/joiners only into free seats (a returner can never displace a mover); at 8/2, output matches today's `buildNextKingRound`/`buildNextStackRound` exactly (fixture comparison); winners never move down / losers never move up across simulated stable-court-count configs; bye returners land at or nearest their last-played court (new joiners bottom-up); court-count change clamps targets with spill-down-then-up overflow.
+- [x] Implement `buildNextLadderRound(prevRound, format)` replacing both format-specific builders; round 1 = seeded shuffle + `rotation` byes.
+- [x] Commit: `feat(ladder): C-court ladder movement with losersSitCapped byes (king+stack)`
 
 ### Task 5.2: Stack scoring generalization
 

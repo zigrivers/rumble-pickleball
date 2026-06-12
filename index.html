@@ -1776,6 +1776,103 @@ function runSelfTests() {
     if (schedule) schedule.remove();
     state = savedState;
   }
+  // Flex Task 5.1 — generalized ladder movement with byes
+  {
+    const savedState = state;
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    const scoredGame = (court, team1, team2, score1, score2) => {
+      const g = makeGame(court, team1, team2);
+      g.score1 = score1; g.score2 = score2;
+      return g;
+    };
+    const roundSlots = r => {
+      const slots = new Set();
+      gamesOf(r).forEach(g => [...g.team1, ...g.team2].forEach(s => slots.add(s)));
+      byesOf(r).forEach(s => slots.add(s));
+      return slots;
+    };
+    const courtSlots = (r, court) => {
+      const g = gameForCourt(r, court);
+      return new Set(g ? [...g.team1, ...g.team2] : []);
+    };
+    const courtFor = (r, slot) => {
+      const g = gamesOf(r).find(g => [...g.team1, ...g.team2].includes(slot));
+      return g ? g.court : null;
+    };
+
+    state = newState();
+    state.format = "stack";
+    state.courtCount = 2;
+    state.scheduleSeed = 501;
+    state.slots = Array.from({ length: 10 }, (_, i) => "P" + (i + 1));
+    state.players = makePlayers(10);
+    state.tiebreakRandom = Array.from({ length: 10 }, (_, i) => i);
+    const initial = assignInitialStackCourts();
+    console.assert(gamesOf(initial).length === 2 && byesOf(initial).length === 2 && roundSlots(initial).size === 10,
+      "ladder round 1 uses active courts with rotation byes", initial);
+
+    const prevBye = makeRound(1, [
+      scoredGame(1, [1,2], [3,4], 11, 7),
+      scoredGame(2, [5,6], [7,8], 11, 9),
+    ], [9,10]);
+    state = {
+      phase: "playing", format: "stack", courtCount: 2, scheduleSeed: 502,
+      slots: Array.from({ length: 10 }, (_, i) => "P" + (i + 1)),
+      players: makePlayers(10), rounds: [prevBye], currentRound: 1,
+      tiebreakRandom: Array.from({ length: 10 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    const nextBye = typeof buildNextLadderRound === "function" ? buildNextLadderRound(prevBye, "stack") : makeRound(2, [], []);
+    const nextByeC1 = courtSlots(nextBye, 1), nextByeC2 = courtSlots(nextBye, 2);
+    console.assert(byesOf(nextBye).includes(7) && byesOf(nextBye).includes(8)
+      && [1,2,5,6].every(s => nextByeC1.has(s))
+      && [3,4,9,10].every(s => nextByeC2.has(s)),
+      "ladder two-pass fill keeps bye vacancies for returners instead of pulling losers up", nextBye);
+
+    const prev3 = makeRound(1, [
+      scoredGame(1, [1,2], [3,4], 11, 7),
+      scoredGame(2, [5,6], [7,8], 11, 9),
+      scoredGame(3, [9,10], [11,12], 11, 8),
+    ]);
+    state = {
+      phase: "playing", format: "king", courtCount: 3, scheduleSeed: 503,
+      slots: Array.from({ length: 12 }, (_, i) => "P" + (i + 1)),
+      players: makePlayers(12), rounds: [prev3], currentRound: 1,
+      tiebreakRandom: Array.from({ length: 12 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    const next3 = typeof buildNextLadderRound === "function" ? buildNextLadderRound(prev3, "king") : makeRound(2, [], []);
+    let stableMovement = true;
+    for (const g of gamesOf(prev3)) {
+      const winners = g.score1 > g.score2 ? g.team1 : g.team2;
+      const losers = g.score1 > g.score2 ? g.team2 : g.team1;
+      winners.forEach(slot => { stableMovement = stableMovement && courtFor(next3, slot) <= g.court; });
+      losers.forEach(slot => { stableMovement = stableMovement && courtFor(next3, slot) >= g.court; });
+    }
+    console.assert(stableMovement && gamesOf(next3).length === 3 && roundSlots(next3).size === 12,
+      "ladder stable court count keeps winners up and losers down across 3 courts", next3);
+    const oneCourtPrev = makeRound(1, [scoredGame(1, [1,2], [3,4], 11, 7)]);
+    state = {
+      phase: "playing", format: "stack", courtCount: 1, scheduleSeed: 504,
+      slots: Array.from({ length: 4 }, (_, i) => "P" + (i + 1)),
+      players: makePlayers(4), rounds: [oneCourtPrev], currentRound: 1,
+      tiebreakRandom: [0,1,2,3],
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    const oneCourtNext = buildNextLadderRound(oneCourtPrev, "stack");
+    let oneCourtToasts = true;
+    try {
+      oneCourtToasts = !!movementToastText(oneCourtPrev, oneCourtNext)
+        && !!kingMovementToastText(oneCourtPrev);
+    } catch (e) {
+      oneCourtToasts = false;
+    }
+    console.assert(oneCourtToasts, "ladder one-court movement toasts do not require court 2");
+    state = savedState;
+  }
   // Task 3 — parsePastedNames
   {
     const a = parsePastedNames("Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd");
@@ -3813,14 +3910,84 @@ function generateRounds() {
 // is built incrementally: each round's pairings depend on the prior round's
 // scores. state.rounds.length grows as the tournament progresses.
 
+function ladderCourtCount(fallbackRound) {
+  if (Number.isInteger(state.courtCount)) return state.courtCount;
+  const fallback = fallbackRound ? gamesOf(fallbackRound).length : 2;
+  return Math.max(1, fallback || 2);
+}
+function ladderRoundRng(round) {
+  const seed = Number.isInteger(state.scheduleSeed) ? state.scheduleSeed : 0;
+  return mulberry32((seed ^ Math.imul(round, 0x9E3779B9)) >>> 0);
+}
+function ladderActiveSlots(round, fallbackRound) {
+  const fromState = activeSlots(round);
+  if (fromState.length) return fromState;
+  const fallback = fallbackRound ? [...roundParticipantSet(fallbackRound)] : [];
+  if (fallback.length) return fallback;
+  const count = playerCount() || ((state.slots || []).filter(Boolean).length || 8);
+  return Array.from({ length: count }, (_, i) => i + 1);
+}
+function ladderPlayersFor(active) {
+  if (Array.isArray(state.players) && state.players.length) return state.players;
+  return active.map(slot => ({
+    slot, name: nameOf(slot), phone: phoneOf(slot), status: "active",
+    eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+  }));
+}
+function ladderHistoryThrough(round) {
+  const rounds = (state.rounds || []).filter(r => r && (r.round || 0) <= round);
+  return rounds.length ? rounds : [];
+}
+function clampCourt(court, courtCount) {
+  return Math.max(1, Math.min(courtCount, court));
+}
+function nearestCourtWithSeat(seats, target) {
+  const courtCount = seats.length;
+  for (let d = 0; d < courtCount; d++) {
+    const below = target + d;
+    if (below >= 1 && below <= courtCount && seats[below - 1].length < 4) return below;
+    const above = target - d;
+    if (d > 0 && above >= 1 && above <= courtCount && seats[above - 1].length < 4) return above;
+  }
+  return null;
+}
+function placeNearestCourt(seats, slot, target) {
+  const court = nearestCourtWithSeat(seats, target);
+  if (court != null) seats[court - 1].push(slot);
+}
+function lastPlayedCourt(slot, rounds) {
+  for (let i = rounds.length - 1; i >= 0; i--) {
+    for (const g of gamesOf(rounds[i])) {
+      if ([...g.team1, ...g.team2].includes(slot)) return g.court || 1;
+    }
+  }
+  return null;
+}
+function assignInitialLadderCourts() {
+  const round = 1;
+  const active = ladderActiveSlots(round, null);
+  const courtCount = ladderCourtCount(null);
+  const rng = ladderRoundRng(round);
+  const alloc = allocateByes("rotation", {
+    activeSlots: active,
+    players: ladderPlayersFor(active),
+    rounds: [],
+    round,
+    courtCount,
+    rng,
+  });
+  const preserveLegacyShuffle = active.length === 8 && courtCount === 2 && alloc.byes.length === 0;
+  const ordered = preserveLegacyShuffle ? shuffle(alloc.playing) : seededShuffle(alloc.playing, rng);
+  const games = [];
+  for (let c = 0; c < alloc.activeCourts; c++) {
+    const four = ordered.slice(c * 4, c * 4 + 4);
+    const courtSlots = preserveLegacyShuffle ? shuffle(four) : seededShuffle(four, rng);
+    games.push(makeGame(c + 1, [courtSlots[0], courtSlots[1]], [courtSlots[2], courtSlots[3]]));
+  }
+  return makeRound(round, games, alloc.byes);
+}
 function assignInitialStackCourts() {
-  const slots = shuffle([1,2,3,4,5,6,7,8]);
-  const c1 = shuffle(slots.slice(0, 4));
-  const c2 = shuffle(slots.slice(4));
-  return makeRound(1, [
-    makeGame(1, [c1[0], c1[1]], [c1[2], c1[3]]),
-    makeGame(2, [c2[0], c2[1]], [c2[2], c2[3]]),
-  ]);
+  return assignInitialLadderCourts();
 }
 
 // Stack score gain for one player on one completed game.
@@ -3957,22 +4124,89 @@ function pairForStackCourt(slotsOnCourt, prevSameCourt, stackBySlot) {
 
 // Build the next stack round from the previous (which must be complete and
 // non-tied — both score1 !== score2).
+function buildNextLadderRound(prevRound, format) {
+  if (!isRoundDecided(prevRound)) throw new Error("buildNextLadderRound called with undecided round");
+  const round = prevRound.round + 1;
+  const courtCount = ladderCourtCount(prevRound);
+  const active = ladderActiveSlots(round, prevRound);
+  const history = ladderHistoryThrough(prevRound.round);
+  if (!history.length || history[history.length - 1] !== prevRound) history.push(prevRound);
+  const rng = ladderRoundRng(round);
+  const alloc = allocateByes("losersSitCapped", {
+    activeSlots: active,
+    players: ladderPlayersFor(active),
+    rounds: history,
+    round,
+    courtCount,
+    rng,
+  });
+  const byeSet = new Set(alloc.byes);
+  const seats = Array.from({ length: alloc.activeCourts }, () => []);
+  const moversByTarget = new Map();
+  const addMover = (slot, target, priority) => {
+    if (byeSet.has(slot)) return;
+    target = clampCourt(target, alloc.activeCourts);
+    if (!moversByTarget.has(target)) moversByTarget.set(target, []);
+    moversByTarget.get(target).push({ slot, target, priority, rand: rng() });
+  };
+
+  for (const g of gamesOf(prevRound)) {
+    const winners = g.score1 > g.score2 ? g.team1 : g.team2;
+    const losers = g.score1 > g.score2 ? g.team2 : g.team1;
+    winners.forEach(slot => addMover(slot, (g.court || 1) - 1, 0));
+    losers.forEach(slot => addMover(slot, (g.court || 1) + 1, 1));
+  }
+
+  const overflow = [];
+  for (let court = 1; court <= alloc.activeCourts; court++) {
+    const movers = (moversByTarget.get(court) || [])
+      .sort((a, b) => a.priority - b.priority || a.rand - b.rand);
+    while (movers.length && seats[court - 1].length < 4) seats[court - 1].push(movers.shift().slot);
+    overflow.push(...movers);
+  }
+  overflow
+    .sort((a, b) => a.priority - b.priority || a.rand - b.rand)
+    .forEach(m => placeNearestCourt(seats, m.slot, m.target));
+
+  const placed = new Set(seats.flat());
+  const priorByes = new Set(byesOf(prevRound));
+  const priorPlayed = new Set();
+  gamesOf(prevRound).forEach(g => [...g.team1, ...g.team2].forEach(slot => priorPlayed.add(slot)));
+  const beforePrev = history.filter(r => r !== prevRound && r.round !== prevRound.round);
+  const returners = alloc.playing
+    .filter(slot => !placed.has(slot))
+    .map(slot => {
+      const wasBye = priorByes.has(slot);
+      const lastCourt = wasBye ? lastPlayedCourt(slot, beforePrev) : null;
+      return {
+        slot,
+        target: clampCourt(lastCourt || alloc.activeCourts, alloc.activeCourts),
+        priority: wasBye || priorPlayed.has(slot) ? 0 : 1,
+        rand: rng(),
+      };
+    })
+    .sort((a, b) => a.priority - b.priority || a.rand - b.rand);
+  returners.forEach(r => placeNearestCourt(seats, r.slot, r.target));
+
+  const games = [];
+  const stackStats = format === "stack" ? computeStackStats(prevRound.round) : null;
+  const stackBySlot = stackStats ? new Map(stackStats.map(s => [s.slot, s.stackScore])) : null;
+  for (let court = 1; court <= alloc.activeCourts; court++) {
+    const slots = seats[court - 1];
+    if (slots.length !== 4) continue;
+    if (format === "stack") {
+      const [team1, team2] = pairForStackCourt(slots, gameForCourt(prevRound, court), stackBySlot);
+      games.push(makeGame(court, team1, team2));
+    } else {
+      const s = shuffle(slots);
+      games.push(makeGame(court, [s[0], s[1]], [s[2], s[3]]));
+    }
+  }
+  return makeRound(round, games, alloc.byes);
+}
+
 function buildNextStackRound(prevRound) {
-  const c1 = gameForCourt(prevRound, 1), c2 = gameForCourt(prevRound, 2);
-  const c1Win  = c1.score1 > c1.score2 ? c1.team1 : c1.team2;
-  const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
-  const c2Win  = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
-  const c2Lose = c2.score1 > c2.score2 ? c2.team2 : c2.team1;
-  const newC1Slots = [...c1Win, ...c2Win];
-  const newC2Slots = [...c1Lose, ...c2Lose];
-
-  const stackStats = computeStackStats(prevRound.round);
-  const stackBySlot = new Map(stackStats.map(s => [s.slot, s.stackScore]));
-
-  const [c1A, c1B] = pairForStackCourt(newC1Slots, c1, stackBySlot);
-  const [c2A, c2B] = pairForStackCourt(newC2Slots, c2, stackBySlot);
-
-  return makeRound(prevRound.round + 1, [makeGame(1, c1A, c1B), makeGame(2, c2A, c2B)]);
+  return buildNextLadderRound(prevRound, "stack");
 }
 
 // === KING FORMAT ===
@@ -3980,13 +4214,7 @@ function buildNextStackRound(prevRound) {
 // Random re-pairing on each court every round. Ranking = composite King Score.
 
 function assignInitialKingCourts() {
-  const slots = shuffle([1,2,3,4,5,6,7,8]);
-  const c1 = shuffle(slots.slice(0, 4));
-  const c2 = shuffle(slots.slice(4));
-  return makeRound(1, [
-    makeGame(1, [c1[0], c1[1]], [c1[2], c1[3]]),
-    makeGame(2, [c2[0], c2[1]], [c2[2], c2[3]]),
-  ]);
+  return assignInitialLadderCourts();
 }
 
 function computeKingStats(throughRound) {
@@ -4036,23 +4264,12 @@ function rankPlayersKing(throughRound) {
 }
 
 function buildNextKingRound(prevRound) {
-  if (!isRoundDecided(prevRound)) throw new Error("buildNextKingRound called with undecided round");
-  const c1 = gameForCourt(prevRound, 1), c2 = gameForCourt(prevRound, 2);
-  const c1Win  = c1.score1 > c1.score2 ? c1.team1 : c1.team2;
-  const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
-  const c2Win  = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
-  const c2Lose = c2.score1 > c2.score2 ? c2.team2 : c2.team1;
-  // Movement: winners pool → King's Court; losers pool → Bottom Court. Random re-pair on each.
-  const newC1 = shuffle([...c1Win, ...c2Win]);
-  const newC2 = shuffle([...c1Lose, ...c2Lose]);
-  return makeRound(prevRound.round + 1, [
-    makeGame(1, [newC1[0], newC1[1]], [newC1[2], newC1[3]]),
-    makeGame(2, [newC2[0], newC2[1]], [newC2[2], newC2[3]]),
-  ]);
+  return buildNextLadderRound(prevRound, "king");
 }
 
 function kingMovementToastText(prevRound) {
   const c1 = gameForCourt(prevRound, 1), c2 = gameForCourt(prevRound, 2);
+  if (!c1 || !c2 || gamesOf(prevRound).length !== 2) return "Next round ready";
   const c2Win  = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
   const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
   return teamName(c2Win) + " climb to King's Court · " + teamName(c1Lose) + " drop to Bottom";
@@ -6092,6 +6309,19 @@ function isRoundDecided(r) {
 function movementToastText(prevRound, newRound) {
   // climbers = c2 winners (now on new c1)
   const c1 = gameForCourt(prevRound, 1), c2 = gameForCourt(prevRound, 2);
+  if (!c1 || !c2 || gamesOf(prevRound).length !== 2 || gamesOf(newRound).length !== 2) {
+    const nextCourt = new Map();
+    gamesOf(newRound).forEach(g => [...g.team1, ...g.team2].forEach(slot => nextCourt.set(slot, g.court)));
+    const moves = [];
+    gamesOf(prevRound).forEach(g => {
+      [...g.team1, ...g.team2].forEach(slot => {
+        const next = nextCourt.get(slot);
+        if (!next || next === g.court) return;
+        moves.push(nameOf(slot) + (next < g.court ? " climbs to Court " : " drops to Court ") + next);
+      });
+    });
+    return moves.slice(0, 2).join(" · ") || "Next round ready";
+  }
   const c2Win = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
   const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
   return teamName(c2Win) + " climb to Court 1 · " + teamName(c1Lose) + " drop to Court 2";
