@@ -88,10 +88,10 @@
 
 ### Task 4.2: Golden path + integration
 
-- [ ] Tests: `rrScheduleMode` computed once at Start from the setup config — `"wh8"` iff 8 players AND 2 courts at that moment (toggling courts 2→1→2 **during setup, before Start** still yields `"wh8"`), and `startTournament` consumes the `Wh(8)` `SCHEDULE` (existing whist invariant tests keep passing untouched); the flag flips to `"generated"` on any **mid-event (post-Start)** roster or court-count change and never flips back (mid-event courts 2→1→2: still `"generated"`); off the golden path the generated schedule is used and `rrRounds` (4–12, default 7) governs length; schedule preview shows byes per round.
-- [ ] Wire into `startTournament`/`generateRounds`; add `rrRounds` selector in the format chooser (hidden on golden path).
-- [ ] Verify `?test` + `?simulate`, plus a **programmatic** 10-player/2-court RR smoke: construct the state via a test helper (the setup UI for >8 players doesn't exist until Phase 9), render the playing screen, and assert the bye banner ("☕ Sitting this round: …" per §9.2) and playable courts. The manual UI smoke for flexible rosters happens in Phase 9.
-- [ ] Commit: `feat(rr): flexible players/courts with byes; Wh(8) golden path preserved`
+- [x] Tests: `rrScheduleMode` computed once at Start from the setup config — `"wh8"` iff 8 players AND 2 courts at that moment (toggling courts 2→1→2 **during setup, before Start** still yields `"wh8"`), and `startTournament` consumes the `Wh(8)` `SCHEDULE` (existing whist invariant tests keep passing untouched); the flag flips to `"generated"` on any **mid-event (post-Start)** roster or court-count change and never flips back (mid-event courts 2→1→2: still `"generated"`); off the golden path the generated schedule is used and `rrRounds` (4–12, default 7) governs length; schedule preview shows byes per round.
+- [x] Wire into `startTournament`/`generateRounds`; add `rrRounds` selector in the format chooser (hidden on golden path).
+- [x] Verify `?test` + `?simulate`, plus a **programmatic** 10-player/2-court RR smoke: construct the state via a test helper (the setup UI for >8 players doesn't exist until Phase 9), render the playing screen, and assert the bye banner ("☕ Sitting this round: …" per §9.2) and playable courts. The manual UI smoke for flexible rosters happens in Phase 9.
+- [x] Commit: `feat(rr): flexible players/courts with byes; Wh(8) golden path preserved`
 
 ## Phase 5 — Ladders (King, Stack)
 

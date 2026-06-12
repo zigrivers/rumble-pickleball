@@ -132,6 +132,16 @@
   .court-card.c2 { border-top-color: var(--court2); }
   .court-card.gold { border-top-color: var(--gold); }
   .court-card.silver { border-top-color: var(--silver); }
+  .bye-banner {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel-2);
+    color: var(--muted);
+    text-align: center;
+    font-size: 14px;
+  }
   /* Stack format: top court gets a subtle gold treatment to read as "the top court" */
   .court-card.c1.stack-top {
     border-top-color: var(--gold);
@@ -989,6 +999,11 @@
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
+  .schedule-byes {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--muted);
+  }
   /* Keep-awake toggle + status (Display & TV settings) */
   .ka-section-title {
     margin: 14px 0 0;
@@ -1714,6 +1729,52 @@ function runSelfTests() {
       }
     }
     console.assert(badConsecutive === 0, "generateRRSchedule avoids consecutive repeat partners", badConsecutive);
+  }
+  // Flex Task 4.2 — RR golden path integration and generated schedules
+  {
+    const savedState = state;
+    const names10 = ["A","B","C","D","E","F","G","H","I","J"];
+    state = newState();
+    state.format = "rr";
+    setCourtCount(1);
+    setCourtCount(2);
+    state.rawNames = names10.slice(0, 8);
+    state.rawPhones = state.rawNames.map(() => "");
+    startTournament();
+    console.assert(state.rrScheduleMode === "wh8" && state.rounds.length === 7,
+      "RR 8 players / 2 courts starts Wh(8)", { mode: state.rrScheduleMode, rounds: state.rounds.length });
+    setCourtCount(1);
+    setCourtCount(2);
+    console.assert(state.rrScheduleMode === "generated",
+      "RR post-Start court changes permanently exit Wh(8)", state.rrScheduleMode);
+    state = newState();
+    state.format = "rr";
+    setCourtCount(1);
+    state.rawNames = names10.slice(0, 8);
+    state.rawPhones = state.rawNames.map(() => "");
+    startTournament();
+    console.assert(state.rrScheduleMode === "generated" && byesOf(state.rounds[0]).length === 4,
+      "RR 8 players / 1 court uses generated schedule with byes", { mode: state.rrScheduleMode, first: state.rounds[0] });
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.rrRounds = 5;
+    state.rawNames = names10.slice();
+    state.rawPhones = names10.map(() => "");
+    startTournament();
+    console.assert(state.rrScheduleMode === "generated" && state.rounds.length === 5
+      && state.rounds.every(r => gamesOf(r).length === 2 && byesOf(r).length === 2),
+      "RR 10 players / 2 courts generated rrRounds with two byes", state.rounds);
+    const playing = renderPlaying();
+    console.assert(/Sitting this round/.test(playing.textContent) && playing.querySelectorAll(".court-card").length === 2,
+      "RR generated playing screen shows bye banner and playable courts", playing.textContent);
+    openScheduleModal();
+    const modals = document.querySelectorAll(".modal-bg");
+    const schedule = modals[modals.length - 1];
+    console.assert(schedule && /Sitting this round/.test(schedule.textContent),
+      "RR generated schedule preview shows byes", schedule && schedule.textContent);
+    if (schedule) schedule.remove();
+    state = savedState;
   }
   // Task 3 — parsePastedNames
   {
@@ -3060,6 +3121,12 @@ function newState() {
 function makeScheduleSeed() {
   return Math.floor(Math.random() * 0x100000000);
 }
+function setCourtCount(count) {
+  const next = Math.max(1, Math.min(6, parseInt(count, 10) || state.courtCount || 2));
+  const changed = next !== state.courtCount;
+  state.courtCount = next;
+  if (changed && state.format === "rr" && state.phase !== "setup") state.rrScheduleMode = "generated";
+}
 function legacyPlayersFrom(obj) {
   const slots = Array.isArray(obj.slots) ? obj.slots : [];
   const phones = Array.isArray(obj.phones) ? obj.phones : [];
@@ -4187,15 +4254,28 @@ function startTournament() {
   // replacing it, so keepAwake settings are already live. syncKeepAwakeToState() is only
   // needed after full state replacements (e.g. newState(), format-switch, data-clear).
   const isCrown = state.format === "crown";
-  const count = isCrown ? 4 : 8;
-  const names = state.rawNames.slice(0, count).map(s => s.trim());
+  const rawEntries = (state.rawNames || []).map((name, i) => ({
+    name: (name || "").trim(),
+    phone: (state.rawPhones || [])[i] || "",
+  }));
+  let entries;
+  if (isCrown) {
+    entries = rawEntries.slice(0, 4);
+  } else if (state.format === "rr") {
+    entries = rawEntries.filter(e => e.name);
+  } else {
+    entries = rawEntries.slice(0, 8);
+    while (entries.length < 8) entries.push({ name: "", phone: "" });
+  }
+  const count = entries.length;
+  const names = entries.map(e => e.name);
   const shuffled = shuffle(names);
   // Map each (trimmed, unique) name to its normalized phone for post-shuffle alignment.
   const phoneByName = {};
-  names.forEach((n, i) => { if (n) phoneByName[n] = normalizePhone(state.rawPhones[i] || ""); });
+  entries.forEach(e => { if (e.name) phoneByName[e.name] = normalizePhone(e.phone || ""); });
 
   state.scheduleSeed = makeScheduleSeed();
-  state.tiebreakRandom = shuffle(isCrown ? [0,1,2,3] : [0,1,2,3,4,5,6,7]);
+  state.tiebreakRandom = shuffle(Array.from({ length: count }, (_, i) => i));
   state.currentRound = 1;
   if (state.timeBudget && state.timeBudget.enabled) {
     state.timeBudget.startedAt = Date.now();
@@ -4289,13 +4369,27 @@ function startTournament() {
   } else {
     state.slots = shuffled;
     writePlayersFromSlots(count, phoneByName);
-    state.rounds = generateRounds();
+    if (count === 8 && state.courtCount === 2) {
+      state.rrScheduleMode = "wh8";
+      state.rrRounds = 7;
+      state.rounds = generateRounds();
+    } else {
+      state.rrScheduleMode = "generated";
+      state.rrRounds = Math.max(4, Math.min(12, parseInt(state.rrRounds, 10) || 7));
+      state.rounds = generateRRSchedule(
+        Array.from({ length: count }, (_, i) => i + 1),
+        state.courtCount,
+        state.rrRounds,
+        [],
+        mulberry32(state.scheduleSeed)
+      );
+    }
     state.phase = "playing";
     save();
     runShuffleReveal(state.slots.slice(), () => render());
   }
   // Derive per-slot phones from the final slot order, and remember name→phone in the roster.
-  for (let i = 0; i < count; i++) saveRosterEntry(names[i], state.rawPhones[i] || "");
+  entries.forEach(e => saveRosterEntry(e.name, e.phone || ""));
   save();
 }
 
@@ -5097,7 +5191,7 @@ function totalRegularRounds() {
   if (state.format === "king")     return state.kingRounds;
   if (state.format === "gauntlet") return state.gauntletRounds;
   if (state.format === "crown")    return 3;
-  return 7;
+  return state.rrScheduleMode === "generated" ? state.rrRounds : 7;
 }
 
 function timeBudgetStripEl() {
@@ -5395,6 +5489,27 @@ function renderFormatChooser() {
     row.appendChild(btn);
   });
   wrap.appendChild(row);
+  const rrSetupCount = (state.rawNames || []).map(n => (n || "").trim()).filter(Boolean).length;
+  if (state.format === "rr" && rrSetupCount > 0 && !(rrSetupCount === 8 && state.courtCount === 2)) {
+    const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
+    sub.appendChild(el("label", null, "Rounds"));
+    const sel = el("select");
+    [4,5,6,7,8,9,10,11,12].forEach(v => {
+      const opt = el("option", { value: String(v) }, String(v));
+      if (state.rrRounds === v) opt.setAttribute("selected", "selected");
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", () => {
+      state.rrRounds = parseInt(sel.value, 10);
+      save();
+      if (state.timeBudget.enabled) {
+        const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+      }
+    });
+    sub.appendChild(sel);
+    wrap.appendChild(sub);
+  }
   if (state.format === "stack") {
     const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
     sub.appendChild(el("label", null, "Rounds"));
@@ -6773,6 +6888,11 @@ function renderPlaying() {
   const refreshes = [];
   const refresh = () => refreshes.forEach(fn => fn());
 
+  const roundByes = byesOf(round);
+  if (roundByes.length) {
+    wrap.appendChild(el("div", { class: "bye-banner" },
+      "☕ Sitting this round: " + roundByes.map(nameOf).join(", ") + " — back next round."));
+  }
   wrap.appendChild(renderRoundCourts(round, false, refreshes));
 
   // navigation row
@@ -8392,6 +8512,11 @@ function openScheduleModal() {
       gamesOf(r).forEach(g => {
         block.appendChild(gameRow(g, g.court === 1 ? c1Tag : c2Tag, "c" + (g.court || 1)));
       });
+      const byes = byesOf(r);
+      if (byes.length) {
+        block.appendChild(el("div", { class: "schedule-byes" },
+          "☕ Sitting this round: " + byes.map(nameOf).join(", ")));
+      }
       list.appendChild(block);
     });
     if (state.finals && (state.phase === "finals" || state.phase === "done")) {
