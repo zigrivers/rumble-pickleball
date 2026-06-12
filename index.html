@@ -3602,6 +3602,31 @@ function runSelfTests() {
       "mutationEventLabel names finals build");
   }
 
+  // Player-facing/trust Task 3 - personal recaps
+  {
+    console.assert(typeof buildPersonalRecap === "function", "buildPersonalRecap exists");
+    const saved = state;
+    state = newState();
+    state.format = "rr";
+    state.players = [1,2,3,4].map(i => ({ slot: i, name: "P" + i, phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null }));
+    state.slots = ["P1","P2","P3","P4"];
+    state.rounds = [
+      makeRound(1, [{ court: 1, team1: [1,2], team2: [3,4], score1: 11, score2: 5 }], []),
+      makeRound(2, [{ court: 1, team1: [1,3], team2: [2,4], score1: 8, score2: 11 }], [])
+    ];
+    const recap = buildPersonalRecap(1, { final: false, throughRound: 2 });
+    console.assert(recap.name === "P1" && recap.record === "1-1",
+      "personal recap includes record", recap);
+    console.assert(recap.bestWin && recap.bestWin.round === 1,
+      "personal recap finds best win", recap);
+    console.assert(recap.mostCommonPartner && ["P2", "P3"].includes(recap.mostCommonPartner.name),
+      "personal recap finds common partner", recap);
+    console.assert(recap.headline.includes("went 1-1"),
+      "personal recap builds headline", recap);
+    state = saved;
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -5725,6 +5750,85 @@ function textResultsSupported() {
   return state.format === "rr" || state.format === "gauntlet";
 }
 
+function buildPersonalRecap(slot, opts) {
+  opts = opts || {};
+  const isFinal = !!opts.final;
+  const through = isFinal ? totalRegularRounds() : (opts.throughRound || state.currentRound || totalRegularRounds());
+  const ranking = state.format === "crown"
+    ? finalRankingCrown()
+    : (isFinal ? finalRanking() : rankPlayersForFormat(through));
+  const rankIdx = ranking.findIndex(s => s.slot === slot);
+  let stats;
+  if (state.format === "stack") stats = computeStackStats(through);
+  else if (state.format === "king") stats = computeKingStats(through);
+  else if (state.format === "crown") stats = crownPlayerStats();
+  else stats = computeStats(through, isFinal);
+  const st = stats.find(s => s.slot === slot) || { slot, name: nameOf(slot), gp: 0, wins: 0, losses: 0 };
+
+  let wins = Number.isFinite(st.wins) ? st.wins : (Number.isFinite(st.gamesWon) ? st.gamesWon : 0);
+  let losses = Number.isFinite(st.losses) ? st.losses : (Number.isFinite(st.gamesLost) ? st.gamesLost : 0);
+  let ties = 0;
+  const partners = new Map();
+  let bestWin = null;
+  let closestLoss = null;
+  let byeCount = 0;
+  const scanRound = (round, roundNum) => {
+    if (byesOf(round).includes(slot)) byeCount++;
+    gamesOf(round).forEach(g => {
+      const on1 = (g.team1 || []).includes(slot);
+      const on2 = (g.team2 || []).includes(slot);
+      if (!on1 && !on2) return;
+      const team = on1 ? g.team1 : g.team2;
+      const partner = team.find(s => s !== slot);
+      if (partner) partners.set(partner, (partners.get(partner) || 0) + 1);
+      if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) return;
+      if (g.score1 === g.score2) { ties++; return; }
+      const myScore = on1 ? g.score1 : g.score2;
+      const oppScore = on1 ? g.score2 : g.score1;
+      const diff = myScore - oppScore;
+      const entry = { round: roundNum, court: g.court || 1, diff: Math.abs(diff), score: myScore + "-" + oppScore };
+      if (diff > 0 && (!bestWin || diff > bestWin.diff)) bestWin = { ...entry, diff };
+      if (diff < 0 && (!closestLoss || Math.abs(diff) < closestLoss.diff)) closestLoss = entry;
+    });
+  };
+  for (let i = 0; i < Math.min(through, state.rounds.length); i++) scanRound(state.rounds[i], i + 1);
+  if (isFinal && state.finals) {
+    finalTiers().forEach((g, i) => scanRound({ games: [g], byes: [] }, "F" + (i + 1)));
+  }
+
+  const mostCommonPartnerSlot = [...partners.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+  const gp = Number.isFinite(st.gp) ? st.gp : (wins + losses + ties);
+  const points = Number.isFinite(st.points) ? st.points : (Number.isFinite(st.pointsScored) ? st.pointsScored : 0);
+  const diff = Number.isFinite(st.diff) ? st.diff : (Number.isFinite(st.pointDiff) ? st.pointDiff : 0);
+  const avgPoints = Number.isFinite(st.avgPoints) ? st.avgPoints : points / Math.max(1, gp);
+  const avgDiff = Number.isFinite(st.avgDiff) ? st.avgDiff : diff / Math.max(1, gp);
+  if (!losses && gp > wins + ties) losses = gp - wins - ties;
+  const name = nameOf(slot);
+  const rank = rankIdx >= 0 ? rankIdx + 1 : null;
+  const fieldSize = ranking.length || playerCount();
+  const record = wins + "-" + losses + (ties ? "-" + ties : "");
+  const partnerName = mostCommonPartnerSlot ? nameOf(mostCommonPartnerSlot[0]) : "";
+  const headlineBits = [
+    "You finished " + (rank ? ordinal(rank) : "unranked"),
+    "went " + record
+  ];
+  if (bestWin) headlineBits.push("best win was Round " + bestWin.round);
+  if (partnerName) headlineBits.push("most common partner was " + partnerName);
+  return {
+    slot, name, rank, fieldSize, gp, wins, losses, ties, record,
+    avgPoints, avgDiff, bestWin, closestLoss,
+    mostCommonPartner: mostCommonPartnerSlot ? { slot: mostCommonPartnerSlot[0], name: partnerName, games: mostCommonPartnerSlot[1] } : null,
+    byeCount, headline: headlineBits.join(", ") + ".", awards: []
+  };
+}
+
+function ordinal(n) {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return n + "th";
+  const suffix = n % 10 === 1 ? "st" : (n % 10 === 2 ? "nd" : (n % 10 === 3 ? "rd" : "th"));
+  return n + suffix;
+}
+
 // Personalized recap for the player in `slot`. mode = "final" | { throughRound: N }.
 // State-dependent: reads slots/finals/stats. Final-mode numbers come from
 // computeStats(total, true) + finalRanking() order, matching the done screen.
@@ -5734,13 +5838,13 @@ function buildResultsMessage(slot, mode) {
   const order = (isFinal ? finalRanking() : rankPlayers(through)).map(s => s.slot);
   const stats = computeStats(through, isFinal);
   const bySlot = {}; stats.forEach(s => { bySlot[s.slot] = s; });
-  const me = bySlot[slot];
-  const pos = order.indexOf(slot) + 1;
+  const recap = buildPersonalRecap(slot, { final: isFinal, throughRound: through });
   const sign = d => (d > 0 ? "+" : "") + d;
   const lines = [];
-  const youLine = "You: #" + pos + " of " + order.length +
-    " (GP " + me.gp + ", " + me.avgPoints.toFixed(1) + " pts/game, " +
-    me.winRate.toFixed(1) + " W/game, " + sign(me.avgDiff.toFixed(1)) + " diff/game)";
+  const youLine = "You: #" + recap.rank + " of " + recap.fieldSize +
+    " (GP " + recap.gp + ", " + recap.avgPoints.toFixed(1) + " pts/game, " +
+    (recap.wins / Math.max(1, recap.gp)).toFixed(1) + " W/game, " +
+    sign(recap.avgDiff.toFixed(1)) + " diff/game)";
   const board = order.map((s, i) => {
     const st = bySlot[s];
     return (i + 1) + ". " + st.name + " (GP " + st.gp + ", " +

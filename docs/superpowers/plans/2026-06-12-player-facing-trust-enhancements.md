@@ -264,7 +264,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 3 - personal recaps
@@ -293,11 +293,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because `buildPersonalRecap` does not exist.
 
-- [ ] **Step 3: Implement recap helper**
+- [x] **Step 3: Implement recap helper**
 
   Add `buildPersonalRecap(slot, opts)` near `buildResultsMessage()`. It returns:
 
@@ -311,15 +311,15 @@
 
   Use `computeStats()`, `rankPlayersForFormat()` or `finalRanking()`, `gamesOf()`, and `byesOf()`.
 
-- [ ] **Step 4: Reuse recap in text results**
+- [x] **Step 4: Reuse recap in text results**
 
   Update `buildResultsMessage()` to build its "You:" line from `buildPersonalRecap()` while preserving the current message structure and phone/text behavior.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually verify final text results and mid-event text standings for RR and Gauntlet.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
