@@ -3798,6 +3798,20 @@ function runSelfTests() {
     state = saved;
   }
 
+  // Player-facing/trust final surface availability
+  {
+    [
+      "buildPersonalRecap",
+      "buildShareCardModel",
+      "buildTournamentSnapshot",
+      "qrMatrixForText",
+      "displayModeModel",
+      "buildFairnessExplanation",
+      "preStartSummaryModel",
+      "openEventLogModal"
+    ].forEach(name => console.assert(typeof window[name] === "function", name + " is available"));
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }

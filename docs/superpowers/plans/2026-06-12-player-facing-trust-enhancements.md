@@ -638,7 +638,7 @@
 - Modify: `index.html`
 - Modify: `guide.html`
 
-- [ ] **Step 1: Add guide copy**
+- [x] **Step 1: Add guide copy**
 
   Update `guide.html` with short mentions of:
 
@@ -648,7 +648,7 @@
   - Why? fairness explainers
   - Review & Start summary
 
-- [ ] **Step 2: Add final smoke assertions**
+- [x] **Step 2: Add final smoke assertions**
 
   Add a small `runSelfTests()` block that asserts the route helpers and major model builders exist:
 
@@ -668,7 +668,7 @@
   }
   ```
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
   Run:
 
@@ -686,7 +686,7 @@
   - undo works for score, advance, and roster changes
   - fairness explainers render for bye, movement, and finals cases
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
   ```bash
   git add index.html guide.html
@@ -695,14 +695,14 @@
 
 ## Final Acceptance Checklist
 
-- [ ] TV / Projector mode is read-only and shows current tournament state.
-- [ ] Shareable result cards generate final podium, round recap, and player recap outputs.
-- [ ] QR Snapshot creates static snapshot links and renders snapshot views without localStorage.
-- [ ] Personal player recaps support all formats and degrade gracefully when data is missing.
-- [ ] Event Log records score, round, finals, roster, court, and finish mutations.
-- [ ] Undo restores the prior tournament state for recent reversible events.
-- [ ] Fairness explainers cover byes, movement, finals tiers, and unseated players.
-- [ ] Pre-start summary appears before start and does not weaken existing validation.
-- [ ] 8-player/2-court Round Robin behavior is unchanged.
-- [ ] `index.html?test` ends with exactly 1 failure.
-- [ ] `index.html?simulate` ends with 0 failures.
+- [x] TV / Projector mode is read-only and shows current tournament state.
+- [x] Shareable result cards generate final podium, round recap, and player recap outputs.
+- [x] QR Snapshot creates static snapshot links and renders snapshot views without localStorage.
+- [x] Personal player recaps support all formats and degrade gracefully when data is missing.
+- [x] Event Log records score, round, finals, roster, court, and finish mutations.
+- [x] Undo restores the prior tournament state for recent reversible events.
+- [x] Fairness explainers cover byes, movement, finals tiers, and unseated players.
+- [x] Pre-start summary appears before start and does not weaken existing validation.
+- [x] 8-player/2-court Round Robin behavior is unchanged.
+- [x] `index.html?test` ends with exactly 1 failure.
+- [x] `index.html?simulate` ends with 0 failures.
