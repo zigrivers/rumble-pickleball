@@ -122,9 +122,9 @@
 
 ## Phase 8 — Tiered finals (all four formats)
 
-- [ ] Tests: tier construction per §6.4 — `buildFinals` stays ONE shared code path seeding from `rankPlayersForFormat` (RR, Stack, King, Gauntlet all get tiered finals from their own ranking); `tierCount = min(courtCount, floor(activeAtFinals/4))`; seat `tierCount×4`, rest unseated; #1+#4 vs #2+#3 within tier; stored names plain Championship/Consolation/Bronze/Copper/Iron/Stone (emoji render-time only); final-standings order tiers → unseated by season rank → departed (greyed); 8/2 case identical to today for every format.
-- [ ] Implement finals builder + finals screen rendering from `tiers[]`; update `finalRanking`.
-- [ ] Verify + commit: `feat(finals): tiered finals scaled to players/courts`
+- [x] Tests: tier construction per §6.4 — `buildFinals` stays ONE shared code path seeding from `rankPlayersForFormat` (RR, Stack, King, Gauntlet all get tiered finals from their own ranking); `tierCount = min(courtCount, floor(activeAtFinals/4))`; seat `tierCount×4`, rest unseated; #1+#4 vs #2+#3 within tier; stored names plain Championship/Consolation/Bronze/Copper/Iron/Stone (emoji render-time only); final-standings order tiers → unseated by season rank → departed (greyed); 8/2 case identical to today for every format.
+- [x] Implement finals builder + finals screen rendering from `tiers[]`; update `finalRanking`.
+- [x] Verify + commit: `feat(finals): tiered finals scaled to players/courts`
 
 ## Phase 9 — Setup UX
 

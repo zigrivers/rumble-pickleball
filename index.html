@@ -2060,6 +2060,63 @@ function runSelfTests() {
       "King ranks by kingScore per GP", order(kingRanked));
     state = savedState;
   }
+  // Flex Phase 8 — tiered finals
+  {
+    const savedState = state;
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    state = {
+      phase: "playing", format: "rr", courtCount: 3, rrScheduleMode: "generated", rrRounds: 4,
+      slots: Array.from({ length: 13 }, (_, i) => "P" + (i + 1)), players: makePlayers(13),
+      rounds: [], currentRound: 4, tiebreakRandom: Array.from({ length: 13 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    buildFinals();
+    console.assert(finalTiers().length === 3
+      && finalTiers().map(t => t.name).join(",") === "Championship,Consolation,Bronze"
+      && JSON.stringify(state.finals.unseated) === JSON.stringify([13]),
+      "tiered finals 13 players / 3 courts seats 12 and unseats 1", state.finals);
+
+    state = {
+      phase: "playing", format: "rr", courtCount: 1,
+      slots: Array.from({ length: 8 }, (_, i) => "P" + (i + 1)), players: makePlayers(8),
+      rounds: [], currentRound: 7, tiebreakRandom: Array.from({ length: 8 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    buildFinals();
+    console.assert(finalTiers().length === 1 && JSON.stringify(state.finals.unseated) === JSON.stringify([5,6,7,8]),
+      "tiered finals 8 players / 1 court seats one tier and unseats rest", state.finals);
+
+    state.courtCount = 2;
+    state.finals = null;
+    buildFinals();
+    console.assert(finalTiers().length === 2 && state.finals.unseated.length === 0
+      && JSON.stringify(finalTier(0).team1) === JSON.stringify([1,4])
+      && JSON.stringify(finalTier(0).team2) === JSON.stringify([2,3])
+      && JSON.stringify(finalTier(1).team1) === JSON.stringify([5,8])
+      && JSON.stringify(finalTier(1).team2) === JSON.stringify([6,7]),
+      "tiered finals preserves 8/2 pairings", state.finals);
+
+    state = {
+      phase: "done", format: "rr", courtCount: 3,
+      slots: Array.from({ length: 13 }, (_, i) => "P" + (i + 1)), players: makePlayers(13),
+      rounds: [], currentRound: 4, tiebreakRandom: Array.from({ length: 13 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: true, winScore: 11,
+      finals: {
+        tiers: [
+          { name: "Championship", court: 1, team1: [1,4], team2: [2,3], score1: 11, score2: 9 },
+          { name: "Consolation", court: 2, team1: [5,8], team2: [6,7], score1: 8, score2: 11 },
+          { name: "Bronze", court: 3, team1: [9,12], team2: [10,11], score1: 11, score2: 4 },
+        ],
+        unseated: [13],
+      },
+    };
+    console.assert(finalRanking().map(s => s.slot).join(",") === "1,4,2,3,6,7,5,8,9,12,10,11,13",
+      "tiered finalRanking orders every tier then unseated", finalRanking().map(s => s.slot));
+    state = savedState;
+  }
   // Task 3 — parsePastedNames
   {
     const a = parsePastedNames("Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd");
@@ -4943,9 +5000,11 @@ function buildResultsMessage(slot, mode) {
     lines.push("🏓 Rumble Pickleball — tonight's results", "", youLine, "");
     if (state.finals) {
       const champ = finalTier(0), cons = finalTier(1);
-      const champWin = champ.score1 > champ.score2 ? champ.team1 : champ.team2;
-      const consWin  = cons.score1  > cons.score2  ? cons.team1  : cons.team2;
-      lines.push("🥇 " + teamName(champWin), "🥈 " + teamName(consWin), "");
+      const champWin = champ && champ.score1 > champ.score2 ? champ.team1 : (champ ? champ.team2 : null);
+      const consWin  = cons && cons.score1  > cons.score2  ? cons.team1  : (cons ? cons.team2 : null);
+      if (champWin) lines.push("🥇 " + teamName(champWin));
+      if (consWin) lines.push("🥈 " + teamName(consWin));
+      if (champWin || consWin) lines.push("");
     }
     lines.push("Final standings:", ...board, "", "GG! 🎾");
   } else {
@@ -5297,15 +5356,26 @@ function rankPlayersForFormat(throughRound) {
   return rankPlayers(throughRound); // rr, gauntlet: same ranking
 }
 
+const FINAL_TIER_NAMES = ["Championship", "Consolation", "Bronze", "Copper", "Iron", "Stone"];
+
 function buildFinals() {
   const total = totalRegularRounds();
-  const ranked = rankPlayersForFormat(total).map(s => s.slot);
+  const activeSet = new Set((state.players || [])
+    .filter(p => p.status === "active")
+    .map(p => p.slot));
+  const ranked = rankPlayersForFormat(total)
+    .map(s => s.slot)
+    .filter(slot => !activeSet.size || activeSet.has(slot));
+  const courtCount = Number.isInteger(state.courtCount) ? state.courtCount : 2;
+  const tierCount = Math.min(courtCount, Math.floor(ranked.length / 4));
+  const tiers = [];
+  for (let i = 0; i < tierCount; i++) {
+    const block = ranked.slice(i * 4, i * 4 + 4);
+    tiers.push(makeFinalTier(FINAL_TIER_NAMES[i], i + 1, [block[0], block[3]], [block[1], block[2]]));
+  }
   state.finals = {
-    tiers: [
-      makeFinalTier("Championship", 1, [ranked[0], ranked[3]], [ranked[1], ranked[2]]),
-      makeFinalTier("Consolation", 2, [ranked[4], ranked[7]], [ranked[5], ranked[6]]),
-    ],
-    unseated: [],
+    tiers,
+    unseated: ranked.slice(tierCount * 4),
   };
   state.phase = "finals";
   save();
@@ -5618,10 +5688,9 @@ function seedPill(rank, kind) {
   return el("span", { class: "seed-pill " + kind }, "#" + rank);
 }
 
-// Returns an array of 8 stat objects in tournament-outcome tier order
-// (champ-W > champ-L > cons-W > cons-L). Falls back to season order if finals
-// are missing or undecided. The within-tier sort is by season rank (which is
-// format-aware: rankPlayers for RR, rankPlayersStack for Stack).
+// Returns stat objects in tournament-outcome tier order. Undecided tiers keep
+// their four players grouped by season rank; decided tiers split winners then
+// losers, also by season rank.
 function finalRanking() {
   const seasonOrder = rankPlayersForFormat(totalRegularRounds());
   const seasonRank = new Map();
@@ -5630,27 +5699,25 @@ function finalRanking() {
   seasonOrder.forEach(s => bySlot.set(s.slot, s));
 
   const f = state.finals;
-  const champ = finalTier(0, f);
-  const cons = finalTier(1, f);
-  const allDecided = f
-    && champ && cons
-    && isGameComplete(champ) && champ.score1 !== champ.score2
-    && isGameComplete(cons)  && cons.score1  !== cons.score2;
-  if (!allDecided) return seasonOrder.slice();
-
-  const champWinTeam  = champ.score1 > champ.score2 ? champ.team1 : champ.team2;
-  const champLoseTeam = champ.score1 > champ.score2 ? champ.team2 : champ.team1;
-  const consWinTeam   = cons.score1  > cons.score2  ? cons.team1  : cons.team2;
-  const consLoseTeam  = cons.score1  > cons.score2  ? cons.team2  : cons.team1;
-
   const sortByseason = arr => arr.slice().sort((a, b) => seasonRank.get(a) - seasonRank.get(b));
-  const ordered = [
-    ...sortByseason(champWinTeam),
-    ...sortByseason(champLoseTeam),
-    ...sortByseason(consWinTeam),
-    ...sortByseason(consLoseTeam),
-  ];
-  return ordered.map(slot => bySlot.get(slot));
+  if (!f || !finalTiers(f).length) return seasonOrder.slice();
+
+  const ordered = [];
+  for (const tier of finalTiers(f)) {
+    const tierSlots = [...tier.team1, ...tier.team2];
+    if (!isGameComplete(tier) || tier.score1 === tier.score2) {
+      ordered.push(...sortByseason(tierSlots));
+      continue;
+    }
+    const winTeam = tier.score1 > tier.score2 ? tier.team1 : tier.team2;
+    const loseTeam = tier.score1 > tier.score2 ? tier.team2 : tier.team1;
+    ordered.push(...sortByseason(winTeam), ...sortByseason(loseTeam));
+  }
+  ordered.push(...sortByseason(f.unseated || []));
+  for (const s of seasonOrder) {
+    if (!ordered.includes(s.slot)) ordered.push(s.slot);
+  }
+  return ordered.map(slot => bySlot.get(slot)).filter(Boolean);
 }
 
 // ====================== rendering ======================
@@ -7532,7 +7599,7 @@ function renderRoundCourts(round, isFinals, refreshes) {
   if (isFinals) {
     const seeds = seedRankBySlot();
     finalTiers(round).forEach((g, i) => {
-      const key = i === 0 ? "champ" : "cons";
+      const key = i === 0 ? "champ" : (i === 1 ? "cons" : "tier");
       wrap.appendChild(renderCourtCard(g, key, refreshes, { kind: i === 0 ? "gold" : "silver", seeds }));
     });
   } else {
@@ -7547,6 +7614,7 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   const isStack = state.format === "stack";
   if (courtKey === "champ")     { className += " gold";   labelText = "🏆 CHAMPIONSHIP"; }
   else if (courtKey === "cons") { className += " silver"; labelText = "🥈 CONSOLATION"; }
+  else if (courtKey === "tier") { className += " silver"; labelText = (game.name || "Final").toUpperCase(); }
   else if (courtKey === 1) {
     className += " c1" + (isStack ? " stack-top" : "");
     labelText = { stack: "🏆 COURT 1", king: "👑 KING'S COURT", gauntlet: "COURT 1 (TOP)" }[state.format] || "SOUTH COURT";
@@ -7555,9 +7623,10 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
     labelText = { stack: "COURT 2", king: "BOTTOM COURT", gauntlet: "COURT 2" }[state.format] || "NORTH COURT";
   }
 
+  const isFinalCard = courtKey === "champ" || courtKey === "cons" || courtKey === "tier";
   const card = el("div", { class: className });
   card.appendChild(el("div", { class: "court-label" }, labelText));
-  if (courtKey !== "champ" && courtKey !== "cons") {
+  if (!isFinalCard) {
     const scoringWord = state.scoringSystem === "rally" ? "Rally" : "First";
     const winByWord = state.winBy === 1 ? "win by 1" : "win by 2";
     card.appendChild(el("div", { class: "court-score-desc" },
@@ -7565,9 +7634,12 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   } else {
     // Finals: tell players which physical court to walk to. Championship gets
     // the court-1 surface, consolation court 2, using the format's court names.
-    const courtName = courtKey === "champ"
+    const finalCourt = game.court || (courtKey === "champ" ? 1 : (courtKey === "cons" ? 2 : 1));
+    const courtName = finalCourt === 1
       ? ({ stack: "Court 1", king: "King's Court", gauntlet: "Court 1 (Top)" }[state.format] || "South Court")
-      : ({ stack: "Court 2", king: "Bottom Court", gauntlet: "Court 2" }[state.format] || "North Court");
+      : (finalCourt === 2
+        ? ({ stack: "Court 2", king: "Bottom Court", gauntlet: "Court 2" }[state.format] || "North Court")
+        : "Court " + finalCourt);
     card.appendChild(el("div", { class: "court-score-desc" }, "📍 Play on " + courtName));
   }
   if (courtKey === "champ") {
@@ -8793,8 +8865,8 @@ function renderDoneScreen() {
   if (state.format === "crown") return renderDoneScreenCrown();
   const wrap = el("div");
   const champ = finalTier(0), cons = finalTier(1);
-  const champWin = champ.score1 > champ.score2 ? champ.team1 : (champ.score2 > champ.score1 ? champ.team2 : null);
-  const consWin  = cons.score1  > cons.score2  ? cons.team1  : (cons.score2  > cons.score1  ? cons.team2  : null);
+  const champWin = champ && champ.score1 > champ.score2 ? champ.team1 : (champ && champ.score2 > champ.score1 ? champ.team2 : null);
+  const consWin  = cons && cons.score1  > cons.score2  ? cons.team1  : (cons && cons.score2  > cons.score1  ? cons.team2  : null);
   const ranking = finalRanking();
 
   // First-view confetti, gated on awardsShown
@@ -8810,13 +8882,15 @@ function renderDoneScreen() {
   champions.appendChild(el("div", { class: "crown" }, "👑"));
   champions.appendChild(el("h1", null, "CHAMPIONS"));
   champions.appendChild(el("div", { class: "winners" }, champWin ? teamName(champWin) : "Tied!"));
-  champions.appendChild(renderScorecard(champ));
+  if (champ) champions.appendChild(renderScorecard(champ));
 
-  const consBlock = el("div", { class: "consolation-block" });
-  consBlock.appendChild(el("div", { class: "consolation-title" }, "🥈 Runner-Up Bracket"));
-  consBlock.appendChild(el("div", { class: "consolation-winners" }, consWin ? teamName(consWin) : "Tied!"));
-  consBlock.appendChild(renderScorecard(cons));
-  champions.appendChild(consBlock);
+  if (cons) {
+    const consBlock = el("div", { class: "consolation-block" });
+    consBlock.appendChild(el("div", { class: "consolation-title" }, "🥈 Runner-Up Bracket"));
+    consBlock.appendChild(el("div", { class: "consolation-winners" }, consWin ? teamName(consWin) : "Tied!"));
+    consBlock.appendChild(renderScorecard(cons));
+    champions.appendChild(consBlock);
+  }
 
   card.appendChild(champions);
   wrap.appendChild(card);
@@ -8845,13 +8919,14 @@ function renderDoneScreen() {
   const isStack = state.format === "stack";
   const isKing  = state.format === "king";
   const colSpan = (isStack || isKing) ? 7 : 6;
-  // Tier dividers go BEFORE the listed rank index (0-based). Tier boundaries:
-  // 0–1 champ-W, 2–3 champ-L, 4–5 cons-W, 6–7 cons-L.
-  const dividerLabels = {
-    2: "Championship runners-up",
-    4: "Consolation winners",
-    6: "Consolation runners-up",
-  };
+  const dividerLabels = {};
+  let dividerAt = 0;
+  finalTiers().forEach((tier, i) => {
+    if (i > 0) dividerLabels[dividerAt] = tier.name + " winners";
+    dividerLabels[dividerAt + 2] = tier.name + " runners-up";
+    dividerAt += 4;
+  });
+  if ((state.finals?.unseated || []).length) dividerLabels[dividerAt] = "Unseated";
   const tierDividerRow = (label) =>
     el("tr", { class: "tier-divider" },
       el("td", { colspan: String(colSpan) }, label));
