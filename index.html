@@ -3641,6 +3641,29 @@ function runSelfTests() {
       "renderShareCardSvg returns svg markup", svg);
   }
 
+  // Player-facing/trust Task 5 - snapshots and QR
+  {
+    console.assert(typeof buildTournamentSnapshot === "function", "buildTournamentSnapshot exists");
+    const snap = buildTournamentSnapshot("snapshot", { now: 1790000000000 });
+    console.assert(snap.v === 1 && snap.createdAt === 1790000000000 && Array.isArray(snap.standings),
+      "buildTournamentSnapshot returns v1 snapshot", snap);
+  }
+  {
+    console.assert(typeof encodeSnapshotHash === "function", "encodeSnapshotHash exists");
+    console.assert(typeof decodeSnapshotHash === "function", "decodeSnapshotHash exists");
+    const payload = { v: 1, title: "Rumble", standings: [{ rank: 1, name: "A" }] };
+    const hash = encodeSnapshotHash(payload);
+    const decoded = decodeSnapshotHash(hash);
+    console.assert(decoded.title === "Rumble" && decoded.standings[0].name === "A",
+      "snapshot hash round-trips", { hash, decoded });
+  }
+  {
+    console.assert(typeof qrMatrixForText === "function", "qrMatrixForText exists");
+    const matrix = qrMatrixForText("https://example.com/#snapshot=test");
+    console.assert(Array.isArray(matrix) && matrix.length > 20 && matrix.every(row => row.length === matrix.length),
+      "qrMatrixForText returns square matrix", matrix);
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -3926,7 +3949,7 @@ function runSimulation() {
   console.assert = _origAssert;
   return failures;
 }
-let state = load() || newState();
+let state = isSnapshotRoute() ? newState() : (load() || newState());
 
 function newState() {
   return {
@@ -5962,6 +5985,302 @@ function copyShareCardImage(model) {
   img.src = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
 }
 
+function formatNameForSnapshot(format) {
+  return ({ rr: "Round Robin", stack: "Stack", king: "King", gauntlet: "Gauntlet", crown: "Crown" })[format] || "Round Robin";
+}
+
+function buildTournamentSnapshot(kind, opts) {
+  opts = opts || {};
+  const now = opts.now || Date.now();
+  const through = state.phase === "done" || state.phase === "finals" ? totalRegularRounds() : Math.max(0, state.currentRound || 0);
+  const final = state.phase === "done";
+  const ranking = state.format === "crown"
+    ? (final ? finalRankingCrown() : crownLeaderboard())
+    : (final ? finalRanking() : rankPlayersForFormat(through));
+  const stats = state.format === "stack" ? computeStackStats(through)
+    : state.format === "king" ? computeKingStats(through)
+      : state.format === "crown" ? crownPlayerStats()
+        : computeStats(through, final);
+  const bySlot = new Map(stats.map(s => [s.slot, s]));
+  const round = state.rounds[(state.currentRound || 1) - 1];
+  const courts = gamesOf(round).map(g => ({
+    court: g.court || 1,
+    team1: (g.team1 || []).map(nameOf),
+    team2: (g.team2 || []).map(nameOf),
+    score1: Number.isInteger(g.score1) ? g.score1 : null,
+    score2: Number.isInteger(g.score2) ? g.score2 : null
+  }));
+  const finals = state.finals ? finalTiers().map(g => ({
+    name: g.name || "Final",
+    court: g.court || 1,
+    team1: (g.team1 || []).map(nameOf),
+    team2: (g.team2 || []).map(nameOf),
+    score1: Number.isInteger(g.score1) ? g.score1 : null,
+    score2: Number.isInteger(g.score2) ? g.score2 : null
+  })) : [];
+  const podium = ranking.slice(0, 3).map((s, i) => ({ rank: i + 1, name: s.name || nameOf(s.slot) }));
+  return {
+    v: 1,
+    createdAt: now,
+    phase: state.phase,
+    format: state.format,
+    title: "Rumble Pickleball",
+    summary: formatNameForSnapshot(state.format) + " · " + playerCount() + " players · " +
+      effectiveCourtCountForFormat(state.format, state.courtCount) + " courts",
+    standings: ranking.map((s, i) => {
+      const st = bySlot.get(s.slot) || s;
+      return {
+        rank: i + 1,
+        name: s.name || nameOf(s.slot),
+        gp: st.gp || 0,
+        score: Number.isFinite(st.avgPoints) ? st.avgPoints.toFixed(1)
+          : Number.isFinite(st.stackRate) ? st.stackRate.toFixed(1)
+            : Number.isFinite(st.kingRate) ? st.kingRate.toFixed(1)
+              : Number.isFinite(st.matchPoints) ? st.matchPoints.toFixed(1) : ""
+      };
+    }),
+    currentRound: state.currentRound || 0,
+    courts,
+    byes: byesOf(round).map(nameOf),
+    finals,
+    podium,
+    kind: kind || "snapshot"
+  };
+}
+
+function encodeSnapshotHash(payload) {
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(json);
+  let bin = "";
+  bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeSnapshotHash(hash) {
+  const clean = String(hash || "").replace(/^#?snapshot=/, "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = clean + "=".repeat((4 - clean.length % 4) % 4);
+  const bin = atob(padded);
+  const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function snapshotUrl(payload) {
+  const base = location.origin + location.pathname;
+  return base + "#snapshot=" + encodeSnapshotHash(payload);
+}
+
+const QR_M_TABLE = [
+  null,
+  { total: 26, data: 16, ecc: 10, blocks: 1, align: [] },
+  { total: 44, data: 28, ecc: 16, blocks: 1, align: [6, 18] },
+  { total: 70, data: 44, ecc: 26, blocks: 1, align: [6, 22] },
+  { total: 100, data: 64, ecc: 18, blocks: 2, align: [6, 26] },
+  { total: 134, data: 86, ecc: 24, blocks: 2, align: [6, 30] },
+  { total: 172, data: 108, ecc: 16, blocks: 4, align: [6, 34] },
+  { total: 196, data: 124, ecc: 18, blocks: 4, align: [6, 22, 38] },
+];
+
+let _qrExp = null, _qrLog = null;
+function qrInitGf() {
+  if (_qrExp) return;
+  _qrExp = Array(512).fill(0);
+  _qrLog = Array(256).fill(0);
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    _qrExp[i] = x;
+    _qrLog[x] = i;
+    x <<= 1;
+    if (x & 0x100) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i++) _qrExp[i] = _qrExp[i - 255];
+}
+function qrMul(a, b) {
+  qrInitGf();
+  if (!a || !b) return 0;
+  return _qrExp[_qrLog[a] + _qrLog[b]];
+}
+function qrRsGenerator(degree) {
+  let poly = [1];
+  for (let i = 0; i < degree; i++) {
+    const next = Array(poly.length + 1).fill(0);
+    for (let j = 0; j < poly.length; j++) {
+      next[j] ^= poly[j];
+      next[j + 1] ^= qrMul(poly[j], _qrExp[i]);
+    }
+    poly = next;
+  }
+  return poly;
+}
+function qrRsRemainder(data, degree) {
+  const gen = qrRsGenerator(degree);
+  const res = data.concat(Array(degree).fill(0));
+  for (let i = 0; i < data.length; i++) {
+    const coef = res[i];
+    if (!coef) continue;
+    for (let j = 0; j < gen.length; j++) res[i + j] ^= qrMul(gen[j], coef);
+  }
+  return res.slice(data.length);
+}
+function qrBitsForText(text, dataCodewords) {
+  const bytes = Array.from(new TextEncoder().encode(text));
+  const bits = [];
+  const push = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  push(0x4, 4);
+  push(bytes.length, 8);
+  bytes.forEach(b => push(b, 8));
+  const max = dataCodewords * 8;
+  for (let i = 0; i < 4 && bits.length < max; i++) bits.push(0);
+  while (bits.length % 8) bits.push(0);
+  const codewords = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let b = 0;
+    for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    codewords.push(b);
+  }
+  for (let pad = 0; codewords.length < dataCodewords; pad++) codewords.push(pad % 2 ? 0x11 : 0xec);
+  return codewords;
+}
+function qrFormatBits() {
+  const data = 0; // M error correction, mask 0
+  let bits = data << 10;
+  for (let i = 14; i >= 10; i--) {
+    if ((bits >>> i) & 1) bits ^= 0x537 << (i - 10);
+  }
+  return ((data << 10) | bits) ^ 0x5412;
+}
+function qrMatrixForText(text) {
+  const bytes = Array.from(new TextEncoder().encode(text));
+  let version = 0, cfg = null;
+  for (let v = 1; v < QR_M_TABLE.length; v++) {
+    const c = QR_M_TABLE[v];
+    if (bytes.length + 2 <= c.data) { version = v; cfg = c; break; }
+  }
+  if (!cfg) return { error: "too_large" };
+  qrInitGf();
+  const size = 17 + 4 * version;
+  const m = Array.from({ length: size }, () => Array(size).fill(false));
+  const reserved = Array.from({ length: size }, () => Array(size).fill(false));
+  const set = (r, c, val, res = true) => {
+    if (r < 0 || c < 0 || r >= size || c >= size) return;
+    m[r][c] = !!val;
+    if (res) reserved[r][c] = true;
+  };
+  const finder = (r, c) => {
+    for (let y = -1; y <= 7; y++) for (let x = -1; x <= 7; x++) {
+      const rr = r + y, cc = c + x;
+      const dark = y >= 0 && y <= 6 && x >= 0 && x <= 6 &&
+        (y === 0 || y === 6 || x === 0 || x === 6 || (y >= 2 && y <= 4 && x >= 2 && x <= 4));
+      set(rr, cc, dark);
+    }
+  };
+  finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+  for (let i = 8; i < size - 8; i++) {
+    set(6, i, i % 2 === 0);
+    set(i, 6, i % 2 === 0);
+  }
+  const overlapsFinder = (r, c) => (r <= 8 && c <= 8) || (r <= 8 && c >= size - 9) || (r >= size - 9 && c <= 8);
+  cfg.align.forEach(r => cfg.align.forEach(c => {
+    if (overlapsFinder(r, c)) return;
+    for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) {
+      set(r + y, c + x, Math.max(Math.abs(y), Math.abs(x)) !== 1);
+    }
+  }));
+  for (let i = 0; i <= 8; i++) { set(8, i, false); set(i, 8, false); }
+  for (let i = size - 8; i < size; i++) { set(8, i, false); set(i, 8, false); }
+  set(4 * version + 9, 8, true);
+
+  const data = qrBitsForText(text, cfg.data);
+  const blockLen = cfg.data / cfg.blocks;
+  const blocks = [];
+  for (let i = 0; i < cfg.blocks; i++) {
+    const block = data.slice(i * blockLen, (i + 1) * blockLen);
+    blocks.push({ data: block, ecc: qrRsRemainder(block, cfg.ecc) });
+  }
+  const codewords = [];
+  for (let i = 0; i < blockLen; i++) blocks.forEach(b => codewords.push(b.data[i]));
+  for (let i = 0; i < cfg.ecc; i++) blocks.forEach(b => codewords.push(b.ecc[i]));
+  const bits = [];
+  codewords.forEach(b => { for (let i = 7; i >= 0; i--) bits.push((b >>> i) & 1); });
+  let bit = 0, upward = true;
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col--;
+    for (let i = 0; i < size; i++) {
+      const row = upward ? size - 1 - i : i;
+      for (let c = col; c >= col - 1; c--) {
+        if (reserved[row][c]) continue;
+        let v = bits[bit++] || 0;
+        if ((row + c) % 2 === 0) v ^= 1;
+        set(row, c, v, true);
+      }
+    }
+    upward = !upward;
+  }
+  const fmt = qrFormatBits();
+  const fbit = i => ((fmt >>> i) & 1) === 1;
+  for (let i = 0; i < 6; i++) set(8, i, fbit(i));
+  set(8, 7, fbit(6)); set(8, 8, fbit(7)); set(7, 8, fbit(8));
+  for (let i = 9; i < 15; i++) set(14 - i, 8, fbit(i));
+  for (let i = 0; i < 8; i++) set(size - 1 - i, 8, fbit(i));
+  for (let i = 8; i < 15; i++) set(8, size - 15 + i, fbit(i));
+  return m;
+}
+
+function renderQrSvg(matrix) {
+  if (!Array.isArray(matrix)) return "";
+  const scale = 8, quiet = 4, size = matrix.length + quiet * 2;
+  const rects = [];
+  matrix.forEach((row, r) => row.forEach((dark, c) => {
+    if (dark) rects.push('<rect x="' + ((c + quiet) * scale) + '" y="' + ((r + quiet) * scale) + '" width="' + scale + '" height="' + scale + '"/>');
+  }));
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (size * scale) + '" height="' + (size * scale) + '" viewBox="0 0 ' + (size * scale) + ' ' + (size * scale) + '">' +
+    '<rect width="100%" height="100%" fill="#fff"/><g fill="#000">' + rects.join("") + '</g></svg>';
+}
+
+function isSnapshotRoute() {
+  return typeof location !== "undefined" && location.hash && location.hash.indexOf("#snapshot=") === 0;
+}
+
+function renderSnapshotView(payload) {
+  const wrap = el("div");
+  const card = el("div", { class: "card" });
+  const ts = payload.createdAt ? new Date(payload.createdAt).toLocaleString() : "";
+  card.appendChild(el("h2", { style: "margin:0 0 6px;" }, payload.title || "Rumble Snapshot"));
+  card.appendChild(el("p", { class: "muted", style: "margin:0 0 12px;" },
+    "Static snapshot" + (ts ? " · " + ts : "")));
+  card.appendChild(el("p", { style: "margin:0;" }, payload.summary || ""));
+  wrap.appendChild(card);
+  if (payload.courts && payload.courts.length) {
+    const courts = el("div", { class: "card" });
+    courts.appendChild(el("h3", { style: "margin-top:0;" }, "Courts"));
+    payload.courts.forEach(g => {
+      const score = (g.score1 == null ? "–" : g.score1) + "-" + (g.score2 == null ? "–" : g.score2);
+      courts.appendChild(el("div", { style: "margin:8px 0;" },
+        "Court " + g.court + ": " + g.team1.join(" & ") + " vs " + g.team2.join(" & ") + " · " + score));
+    });
+    if (payload.byes && payload.byes.length) courts.appendChild(el("p", { class: "muted" }, "Sitting: " + payload.byes.join(", ")));
+    wrap.appendChild(courts);
+  }
+  if (payload.finals && payload.finals.length) {
+    const finals = el("div", { class: "card" });
+    finals.appendChild(el("h3", { style: "margin-top:0;" }, "Finals"));
+    payload.finals.forEach(g => {
+      const score = (g.score1 == null ? "–" : g.score1) + "-" + (g.score2 == null ? "–" : g.score2);
+      finals.appendChild(el("div", { style: "margin:8px 0;" },
+        g.name + ": " + g.team1.join(" & ") + " vs " + g.team2.join(" & ") + " · " + score));
+    });
+    wrap.appendChild(finals);
+  }
+  const standings = el("div", { class: "card" });
+  standings.appendChild(el("h3", { style: "margin-top:0;" }, "Standings"));
+  (payload.standings || []).forEach(s => {
+    standings.appendChild(el("div", { style: "display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:8px 0;" },
+      el("span", null, s.rank + ". " + s.name),
+      el("span", { class: "muted" }, s.gp ? "GP " + s.gp + (s.score ? " · " + s.score : "") : (s.score || ""))));
+  });
+  wrap.appendChild(standings);
+  return wrap;
+}
+
 // Personalized recap for the player in `slot`. mode = "final" | { throughRound: N }.
 // State-dependent: reads slots/finals/stats. Final-mode numbers come from
 // computeStats(total, true) + finalRanking() order, matching the done screen.
@@ -6781,6 +7100,16 @@ function render() {
   document.querySelectorAll(".modal-bg").forEach(n => n.remove());
   const app = document.getElementById("app");
   app.innerHTML = "";
+  if (isSnapshotRoute()) {
+    try {
+      app.appendChild(renderSnapshotView(decodeSnapshotHash(location.hash)));
+    } catch (e) {
+      app.appendChild(el("div", { class: "card" },
+        el("h2", null, "Snapshot unavailable"),
+        el("p", { class: "muted" }, "This snapshot link could not be decoded.")));
+    }
+    return;
+  }
   app.appendChild(renderHeader());
   if (state.phase === "setup")        app.appendChild(renderSetup());
   else if (state.phase === "playing") app.appendChild(renderPlaying());
@@ -7580,11 +7909,53 @@ function openShareCardsModal() {
   svgBtn.addEventListener("click", () => downloadShareCard(currentModel(), "svg"));
   const copyBtn = el("button", { style: "width:100%;margin-bottom:8px;" }, "Copy image");
   copyBtn.addEventListener("click", () => copyShareCardImage(currentModel()));
+  const qrBtn = el("button", { style: "width:100%;margin-bottom:8px;" }, "QR Snapshot");
+  qrBtn.addEventListener("click", () => openQrSnapshotModal());
   const closeBtn = el("button", { class: "ghost", style: "width:100%;", onclick: close }, "Close");
   modal.appendChild(pngBtn);
   modal.appendChild(svgBtn);
   modal.appendChild(copyBtn);
+  modal.appendChild(qrBtn);
   modal.appendChild(closeBtn);
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+
+function openQrSnapshotModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "QR Snapshot"));
+  const payload = buildTournamentSnapshot("snapshot");
+  const url = snapshotUrl(payload);
+  const matrix = qrMatrixForText(url);
+  if (Array.isArray(matrix)) {
+    const qr = el("div", { style: "background:#fff;padding:12px;border-radius:8px;display:flex;justify-content:center;margin:10px 0;" });
+    qr.innerHTML = renderQrSvg(matrix);
+    modal.appendChild(qr);
+    modal.appendChild(el("p", { class: "muted" }, "Players can scan this static snapshot. It does not live update."));
+  } else {
+    modal.appendChild(el("p", { class: "muted" },
+      "This snapshot is too large for the built-in QR encoder. Use Copy link instead."));
+  }
+  const linkBox = el("textarea", {
+    readonly: "readonly",
+    style: "width:100%;min-height:84px;border-radius:8px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px;font-family:inherit;font-size:12px;"
+  }, url);
+  modal.appendChild(linkBox);
+  const copyBtn = el("button", { class: "primary", style: "width:100%;margin:10px 0 8px;" }, "Copy link");
+  copyBtn.addEventListener("click", () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => showToast("Snapshot link copied"));
+    } else {
+      linkBox.focus();
+      linkBox.select();
+      try { document.execCommand("copy"); showToast("Snapshot link copied"); } catch (e) {}
+    }
+  });
+  modal.appendChild(copyBtn);
+  modal.appendChild(el("button", { style: "width:100%;", onclick: close }, "Close"));
   bg.appendChild(modal);
   mountModal(bg, modal);
 }
@@ -7593,6 +7964,8 @@ function renderShareCardsButtonCard() {
   const card = el("div", { class: "card" });
   card.appendChild(el("button", { class: "primary", style: "width:100%;", onclick: openShareCardsModal },
     "Share Cards"));
+  card.appendChild(el("button", { class: "secondary", style: "width:100%;margin-top:8px;", onclick: openQrSnapshotModal },
+    "QR Snapshot"));
   return card;
 }
 
@@ -10138,6 +10511,11 @@ function renderTextResultsCard(mode) {
     style: "width:100%;margin:0 0 10px;",
     onclick: openShareCardsModal,
   }, "Share Cards"));
+  card.appendChild(el("button", {
+    class: "secondary",
+    style: "width:100%;margin:0 0 10px;",
+    onclick: openQrSnapshotModal,
+  }, "QR Snapshot"));
   if (!textResultsSupported()) {
     card.appendChild(el("p", { class: "muted", style: "margin:0;" },
       "Texting results isn't available for this format yet."));
@@ -11308,6 +11686,10 @@ setInterval(() => {
 }, 1000);
 
 render();
+window.addEventListener("hashchange", () => {
+  if (!isSnapshotRoute()) state = load() || newState();
+  render();
+});
 
 // ---------- PWA: service worker registration + update chip ----------
 // Register on secure contexts: https in production, and localhost/127.0.0.1 for

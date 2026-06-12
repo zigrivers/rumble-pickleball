@@ -387,7 +387,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 5 - snapshots and QR
@@ -414,11 +414,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because snapshot and QR helpers do not exist.
 
-- [ ] **Step 3: Implement snapshot helpers**
+- [x] **Step 3: Implement snapshot helpers**
 
   Add:
 
@@ -429,22 +429,22 @@
 
   Encode compact JSON with base64url. Snapshot payload must include only read-only display data, not phone numbers, event log entries, undo snapshots, or localStorage internals.
 
-- [ ] **Step 4: Implement no-dependency QR helper**
+- [x] **Step 4: Implement no-dependency QR helper**
 
   Add `qrMatrixForText(text)` and `renderQrSvg(matrix)`. Use byte-mode QR with medium error correction and support versions large enough for the snapshot URLs produced by `buildTournamentSnapshot("snapshot")`. If text is too large, return `{ error: "too_large" }` and show copy-link fallback.
 
-- [ ] **Step 5: Add QR Snapshot UI and route**
+- [x] **Step 5: Add QR Snapshot UI and route**
 
   Add a QR Snapshot button in the text/results/share modal surfaces. Add route handling before normal `render()` dispatch:
 
   - if `location.hash` starts with `#snapshot=`, decode and render a read-only snapshot view
   - otherwise render the normal app
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
   Run `?test` and `?simulate`. Manually create a QR snapshot from playing, finals, and done phases; open the copied snapshot URL in a new tab; verify it does not read or mutate localStorage.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
   ```bash
   git add index.html
