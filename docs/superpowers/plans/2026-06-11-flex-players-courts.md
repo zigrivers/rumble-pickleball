@@ -70,13 +70,13 @@
 
 ### Task 3.2: Bye history derivation + allocator
 
-- [ ] Tests (drive with synthetic `rounds` fixtures, no UI):
+- [x] Tests (drive with synthetic `rounds` fixtures, no UI):
   - `byeStatsFor(slot)` derived from round participation per spec §5 (eligible = appears in `games`∪`byes`; works through join/leave/return without stored counters); `isNewThisRound` from `eligibleFromRound`, covering returners; `playedSinceLastBye` tiebreak (veteran-without-bye outranks newcomer).
   - `rotation` policy: spread ≤ 1 over any (N∈4..24, C∈1..6, rounds≤12) churn-free simulation; no back-to-back byes unless unavoidable; `isNewThisRound` players never sit unless unavoidable (spec §5.1 hard constraints).
   - `losersSitCapped`: candidate group order + within-group ordering per §5.2; the three protections (newcomer shield, hard no-consecutive-sits exclusion, cap with `minByeCount` taken **only over longest-tenured actives**) and their relaxation order; churn-free spread ≤ 1; the §5.2 late-joiner trap in the shielded first round **and in the second/later eligible rounds** (a joiner's byeCount 0 must never drag the cap baseline down, cap-skip veterans, and force the joiner to sit every other round); pool always satisfies `byesNeeded`; falls back to `rotation` on round 1.
   - Round shape math per §4 (`activeCourts`, `byesNeeded`) including degenerate cases (24 players / 2 courts).
-- [ ] Implement `allocateByes(policy, context)` + helpers as pure functions per §4–§5.
-- [ ] Commit: `feat(core): bye allocator — rotation & losersSitCapped policies`
+- [x] Implement `allocateByes(policy, context)` + helpers as pure functions per §4–§5.
+- [x] Commit: `feat(core): bye allocator — rotation & losersSitCapped policies`
 
 ## Phase 4 — Round Robin generalized
 
