@@ -56,9 +56,9 @@
 
 ### Task 2.2: Builders + renderer
 
-- [ ] Convert round **builders** (`generateRounds`, `assignInitialStackCourts`, `buildNextStackRound`, `assignInitialKingCourts`, `buildNextKingRound`, `buildGauntletPairing`, finals construction) to emit `{round, games:[...], byes:[]}`. Convert the playing screen, history, schedule modal, finals screen, and toasts to render from `games[]` (still exactly 2 cards at this point). Delete the Task 1.1 transitional shims — the `court1`/`court2` retention, the `gamesOf` synthesis fallback, and the backfill normalization of builder-emitted legacy rounds. After this task, `court1`/`court2` references may remain **only** in `migrateV4toV5` and its migration fixtures/tests (legacy keys are the migration's input format, permanently) and in CSS class names like `.court-card.c1`; grep must show none in runtime builders, renderers, or stats.
-- [ ] Verify `?test` + `?simulate` + manual smoke of all five formats (start, play a round, check history/standings).
-- [ ] Commit: `refactor: builders and renderer emit/consume games[] rounds`
+- [x] Convert round **builders** (`generateRounds`, `assignInitialStackCourts`, `buildNextStackRound`, `assignInitialKingCourts`, `buildNextKingRound`, `buildGauntletPairing`, finals construction) to emit `{round, games:[...], byes:[]}`. Convert the playing screen, history, schedule modal, finals screen, and toasts to render from `games[]` (still exactly 2 cards at this point). Delete the Task 1.1 transitional shims — the `court1`/`court2` retention, the `gamesOf` synthesis fallback, and the backfill normalization of builder-emitted legacy rounds. After this task, `court1`/`court2` references may remain **only** in `migrateV4toV5` and its migration fixtures/tests (legacy keys are the migration's input format, permanently) and in CSS class names like `.court-card.c1`; grep must show none in runtime builders, renderers, or stats.
+- [x] Verify `?test` + `?simulate` + manual smoke of all five formats (start, play a round, check history/standings).
+- [x] Commit: `refactor: builders and renderer emit/consume games[] rounds`
 
 ## Phase 3 — Seeded PRNG + bye allocator (pure functions)
 

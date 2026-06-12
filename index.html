@@ -1421,8 +1421,8 @@ function runSelfTests() {
       console.assert(Array.isArray(r.games) && r.games.length === 2 && Array.isArray(r.byes) && r.byes.length === 0,
         "v4→v5 " + fmt + ": games/byes shape", r);
       const migratedGames = Array.isArray(r.games) ? r.games : [];
-      console.assert(migratedGames[0] === r.court1 && migratedGames[1] === r.court2,
-        "v4→v5 " + fmt + ": court shims share game objects");
+      console.assert(!("court1" in r) && !("court2" in r),
+        "v4→v5 " + fmt + ": legacy court keys removed");
       console.assert(migratedGames[0] && migratedGames[1]
         && migratedGames[0].court === 1 && migratedGames[1].court === 2
         && JSON.stringify(migratedGames[0].team1) === JSON.stringify([1,2])
@@ -1534,8 +1534,8 @@ function runSelfTests() {
     const sortedGames = gamesOf({ games: [c2, c1], byes: [9] });
     console.assert(sortedGames[0] === c1 && sortedGames[1] === c2,
       "gamesOf sorts games by court", sortedGames);
-    console.assert(gamesOf({ court1: c1, court2: c2 })[0] === c1,
-      "gamesOf synthesizes legacy court keys");
+    console.assert(gamesOf({ court1: c1, court2: c2 }).length === 0,
+      "gamesOf ignores legacy court keys after games[] refactor");
     console.assert(JSON.stringify(byesOf({ games: [], byes: [9,10] })) === JSON.stringify([9,10]),
       "byesOf returns byes array");
 
@@ -1582,8 +1582,8 @@ function runSelfTests() {
   {
     const saved = state;
     const fakeRounds = [
-      { round:1, court1:{team1:[1,2],team2:[3,4],score1:null,score2:null}, court2:{team1:[5,6],team2:[7,8],score1:null,score2:null} },
-      { round:2, court1:{team1:[1,3],team2:[2,4],score1:null,score2:null}, court2:{team1:[5,7],team2:[6,8],score1:null,score2:null} },
+      normalizeRoundV5({ round:1, court1:{team1:[1,2],team2:[3,4],score1:null,score2:null}, court2:{team1:[5,6],team2:[7,8],score1:null,score2:null} }),
+      normalizeRoundV5({ round:2, court1:{team1:[1,3],team2:[2,4],score1:null,score2:null}, court2:{team1:[5,7],team2:[6,8],score1:null,score2:null} }),
     ];
     state = { phase:"playing", slots:["A","B","C","D","E","F","G","H"], currentRound:1, rounds:fakeRounds };
     const r = nextPartnerInfo(1); // round 2 partners 1 with 3 on court 1
@@ -1601,7 +1601,7 @@ function runSelfTests() {
   // assuming a particular slot-to-season-rank mapping.
   {
     const saved = state;
-    const rounds = SCHEDULE.map((rd, i) => ({
+    const rounds = SCHEDULE.map((rd, i) => normalizeRoundV5({
       round: i + 1,
       court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 0 },
       court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 0 },
@@ -1639,7 +1639,7 @@ function runSelfTests() {
     // which is 11-vs-9. Championship is 11-vs-9, Consolation 11-vs-9.
     // Expected: Biggest Win is +10 (lots of ties — all team1 winners on c1).
     // Closest Game: 11-9 across many games; all tied at diff=2 with winScore=11.
-    const rounds = SCHEDULE.map((rd, i) => ({
+    const rounds = SCHEDULE.map((rd, i) => normalizeRoundV5({
       round: i + 1,
       court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 1 },
       court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
@@ -1675,13 +1675,14 @@ function runSelfTests() {
     // Most Improved: needs finalRanking decided. With this state, someone moved.
     console.assert(a.mostImproved.names.length >= 0, "Most Improved field exists", a.mostImproved);
     // Single-winner sanity: rebuild with only ONE blowout game
-    const rounds2 = SCHEDULE.map((rd, i) => ({
+    const rounds2 = SCHEDULE.map((rd, i) => normalizeRoundV5({
       round: i + 1,
       court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 9 },
       court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
     }));
     // Make round 1 court 1 a +10 blowout (the only one)
-    rounds2[0].court1.score1 = 11; rounds2[0].court1.score2 = 1;
+    const rounds2c1 = gameForCourt(rounds2[0], 1);
+    rounds2c1.score1 = 11; rounds2c1.score2 = 1;
     state.rounds = rounds2;
     const b = computeAwards();
     console.assert(b.biggestWin.names.length === 1 && b.biggestWin.names[0].includes("+10"),
@@ -1710,18 +1711,19 @@ function runSelfTests() {
       slots: ["A","B","C","D","E","F","G","H"],
       currentRound: 1,
       // Court 1: (1,2) beat (3,4) 11-3.  Court 2: (5,6) beat (7,8) 11-9.
-      rounds: [{
+      rounds: [normalizeRoundV5({
         round: 1,
         court1: { team1: [1,2], team2: [3,4], score1: 11, score2: 3 },
         court2: { team1: [5,6], team2: [7,8], score1: 11, score2: 9 },
-      }],
+      })],
       tiebreakRandom: [0,1,2,3,4,5,6,7],
       previousRanks: [], notifiedRounds: [], awardsShown: false,
       winScore: 11, finals: null,
     };
     const next = buildNextStackRound(state.rounds[0]);
-    const newC1 = new Set([...next.court1.team1, ...next.court1.team2]);
-    const newC2 = new Set([...next.court2.team1, ...next.court2.team2]);
+    const nextC1 = gameForCourt(next, 1), nextC2 = gameForCourt(next, 2);
+    const newC1 = new Set([...nextC1.team1, ...nextC1.team2]);
+    const newC2 = new Set([...nextC2.team1, ...nextC2.team2]);
     // c1 winners (1,2) stay; c2 winners (5,6) climb → new c1 = {1,2,5,6}
     console.assert(newC1.has(1) && newC1.has(2) && newC1.has(5) && newC1.has(6),
       "stack movement: c1 winners stay, c2 winners climb", [...newC1]);
@@ -1770,11 +1772,11 @@ function runSelfTests() {
     state = {
       format: "stack", stackRounds: 4,
       slots: ["A","B","C","D","E","F","G","H"],
-      rounds: [{
+      rounds: [normalizeRoundV5({
         round: 1,
         court1: { team1: [1,2], team2: [3,4], score1: 11, score2: 1 },
         court2: { team1: [5,6], team2: [7,8], score1: 11, score2: 9 },
-      }],
+      })],
       tiebreakRandom: [0,1,2,3,4,5,6,7],
     };
     const ranked = rankPlayersStack(1).map(s => s.slot);
@@ -1797,7 +1799,7 @@ function runSelfTests() {
       rawNames: ["A","B","C","D","E","F","G","H"],
       slots:    ["A","B","C","D","E","F","G","H"],
       currentRound: 2,
-      rounds: SCHEDULE.map((rd, i) => ({
+      rounds: SCHEDULE.map((rd, i) => normalizeRoundV5({
         round: i + 1,
         court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: null, score2: null },
         court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: null, score2: null },
@@ -1830,11 +1832,11 @@ function runSelfTests() {
     // outcomes so slot 5 climbs once (R1 c2 win → R2 c1) and stays. Slot 1
     // anchors c1 throughout. Several 1-pt games to surface The Closer. A
     // duo (1,2) wins multiple times together.
-    const r1 = {
+    const r1 = normalizeRoundV5({
       round: 1,
       court1: { team1: [1,2], team2: [3,4], score1: 11, score2: 9 }, // (1,2) win, 1-pt margin? No, margin=2
       court2: { team1: [5,6], team2: [7,8], score1: 11, score2: 10 }, // (5,6) win, 1-pt margin → climb
-    };
+    });
     // Build round 2 from r1: new c1 = {1,2,5,6}, new c2 = {3,4,7,8}
     state = {
       format: "stack", stackRounds: 2,
@@ -1847,8 +1849,9 @@ function runSelfTests() {
     const r2 = buildNextStackRound(r1);
     // Decide r2: pretend the higher-stackscore team wins. Pick scores that
     // create another 1-pt game so The Closer surfaces.
-    r2.court1.score1 = 11; r2.court1.score2 = 10;  // 1-pt margin
-    r2.court2.score1 = 11; r2.court2.score2 = 5;
+    const r2c1 = gameForCourt(r2, 1), r2c2 = gameForCourt(r2, 2);
+    r2c1.score1 = 11; r2c1.score2 = 10;  // 1-pt margin
+    r2c2.score1 = 11; r2c2.score2 = 5;
     state.rounds.push(r2);
     state.phase = "done";
     const a = computeAwards();
@@ -1866,7 +1869,7 @@ function runSelfTests() {
   // Stack — RR mode hides Climber/Anchor; Closer hidden when no 1-pt games
   {
     const saved = state;
-    const rounds = SCHEDULE.map((rd, i) => ({
+    const rounds = SCHEDULE.map((rd, i) => normalizeRoundV5({
       round: i + 1,
       court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 9 },
       court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 9 },
@@ -2289,16 +2292,20 @@ function runSelfTests() {
 
     // projectFinishTime: fresh and mid-tournament
     const T = 1700000000000, msMin = 60000;
+    const timedRound = (round, done) => {
+      const r = makeRound(round, [makeGame(1, [1,2], [3,4]), makeGame(2, [5,6], [7,8])]);
+      if (done) {
+        r.games[0].score1 = 11; r.games[0].score2 = 7;
+        r.games[1].score1 = 11; r.games[1].score2 = 5;
+      }
+      return r;
+    };
     const mkState = (completedCount, totalRounds) => ({
       format: "stack", phase: "playing",
       timeBudget: { enabled: true, plannedConfig: { target: 11, winBy: 2, scoring: "sideout" } },
       rounds: [
-        ...Array(completedCount).fill(null).map(() => ({
-          court1: { score1: 11, score2: 7 }, court2: { score1: 11, score2: 5 }
-        })),
-        ...Array(totalRounds - completedCount).fill(null).map(() => ({
-          court1: { score1: null, score2: null }, court2: { score1: null, score2: null }
-        })),
+        ...Array(completedCount).fill(null).map((_, i) => timedRound(i + 1, true)),
+        ...Array(totalRounds - completedCount).fill(null).map((_, i) => timedRound(completedCount + i + 1, false)),
       ]
     });
     const [pfLo, pfHi] = projectFinishTime(mkState(0, 8), null, T);
@@ -2412,7 +2419,7 @@ function runSelfTests() {
   // wins/points from later, already-played rounds vanished from the table.
   {
     const saved = state;
-    const rounds = SCHEDULE.map((rd, i) => ({
+    const rounds = SCHEDULE.map((rd, i) => normalizeRoundV5({
       round: i + 1,
       court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 5, gameStartedAt: 1, gameEndedAt: 2, pauseSec: 0 },
       court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 5, gameStartedAt: 1, gameEndedAt: 2, pauseSec: 0 },
@@ -2448,10 +2455,10 @@ function runSelfTests() {
       const rounds = generateRounds();
       const partnerCount = new Map(), opposeCount = new Map();
       let prevFoursomes = null;
-      for (const r of rounds) {
-        const roster = new Set();
-        const foursomes = [];
-        for (const g of [r.court1, r.court2]) {
+    for (const r of rounds) {
+      const roster = new Set();
+      const foursomes = [];
+      for (const g of gamesOf(r)) {
           const four = [...g.team1, ...g.team2];
           four.forEach(s => roster.add(s));
           foursomes.push(four.slice().sort().join(","));
@@ -2578,7 +2585,7 @@ function runSelfTests() {
   // Task TR5 — buildResultsMessage (seeded tournament)
   {
     const savedState = state;
-    const rounds = SCHEDULE.map((rd, i) => ({
+    const rounds = SCHEDULE.map((rd, i) => normalizeRoundV5({
       round: i + 1,
       court1: { team1: rd[0][0].slice(), team2: rd[0][1].slice(), score1: 11, score2: 5 },
       court2: { team1: rd[1][0].slice(), team2: rd[1][1].slice(), score1: 11, score2: 5 },
@@ -2632,17 +2639,18 @@ function runSelfTests() {
 
     // A tied game is in-progress: no points, no partners, round not decided.
     const r1 = state.rounds[0];
-    r1.court1.score1 = 9; r1.court1.score2 = 9;
+    const r1c1 = gameForCourt(r1, 1);
+    r1c1.score1 = 9; r1c1.score2 = 9;
     console.assert(!isRoundDecided(r1), "audit2: tied round is not decided");
     const tie = computeStats(state.rounds.length, false);
     console.assert(tie.every(s => s.points === 0 && s.partnersUsed.size === 0),
       "audit2: a tied game adds no points/partners");
 
     // Decide it (11-9) → partners/points/win now count for that court's players.
-    r1.court1.score1 = 11;
-    console.assert(isGameDecided(r1.court1), "audit2: 11-9 is decided");
+    r1c1.score1 = 11;
+    console.assert(isGameDecided(r1c1), "audit2: 11-9 is decided");
     const won = computeStats(state.rounds.length, false);
-    const [a, b] = r1.court1.team1;
+    const [a, b] = r1c1.team1;
     console.assert(won[a-1].partnersUsed.has(b) && won[a-1].points === 11 && won[a-1].wins === 1,
       "audit2: a decided game counts partners/points/win");
 
@@ -2654,7 +2662,7 @@ function runSelfTests() {
       state.rounds = [fmt === "stack" ? assignInitialStackCourts() : assignInitialKingCourts()];
       const compute = fmt === "stack" ? computeStackStats : computeKingStats;
       const scoreOf = s => (fmt === "stack" ? s.stackScore : s.kingScore);
-      const g = state.rounds[0].court1;
+      const g = gameForCourt(state.rounds[0], 1);
       g.score1 = 9; g.score2 = 9;   // tie
       const tieSum = compute(state.rounds.length).reduce((acc, s) => acc + scoreOf(s), 0);
       console.assert(tieSum === 0, "audit2: " + fmt + " tied game adds no score", tieSum);
@@ -2667,7 +2675,7 @@ function runSelfTests() {
     state.format = "gauntlet";
     state.slots = state.rawNames.slice();
     state.rounds = [assignInitialGauntletCourts()];
-    const gg = state.rounds[0].court1;
+    const gg = gameForCourt(state.rounds[0], 1);
     gg.score1 = 9; gg.score2 = 9;
     console.assert(computeStats(state.rounds.length, false).every(s => s.points === 0),
       "audit2: gauntlet tied game adds no points");
@@ -2683,9 +2691,10 @@ function runSelfTests() {
     state.timeBudget = { ...newState().timeBudget, enabled: true, minutes: 90,
       plannedConfig: { target: 11, winBy: 2, scoring: "sideout" } };
     const rr0 = state.rounds[0];
-    rr0.court1.score1 = 11; rr0.court1.score2 = 5; rr0.court2.score1 = 9; rr0.court2.score2 = 9; // tied round
+    const rr0c1 = gameForCourt(rr0, 1), rr0c2 = gameForCourt(rr0, 2);
+    rr0c1.score1 = 11; rr0c1.score2 = 5; rr0c2.score1 = 9; rr0c2.score2 = 9; // tied round
     const winTied = projectFinishTime(state, null, 0);
-    rr0.court2.score1 = 11;                                                                       // now decided
+    rr0c2.score1 = 11;                                                                             // now decided
     const winDecided = projectFinishTime(state, null, 0);
     console.assert(winTied && winDecided && winTied[0] > winDecided[0],
       "audit2: tied round counts as remaining in the finish estimate", winTied, winDecided);
@@ -2791,8 +2800,9 @@ function runSimulation() {
       const wrap = renderPlaying();               // real round screen, detached
       const inputs = wrap.querySelectorAll(".score-input"); // c1.t1, c1.t2, c2.t1, c2.t2
       const round = state.rounds[r - 1];
-      enterGame(inputs, 0, round.court1, entered);
-      enterGame(inputs, 2, round.court2, entered);
+      const roundGames = gamesOf(round);
+      enterGame(inputs, 0, roundGames[0], entered);
+      enterGame(inputs, 2, roundGames[1], entered);
 
       const exp = expectedTable(entered, tieRand)
         .map(e => ({ ...e, name: nameOf(e.slot) }));
@@ -2809,17 +2819,18 @@ function runSimulation() {
     // Finals seeding from the real buildFinals(), checked against season order.
     buildFinals();
     const season = expectedTable(entered, tieRand).map(e => e.slot);
+    const champ = finalTier(0), cons = finalTier(1);
     console.assert(
-      JSON.stringify(state.finals.championship.team1) === JSON.stringify([season[0], season[3]]) &&
-      JSON.stringify(state.finals.championship.team2) === JSON.stringify([season[1], season[2]]) &&
-      JSON.stringify(state.finals.consolation.team1) === JSON.stringify([season[4], season[7]]) &&
-      JSON.stringify(state.finals.consolation.team2) === JSON.stringify([season[5], season[6]]),
+      JSON.stringify(champ.team1) === JSON.stringify([season[0], season[3]]) &&
+      JSON.stringify(champ.team2) === JSON.stringify([season[1], season[2]]) &&
+      JSON.stringify(cons.team1) === JSON.stringify([season[4], season[7]]) &&
+      JSON.stringify(cons.team2) === JSON.stringify([season[5], season[6]]),
       `T${t}: finals seeding 1+4 vs 2+3 / 5+8 vs 6+7`, state.finals, season);
 
     const finalsWrap = renderFinalsScreen();
     const fInputs = finalsWrap.querySelectorAll(".score-input"); // champ t1,t2; cons t1,t2
-    enterGame(fInputs, 0, state.finals.championship, entered, true);
-    enterGame(fInputs, 2, state.finals.consolation, entered, true);
+    enterGame(fInputs, 0, champ, entered, true);
+    enterGame(fInputs, 2, cons, entered, true);
 
     // Done screen: values include finals; row order is tournament-tier based.
     state.phase = "done";
@@ -2827,11 +2838,10 @@ function runSimulation() {
     const withFinals = expectedTable(entered, tieRand);
     const bySlot = new Map(withFinals.map(e => [e.slot, e]));
     const seasonRank = new Map(season.map((s, i) => [s, i]));
-    const f = state.finals;
-    const champWin = f.championship.score1 > f.championship.score2 ? f.championship.team1 : f.championship.team2;
-    const champLose = f.championship.score1 > f.championship.score2 ? f.championship.team2 : f.championship.team1;
-    const consWin = f.consolation.score1 > f.consolation.score2 ? f.consolation.team1 : f.consolation.team2;
-    const consLose = f.consolation.score1 > f.consolation.score2 ? f.consolation.team2 : f.consolation.team1;
+    const champWin = champ.score1 > champ.score2 ? champ.team1 : champ.team2;
+    const champLose = champ.score1 > champ.score2 ? champ.team2 : champ.team1;
+    const consWin = cons.score1 > cons.score2 ? cons.team1 : cons.team2;
+    const consLose = cons.score1 > cons.score2 ? cons.team2 : cons.team1;
     const tierOrder = [champWin, champLose, consWin, consLose]
       .flatMap(team => team.slice().sort((a, b) => seasonRank.get(a) - seasonRank.get(b)));
     const expFinal = tierOrder.map(s => ({ ...bySlot.get(s), name: nameOf(s) }));
@@ -2948,19 +2958,17 @@ function normalizeRoundV5(r) {
   if (!Array.isArray(r.games)) {
     r.games = [];
     if (r.court1) {
-      r.court1.court = 1;
-      r.games.push(r.court1);
+      r.games.push({ ...r.court1, court: 1 });
     }
     if (r.court2) {
-      r.court2.court = 2;
-      r.games.push(r.court2);
+      r.games.push({ ...r.court2, court: 2 });
     }
   } else {
     r.games.forEach((g, i) => { if (g && !Number.isInteger(g.court)) g.court = i + 1; });
     r.games.sort((a, b) => (a.court || 0) - (b.court || 0));
-    if (!r.court1) r.court1 = r.games.find(g => g.court === 1) || r.games[0];
-    if (!r.court2) r.court2 = r.games.find(g => g.court === 2) || r.games[1];
   }
+  delete r.court1;
+  delete r.court2;
   if (!Array.isArray(r.byes)) r.byes = [];
   return r;
 }
@@ -2969,14 +2977,10 @@ function normalizeFinalsV5(finals) {
   if (!Array.isArray(finals.tiers)) {
     finals.tiers = [];
     if (finals.championship) {
-      finals.championship.name = "Championship";
-      finals.championship.court = 1;
-      finals.tiers.push(finals.championship);
+      finals.tiers.push({ ...finals.championship, name: "Championship", court: 1 });
     }
     if (finals.consolation) {
-      finals.consolation.name = "Consolation";
-      finals.consolation.court = 2;
-      finals.tiers.push(finals.consolation);
+      finals.tiers.push({ ...finals.consolation, name: "Consolation", court: 2 });
     }
   } else {
     finals.tiers.forEach((g, i) => {
@@ -2985,8 +2989,8 @@ function normalizeFinalsV5(finals) {
     });
   }
   if (!Array.isArray(finals.unseated)) finals.unseated = [];
-  if (!finals.championship && finals.tiers[0]) finals.championship = finals.tiers[0];
-  if (!finals.consolation && finals.tiers[1]) finals.consolation = finals.tiers[1];
+  delete finals.championship;
+  delete finals.consolation;
   return finals;
 }
 function migrateV4toV5(obj) {
@@ -3063,7 +3067,6 @@ function backfillStateDefaults(obj) {
       leftRound: Number.isInteger(p.leftRound) ? p.leftRound : null,
     }));
   }
-  if (Array.isArray(obj.rounds)) obj.rounds.forEach(normalizeRoundV5);
   if (obj.finals) normalizeFinalsV5(obj.finals);
   // timeBudget backfill
   if (!obj.timeBudget || typeof obj.timeBudget !== "object") {
@@ -3532,6 +3535,31 @@ function runShuffleReveal(finalSlots, onDone, opts) {
   frame = requestAnimationFrame(tick);
 }
 
+function makeGame(court, team1, team2) {
+  return { court, team1: team1.slice(), team2: team2.slice(),
+    score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 };
+}
+function makeFinalTier(name, court, team1, team2) {
+  return { name, ...makeGame(court, team1, team2) };
+}
+function makeRound(round, games, byes = []) {
+  return { round, games, byes };
+}
+function gameForCourt(round, court) {
+  return gamesOf(round).find(g => g.court === court) || null;
+}
+function finalTiers(finals = state.finals) {
+  if (!finals) return [];
+  if (Array.isArray(finals.tiers)) return finals.tiers;
+  const tiers = [];
+  if (finals.championship) tiers.push(finals.championship);
+  if (finals.consolation) tiers.push(finals.consolation);
+  return tiers;
+}
+function finalTier(index, finals = state.finals) {
+  return finalTiers(finals)[index] || null;
+}
+
 // Returns a fresh array of 7 round objects with randomized court 1/2 flip.
 function generateRounds() {
   // Random round order + per-round court flip, on top of the name→slot shuffle
@@ -3542,16 +3570,12 @@ function generateRounds() {
     const flip = Math.random() < 0.5;
     const c1 = flip ? roundDef[0] : roundDef[1];
     const c2 = flip ? roundDef[1] : roundDef[0];
-    return {
-      round: idx + 1,
-      court1: { team1: c1[0].slice(), team2: c1[1].slice(), score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-      court2: { team1: c2[0].slice(), team2: c2[1].slice(), score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-    };
+    return makeRound(idx + 1, [makeGame(1, c1[0], c1[1]), makeGame(2, c2[0], c2[1])]);
   });
 }
 
 // ============== Stack Format engine ==============
-// Stack rounds use the same court1/court2 game shape as RR, but the schedule
+// Stack rounds use the same games[] shape as RR, but the schedule
 // is built incrementally: each round's pairings depend on the prior round's
 // scores. state.rounds.length grows as the tournament progresses.
 
@@ -3559,11 +3583,10 @@ function assignInitialStackCourts() {
   const slots = shuffle([1,2,3,4,5,6,7,8]);
   const c1 = shuffle(slots.slice(0, 4));
   const c2 = shuffle(slots.slice(4));
-  return {
-    round: 1,
-    court1: { team1: [c1[0], c1[1]], team2: [c1[2], c1[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-    court2: { team1: [c2[0], c2[1]], team2: [c2[2], c2[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-  };
+  return makeRound(1, [
+    makeGame(1, [c1[0], c1[1]], [c1[2], c1[3]]),
+    makeGame(2, [c2[0], c2[1]], [c2[2], c2[3]]),
+  ]);
 }
 
 // Stack score gain for one player on one completed game.
@@ -3701,7 +3724,7 @@ function pairForStackCourt(slotsOnCourt, prevSameCourt, stackBySlot) {
 // Build the next stack round from the previous (which must be complete and
 // non-tied — both score1 !== score2).
 function buildNextStackRound(prevRound) {
-  const c1 = prevRound.court1, c2 = prevRound.court2;
+  const c1 = gameForCourt(prevRound, 1), c2 = gameForCourt(prevRound, 2);
   const c1Win  = c1.score1 > c1.score2 ? c1.team1 : c1.team2;
   const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
   const c2Win  = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
@@ -3715,11 +3738,7 @@ function buildNextStackRound(prevRound) {
   const [c1A, c1B] = pairForStackCourt(newC1Slots, c1, stackBySlot);
   const [c2A, c2B] = pairForStackCourt(newC2Slots, c2, stackBySlot);
 
-  return {
-    round: prevRound.round + 1,
-    court1: { team1: c1A, team2: c1B, score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-    court2: { team1: c2A, team2: c2B, score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-  };
+  return makeRound(prevRound.round + 1, [makeGame(1, c1A, c1B), makeGame(2, c2A, c2B)]);
 }
 
 // === KING FORMAT ===
@@ -3730,11 +3749,10 @@ function assignInitialKingCourts() {
   const slots = shuffle([1,2,3,4,5,6,7,8]);
   const c1 = shuffle(slots.slice(0, 4));
   const c2 = shuffle(slots.slice(4));
-  return {
-    round: 1,
-    court1: { team1: [c1[0], c1[1]], team2: [c1[2], c1[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-    court2: { team1: [c2[0], c2[1]], team2: [c2[2], c2[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-  };
+  return makeRound(1, [
+    makeGame(1, [c1[0], c1[1]], [c1[2], c1[3]]),
+    makeGame(2, [c2[0], c2[1]], [c2[2], c2[3]]),
+  ]);
 }
 
 function computeKingStats(throughRound) {
@@ -3785,7 +3803,7 @@ function rankPlayersKing(throughRound) {
 
 function buildNextKingRound(prevRound) {
   if (!isRoundDecided(prevRound)) throw new Error("buildNextKingRound called with undecided round");
-  const c1 = prevRound.court1, c2 = prevRound.court2;
+  const c1 = gameForCourt(prevRound, 1), c2 = gameForCourt(prevRound, 2);
   const c1Win  = c1.score1 > c1.score2 ? c1.team1 : c1.team2;
   const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
   const c2Win  = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
@@ -3793,18 +3811,16 @@ function buildNextKingRound(prevRound) {
   // Movement: winners pool → King's Court; losers pool → Bottom Court. Random re-pair on each.
   const newC1 = shuffle([...c1Win, ...c2Win]);
   const newC2 = shuffle([...c1Lose, ...c2Lose]);
-  return {
-    round: prevRound.round + 1,
-    court1: { team1: [newC1[0], newC1[1]], team2: [newC1[2], newC1[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-    court2: { team1: [newC2[0], newC2[1]], team2: [newC2[2], newC2[3]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-  };
+  return makeRound(prevRound.round + 1, [
+    makeGame(1, [newC1[0], newC1[1]], [newC1[2], newC1[3]]),
+    makeGame(2, [newC2[0], newC2[1]], [newC2[2], newC2[3]]),
+  ]);
 }
 
 function kingMovementToastText(prevRound) {
-  const c2Win  = prevRound.court2.score1 > prevRound.court2.score2
-    ? prevRound.court2.team1 : prevRound.court2.team2;
-  const c1Lose = prevRound.court1.score1 > prevRound.court1.score2
-    ? prevRound.court1.team2 : prevRound.court1.team1;
+  const c1 = gameForCourt(prevRound, 1), c2 = gameForCourt(prevRound, 2);
+  const c2Win  = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
+  const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
   return teamName(c2Win) + " climb to King's Court · " + teamName(c1Lose) + " drop to Bottom";
 }
 
@@ -3813,11 +3829,10 @@ function kingMovementToastText(prevRound) {
 // Reuses existing rankPlayers() (points scored → wins → diff → h2h) — no new stats needed.
 
 function buildGauntletPairing(ranked, roundNum) {
-  return {
-    round: roundNum,
-    court1: { team1: [ranked[0], ranked[3]], team2: [ranked[1], ranked[2]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-    court2: { team1: [ranked[4], ranked[7]], team2: [ranked[5], ranked[6]], score1: null, score2: null, gameStartedAt: Date.now(), gameEndedAt: null, pauseSec: 0 },
-  };
+  return makeRound(roundNum, [
+    makeGame(1, [ranked[0], ranked[3]], [ranked[1], ranked[2]]),
+    makeGame(2, [ranked[4], ranked[7]], [ranked[5], ranked[6]]),
+  ]);
 }
 
 function assignInitialGauntletCourts() {
@@ -4056,8 +4071,9 @@ function startTournament() {
     state.phase = "playing";
     save();
     const r1 = state.rounds[0];
-    const c1Slots = [...r1.court1.team1, ...r1.court1.team2];
-    const c2Slots = [...r1.court2.team1, ...r1.court2.team2];
+    const sGame1 = gameForCourt(r1, 1), sGame2 = gameForCourt(r1, 2);
+    const c1Slots = [...sGame1.team1, ...sGame1.team2];
+    const c2Slots = [...sGame2.team1, ...sGame2.team2];
     const display = [...c1Slots.map(nameOf), ...c2Slots.map(nameOf)];
     runShuffleReveal(display, () => render(), {
       title: "Drawing courts…",
@@ -4073,8 +4089,9 @@ function startTournament() {
     state.phase = "playing";
     save();
     const r1k = state.rounds[0];
-    const kC1Slots = [...r1k.court1.team1, ...r1k.court1.team2];
-    const kC2Slots = [...r1k.court2.team1, ...r1k.court2.team2];
+    const kGame1 = gameForCourt(r1k, 1), kGame2 = gameForCourt(r1k, 2);
+    const kC1Slots = [...kGame1.team1, ...kGame1.team2];
+    const kC2Slots = [...kGame2.team1, ...kGame2.team2];
     const kDisplay = [...kC1Slots.map(nameOf), ...kC2Slots.map(nameOf)];
     runShuffleReveal(kDisplay, () => render(), {
       title: "Drawing courts…",
@@ -4090,8 +4107,9 @@ function startTournament() {
     state.phase = "playing";
     save();
     const r1g = state.rounds[0];
-    const gC1Slots = [...r1g.court1.team1, ...r1g.court1.team2];
-    const gC2Slots = [...r1g.court2.team1, ...r1g.court2.team2];
+    const gGame1 = gameForCourt(r1g, 1), gGame2 = gameForCourt(r1g, 2);
+    const gC1Slots = [...gGame1.team1, ...gGame1.team2];
+    const gC2Slots = [...gGame2.team1, ...gGame2.team2];
     const gDisplay = [...gC1Slots.map(nameOf), ...gC2Slots.map(nameOf)];
     runShuffleReveal(gDisplay, () => render(), {
       title: "Drawing courts…",
@@ -4183,9 +4201,9 @@ function buildResultsMessage(slot, mode) {
   if (isFinal) {
     lines.push("🏓 Rumble Pickleball — tonight's results", "", youLine, "");
     if (state.finals) {
-      const f = state.finals;
-      const champWin = f.championship.score1 > f.championship.score2 ? f.championship.team1 : f.championship.team2;
-      const consWin  = f.consolation.score1  > f.consolation.score2  ? f.consolation.team1  : f.consolation.team2;
+      const champ = finalTier(0), cons = finalTier(1);
+      const champWin = champ.score1 > champ.score2 ? champ.team1 : champ.team2;
+      const consWin  = cons.score1  > cons.score2  ? cons.team1  : cons.team2;
       lines.push("🥇 " + teamName(champWin), "🥈 " + teamName(consWin), "");
     }
     lines.push("Final standings:", ...board, "", "GG! 🎾");
@@ -4211,10 +4229,7 @@ function phoneOf(slot) {
 function gamesOf(r) {
   if (!r) return [];
   if (Array.isArray(r.games)) return r.games.slice().sort((a, b) => (a.court || 0) - (b.court || 0));
-  return [r.court1, r.court2].filter(Boolean).map((g, i) => {
-    if (!Number.isInteger(g.court)) g.court = i + 1;
-    return g;
-  });
+  return [];
 }
 function byesOf(r) { return r && Array.isArray(r.byes) ? r.byes : []; }
 function playerCount() {
@@ -4250,8 +4265,7 @@ function computeStats(throughRound, includeFinals) {
     for (const g of gamesOf(state.rounds[i])) games.push({ ...g, isFinal: false });
   }
   if (includeFinals && state.finals) {
-    games.push({ ...state.finals.championship, isFinal: true });
-    games.push({ ...state.finals.consolation, isFinal: true });
+    for (const g of finalTiers()) games.push({ ...g, isFinal: true });
   }
   for (const g of games) {
     // Only decided games count toward points/wins/diff/partners. A tied score
@@ -4324,8 +4338,11 @@ function buildFinals() {
   const total = totalRegularRounds();
   const ranked = rankPlayersForFormat(total).map(s => s.slot);
   state.finals = {
-    championship: { team1: [ranked[0], ranked[3]], team2: [ranked[1], ranked[2]], score1: null, score2: null },
-    consolation:  { team1: [ranked[4], ranked[7]], team2: [ranked[5], ranked[6]], score1: null, score2: null },
+    tiers: [
+      makeFinalTier("Championship", 1, [ranked[0], ranked[3]], [ranked[1], ranked[2]]),
+      makeFinalTier("Consolation", 2, [ranked[4], ranked[7]], [ranked[5], ranked[6]]),
+    ],
+    unseated: [],
   };
   state.phase = "finals";
   save();
@@ -4650,15 +4667,18 @@ function finalRanking() {
   seasonOrder.forEach(s => bySlot.set(s.slot, s));
 
   const f = state.finals;
+  const champ = finalTier(0, f);
+  const cons = finalTier(1, f);
   const allDecided = f
-    && isGameComplete(f.championship) && f.championship.score1 !== f.championship.score2
-    && isGameComplete(f.consolation)  && f.consolation.score1  !== f.consolation.score2;
+    && champ && cons
+    && isGameComplete(champ) && champ.score1 !== champ.score2
+    && isGameComplete(cons)  && cons.score1  !== cons.score2;
   if (!allDecided) return seasonOrder.slice();
 
-  const champWinTeam  = f.championship.score1 > f.championship.score2 ? f.championship.team1 : f.championship.team2;
-  const champLoseTeam = f.championship.score1 > f.championship.score2 ? f.championship.team2 : f.championship.team1;
-  const consWinTeam   = f.consolation.score1  > f.consolation.score2  ? f.consolation.team1  : f.consolation.team2;
-  const consLoseTeam  = f.consolation.score1  > f.consolation.score2  ? f.consolation.team2  : f.consolation.team1;
+  const champWinTeam  = champ.score1 > champ.score2 ? champ.team1 : champ.team2;
+  const champLoseTeam = champ.score1 > champ.score2 ? champ.team2 : champ.team1;
+  const consWinTeam   = cons.score1  > cons.score2  ? cons.team1  : cons.team2;
+  const consLoseTeam  = cons.score1  > cons.score2  ? cons.team2  : cons.team1;
 
   const sortByseason = arr => arr.slice().sort((a, b) => seasonRank.get(a) - seasonRank.get(b));
   const ordered = [
@@ -5595,8 +5615,9 @@ function isRoundDecided(r) {
 
 function movementToastText(prevRound, newRound) {
   // climbers = c2 winners (now on new c1)
-  const c2Win = prevRound.court2.score1 > prevRound.court2.score2 ? prevRound.court2.team1 : prevRound.court2.team2;
-  const c1Lose = prevRound.court1.score1 > prevRound.court1.score2 ? prevRound.court1.team2 : prevRound.court1.team1;
+  const c1 = gameForCourt(prevRound, 1), c2 = gameForCourt(prevRound, 2);
+  const c2Win = c2.score1 > c2.score2 ? c2.team1 : c2.team2;
+  const c1Lose = c1.score1 > c1.score2 ? c1.team2 : c1.team1;
   return teamName(c2Win) + " climb to Court 1 · " + teamName(c1Lose) + " drop to Court 2";
 }
 
@@ -6508,11 +6529,12 @@ function renderRoundCourts(round, isFinals, refreshes) {
   const wrap = el("div", { class: "court-row" });
   if (isFinals) {
     const seeds = seedRankBySlot();
-    wrap.appendChild(renderCourtCard(round.championship, "champ", refreshes, { kind: "gold", seeds }));
-    wrap.appendChild(renderCourtCard(round.consolation,  "cons",  refreshes, { kind: "silver", seeds }));
+    finalTiers(round).forEach((g, i) => {
+      const key = i === 0 ? "champ" : "cons";
+      wrap.appendChild(renderCourtCard(g, key, refreshes, { kind: i === 0 ? "gold" : "silver", seeds }));
+    });
   } else {
-    wrap.appendChild(renderCourtCard(round.court1, 1, refreshes));
-    wrap.appendChild(renderCourtCard(round.court2, 2, refreshes));
+    for (const g of gamesOf(round)) wrap.appendChild(renderCourtCard(g, g.court, refreshes));
   }
   return wrap;
 }
@@ -6672,7 +6694,7 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
       game.gameEndedAt = null;
       for (let ri = 0; ri < state.rounds.length; ri++) {
         const rr = state.rounds[ri];
-        if ((rr.court1 === game || rr.court2 === game) && !isRoundDecided(rr)) {
+        if (gamesOf(rr).includes(game) && !isRoundDecided(rr)) {
           const pos = state.notifiedRounds.indexOf(ri + 1);
           if (pos !== -1) state.notifiedRounds.splice(pos, 1);
           break;
@@ -6686,8 +6708,9 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
       game.gameEndedAt = Date.now();
       let roundIdx = -1, courtIdx = -1;
       for (let ri = 0; ri < state.rounds.length; ri++) {
-        if (state.rounds[ri].court1 === game) { roundIdx = ri; courtIdx = 0; break; }
-        if (state.rounds[ri].court2 === game) { roundIdx = ri; courtIdx = 1; break; }
+        const games = gamesOf(state.rounds[ri]);
+        const gi = games.indexOf(game);
+        if (gi !== -1) { roundIdx = ri; courtIdx = gi; break; }
       }
       if (roundIdx !== -1 && game.gameStartedAt > 0) {
         const durSec = Math.max(0, Math.round((game.gameEndedAt - game.gameStartedAt) / 1000) - (game.pauseSec || 0));
@@ -6932,7 +6955,9 @@ function renderHistory(currentRound) {
     block.appendChild(el("div", { class: "history-round-title" }, "Round " + r.round));
     const c1Label = { stack: "Court 1", king: "King's Court", gauntlet: "Court 1" }[state.format] || "South";
     const c2Label = { stack: "Court 2", king: "Bottom",       gauntlet: "Court 2" }[state.format] || "North";
-    [{ g: r.court1, num: 1, label: c1Label }, { g: r.court2, num: 2, label: c2Label }].forEach(({ g, num, label }) => {
+    gamesOf(r).forEach(g => {
+      const num = g.court || 1;
+      const label = num === 1 ? c1Label : c2Label;
       const t1Win = isGameComplete(g) && g.score1 > g.score2;
       const t2Win = isGameComplete(g) && g.score2 > g.score1;
       const scoreText = (Number.isInteger(g.score1) ? g.score1 : "–") + "–" + (Number.isInteger(g.score2) ? g.score2 : "–");
@@ -6993,7 +7018,7 @@ function renderFinalsScreen() {
 
   const finalsDecided = (g) => isGameComplete(g) && g.score1 !== g.score2;
   const finalsReady = () =>
-    finalsDecided(state.finals.championship) && finalsDecided(state.finals.consolation);
+    finalTiers().length > 0 && finalTiers().every(finalsDecided);
 
   const finishBtn = el("button", {
     class: "primary",
@@ -7105,8 +7130,7 @@ function computeAwards() {
     }
   }
   if (state.finals) {
-    games.push({ ...state.finals.championship, label: "Championship" });
-    games.push({ ...state.finals.consolation,  label: "Consolation" });
+    finalTiers().forEach(g => games.push({ ...g, label: g.name }));
   }
   // Two views of the game list:
   //   completed  — every game that has both scores (ties included). Used for Hot Streak so a tied game properly resets streaks.
@@ -7350,9 +7374,11 @@ function computeAwards() {
   // 2 rounds of data. Sample is noisy with so few rounds — that's part of the
   // fun.
   let mostImproved = { names: [], detail: null };
+  const champ = finalTier(0), cons = finalTier(1);
   if (state.rounds.length >= 2 && state.finals
-      && isGameComplete(state.finals.championship) && state.finals.championship.score1 !== state.finals.championship.score2
-      && isGameComplete(state.finals.consolation)  && state.finals.consolation.score1  !== state.finals.consolation.score2) {
+      && champ && cons
+      && isGameComplete(champ) && champ.score1 !== champ.score2
+      && isGameComplete(cons)  && cons.score1  !== cons.score2) {
     const earlyRanked = rankPlayersForFormat(2);
     const earlyRankBy = new Map();
     earlyRanked.forEach((s, i) => earlyRankBy.set(s.slot, i + 1));
@@ -7755,8 +7781,7 @@ function renderTextResultsCard(mode) {
 function renderDoneScreen() {
   if (state.format === "crown") return renderDoneScreenCrown();
   const wrap = el("div");
-  const f = state.finals;
-  const champ = f.championship, cons = f.consolation;
+  const champ = finalTier(0), cons = finalTier(1);
   const champWin = champ.score1 > champ.score2 ? champ.team1 : (champ.score2 > champ.score1 ? champ.team2 : null);
   const consWin  = cons.score1  > cons.score2  ? cons.team1  : (cons.score2  > cons.score1  ? cons.team2  : null);
   const ranking = finalRanking();
@@ -8003,15 +8028,15 @@ function openScheduleModal() {
     state.rounds.forEach(r => {
       const block = el("div", { class: "schedule-round" });
       block.appendChild(el("div", { class: "schedule-round-title" }, "Round " + r.round));
-      block.appendChild(gameRow(r.court1, c1Tag, "c1"));
-      block.appendChild(gameRow(r.court2, c2Tag, "c2"));
+      gamesOf(r).forEach(g => {
+        block.appendChild(gameRow(g, g.court === 1 ? c1Tag : c2Tag, "c" + (g.court || 1)));
+      });
       list.appendChild(block);
     });
     if (state.finals && (state.phase === "finals" || state.phase === "done")) {
       const block = el("div", { class: "schedule-round" });
       block.appendChild(el("div", { class: "schedule-round-title" }, "Finals"));
-      block.appendChild(gameRow(state.finals.championship, "Champ", "gold"));
-      block.appendChild(gameRow(state.finals.consolation,  "Cons",  "silver"));
+      finalTiers().forEach((g, i) => block.appendChild(gameRow(g, i === 0 ? "Champ" : "Cons", i === 0 ? "gold" : "silver")));
       list.appendChild(block);
     }
   }
