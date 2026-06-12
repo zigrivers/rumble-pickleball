@@ -26,7 +26,7 @@
 
 **Anchor:** `function newState()` and `function backfillStateDefaults(obj)`; storage keys near `const STORAGE_KEY`.
 
-- [ ] Tests first (inside `runSelfTests()`, before the `[self-tests] complete` log — same pattern as existing task blocks): build a representative **v4** mid-tournament state object for each format (`rr` playing R3, `stack`, `king`, `gauntlet`, `crown`, plus an `rr` state in `finals` phase), run it through the migration, and assert:
+- [x] Tests first (inside `runSelfTests()`, before the `[self-tests] complete` log — same pattern as existing task blocks): build a representative **v4** mid-tournament state object for each format (`rr` playing R3, `stack`, `king`, `gauntlet`, `crown`, plus an `rr` state in `finals` phase), run it through the migration, and assert:
   - **Old-key migration:** write a v4 fixture under the current v4 storage key, call `load()`, and assert the migrated v5 state is returned, persisted under the new v5 key, and the v4 key is handled like prior migrations handle theirs (follow the existing v3→v4 chain's key-handling convention). An implementation that migrates objects but never reads the old key must fail this test — without it, existing users' tournaments would vanish on upgrade.
   - Non-Crown fixtures: `players.length === 8`, every `players[i]` has `slot === i+1`, `status === "active"`, `eligibleFromRound === 1`, `joinedRound === 1`, `leftRound === null`, names/phones carried over from `slots`/`phones`.
   - each round has `games` (length 2, `court` 1 and 2, teams/scores/timestamps identical to the old `court1`/`court2`) and `byes: []`.
@@ -34,9 +34,9 @@
   - `courtCount === 2`, `rrRounds === 7`, `Number.isInteger(scheduleSeed)`; RR states get `rrScheduleMode === "wh8"`.
   - `rawNames`/`rawPhones` carried over verbatim (a `setup`-phase v4 save keeps its roster on the setup screen).
   - crown state: **`players.length === 4`** (v4 Crown pads `slots` to 8 with 4 real players — migrate only the real 4, never blank actives); `crownMatches`/`crownFinal`/`currentMatch` untouched.
-- [ ] Implement per spec §3.1–§3.2: bump storage key to v5, add `migrateV4toV5(obj)` called from `load()` (keep the existing v1→…→v4 chain feeding into it), extend `newState()` and `backfillStateDefaults` with the v5 fields. **Do not change any rendering or game logic yet.** Transitional compatibility (removed in Task 2.2): migration retains `court1`/`court2` properties referencing the *same objects* as `games[0]`/`games[1]`, and `gamesOf(r)` synthesizes `[court1, court2]` when `r.games` is absent — because until Task 2.2 the round **builders** still emit `court1`/`court2`-only rounds for newly started tournaments. `backfillStateDefaults` normalizes any such round into `games[]` form on load.
-- [ ] Verify `?test` = 1 failure, `?simulate` = 0 failures, and a manual smoke: start an 8-player RR, play a round, reload.
-- [ ] Commit: `feat(state): v5 state shape — players[], games[]/byes[], courtCount, scheduleSeed + v4 migration`
+- [x] Implement per spec §3.1–§3.2: bump storage key to v5, add `migrateV4toV5(obj)` called from `load()` (keep the existing v1→…→v4 chain feeding into it), extend `newState()` and `backfillStateDefaults` with the v5 fields. **Do not change any rendering or game logic yet.** Transitional compatibility (removed in Task 2.2): migration retains `court1`/`court2` properties referencing the *same objects* as `games[0]`/`games[1]`, and `gamesOf(r)` synthesizes `[court1, court2]` when `r.games` is absent — because until Task 2.2 the round **builders** still emit `court1`/`court2`-only rounds for newly started tournaments. `backfillStateDefaults` normalizes any such round into `games[]` form on load.
+- [x] Verify `?test` = 1 failure, `?simulate` = 0 failures, and a manual smoke: start an 8-player RR, play a round, reload.
+- [x] Commit: `feat(state): v5 state shape — players[], games[]/byes[], courtCount, scheduleSeed + v4 migration`
 
 ### Task 1.2: Accessors + roster writers
 

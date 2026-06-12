@@ -1171,7 +1171,8 @@
 <script>
 "use strict";
 
-const STORAGE_KEY    = "pb_tourney_v4";
+const STORAGE_KEY    = "pb_tourney_v5";
+const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
 const STORAGE_KEY_V2 = "pb_tourney_v2";
 const STORAGE_KEY_V1 = "pb_tourney_v1";
@@ -1353,6 +1354,140 @@ function runSelfTests() {
     console.assert(s.winScore === 11, "newState.winScore=11");
     console.assert(Array.isArray(s.notifiedRounds) && s.notifiedRounds.length === 0,
       "newState.notifiedRounds=[]");
+  }
+  // Flex Task 1.1 — v4 → v5 migration shape
+  {
+    const savedState = state;
+    const savedStores = {
+      v5: localStorage.getItem(STORAGE_KEY),
+      v4: localStorage.getItem("pb_tourney_v4"),
+      v3: localStorage.getItem(STORAGE_KEY_V3),
+      v2: localStorage.getItem(STORAGE_KEY_V2),
+      v1: localStorage.getItem(STORAGE_KEY_V1),
+    };
+    for (const k of [STORAGE_KEY, "pb_tourney_v4", STORAGE_KEY_V3, STORAGE_KEY_V2, STORAGE_KEY_V1]) {
+      localStorage.removeItem(k);
+    }
+    const names = ["Ava","Ben","Cy","Dee","Eli","Fay","Gus","Hal"];
+    const phones = names.map((_, i) => "555000000" + (i + 1));
+    const game = (team1, team2, score1, score2) => ({
+      team1: team1.slice(), team2: team2.slice(), score1, score2,
+      gameStartedAt: 10, gameEndedAt: 20, pauseSec: 1,
+    });
+    const v4Round = (round, score = [11, 7]) => ({
+      round,
+      court1: game([1,2], [3,4], score[0], score[1]),
+      court2: game([5,6], [7,8], score[0], score[1]),
+    });
+    const baseV4 = (format, extra = {}) => ({
+      phase: "playing", format,
+      rawNames: names.slice(), rawPhones: phones.slice(),
+      slots: names.slice(), phones: phones.slice(),
+      currentRound: 3, rounds: [v4Round(1), v4Round(2), v4Round(3, [null, null])],
+      finals: null, tiebreakRandom: [0,1,2,3,4,5,6,7],
+      stackRounds: 8, kingRounds: 9, gauntletRounds: 8,
+      previousRanks: [1,2,3,4,5,6,7,8],
+      awardsShown: false, winScore: 11, notifiedRounds: [],
+      ...extra,
+    });
+    const migrateFixture = obj => {
+      const input = JSON.parse(JSON.stringify(obj));
+      return (typeof migrateV4toV5 === "function")
+        ? migrateV4toV5(input)
+        : backfillStateDefaults(input);
+    };
+    const assertPlayerMigration = (m, label, expectedN = 8) => {
+      console.assert(Array.isArray(m.players) && m.players.length === expectedN,
+        label + ": players length", m.players);
+      const migratedPlayers = Array.isArray(m.players) ? m.players : [];
+      for (let i = 0; i < expectedN; i++) {
+        const p = migratedPlayers[i] || {};
+        console.assert(p.slot === i + 1 && p.status === "active" && p.eligibleFromRound === 1
+          && p.joinedRound === 1 && p.leftRound === null,
+          label + ": player metadata " + (i + 1), p);
+        console.assert(p.name === names[i] && p.phone === phones[i],
+          label + ": player name/phone " + (i + 1), p);
+      }
+    };
+    for (const fmt of ["rr", "stack", "king", "gauntlet"]) {
+      const migrated = migrateFixture(baseV4(fmt));
+      assertPlayerMigration(migrated, "v4→v5 " + fmt);
+      console.assert(migrated.courtCount === 2 && migrated.rrRounds === 7
+        && Number.isInteger(migrated.scheduleSeed),
+        "v4→v5 " + fmt + ": courtCount/rrRounds/scheduleSeed", migrated);
+      console.assert(migrated.rrScheduleMode === (fmt === "rr" ? "wh8" : "generated"),
+        "v4→v5 " + fmt + ": rrScheduleMode", migrated.rrScheduleMode);
+      const r = migrated.rounds[0];
+      console.assert(Array.isArray(r.games) && r.games.length === 2 && Array.isArray(r.byes) && r.byes.length === 0,
+        "v4→v5 " + fmt + ": games/byes shape", r);
+      const migratedGames = Array.isArray(r.games) ? r.games : [];
+      console.assert(migratedGames[0] === r.court1 && migratedGames[1] === r.court2,
+        "v4→v5 " + fmt + ": court shims share game objects");
+      console.assert(migratedGames[0] && migratedGames[1]
+        && migratedGames[0].court === 1 && migratedGames[1].court === 2
+        && JSON.stringify(migratedGames[0].team1) === JSON.stringify([1,2])
+        && migratedGames[0].score1 === 11 && migratedGames[0].gameStartedAt === 10,
+        "v4→v5 " + fmt + ": game payload preserved", migratedGames);
+    }
+    const setupMigrated = migrateFixture(baseV4("rr", { phase: "setup", rounds: [] }));
+    console.assert(JSON.stringify(setupMigrated.rawNames) === JSON.stringify(names)
+      && JSON.stringify(setupMigrated.rawPhones) === JSON.stringify(phones),
+      "v4→v5 setup: raw roster preserved", setupMigrated);
+    const finalsV4 = baseV4("rr", {
+      phase: "finals",
+      finals: {
+        championship: game([1,4], [2,3], null, null),
+        consolation:  game([5,8], [6,7], null, null),
+      },
+    });
+    const finalsMigrated = migrateFixture(finalsV4);
+    console.assert(finalsMigrated.finals && Array.isArray(finalsMigrated.finals.tiers)
+      && finalsMigrated.finals.tiers.length === 2
+      && finalsMigrated.finals.tiers[0].name === "Championship"
+      && finalsMigrated.finals.tiers[1].name === "Consolation"
+      && Array.isArray(finalsMigrated.finals.unseated)
+      && finalsMigrated.finals.unseated.length === 0,
+      "v4→v5 finals: tiers/unseated", finalsMigrated.finals);
+    const crownV4 = baseV4("crown", {
+      phase: "crown",
+      slots: ["Ava","Ben","Cy","Dee","","","",""],
+      phones: phones.slice(0, 4).concat(["","","",""]),
+      rawNames: ["Ava","Ben","Cy","Dee"],
+      rawPhones: phones.slice(0, 4),
+      crownMatches: [{ keep: "matches" }],
+      crownFinal: { keep: "final" },
+      currentMatch: 2,
+    });
+    const crownMigrated = migrateFixture(crownV4);
+    console.assert(Array.isArray(crownMigrated.players) && crownMigrated.players.length === 4,
+      "v4→v5 crown: only 4 real players", crownMigrated.players);
+    console.assert(crownMigrated.crownMatches === crownV4.crownMatches
+      || JSON.stringify(crownMigrated.crownMatches) === JSON.stringify(crownV4.crownMatches),
+      "v4→v5 crown: crownMatches untouched", crownMigrated.crownMatches);
+    console.assert(JSON.stringify(crownMigrated.crownFinal) === JSON.stringify(crownV4.crownFinal)
+      && crownMigrated.currentMatch === 2,
+      "v4→v5 crown: crownFinal/currentMatch untouched", crownMigrated);
+
+    localStorage.setItem("pb_tourney_v4", JSON.stringify(baseV4("rr")));
+    const loaded = load();
+    console.assert(loaded && Array.isArray(loaded.players) && loaded.players.length === 8,
+      "v4 storage key migration: load returns v5 players", loaded);
+    console.assert(localStorage.getItem(STORAGE_KEY) !== null,
+      "v4 storage key migration: writes current key");
+    console.assert(localStorage.getItem("pb_tourney_v4") === null,
+      "v4 storage key migration: clears old key");
+
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem("pb_tourney_v4");
+    localStorage.removeItem(STORAGE_KEY_V3);
+    localStorage.removeItem(STORAGE_KEY_V2);
+    localStorage.removeItem(STORAGE_KEY_V1);
+    if (savedStores.v5 !== null) localStorage.setItem(STORAGE_KEY, savedStores.v5);
+    if (savedStores.v4 !== null) localStorage.setItem("pb_tourney_v4", savedStores.v4);
+    if (savedStores.v3 !== null) localStorage.setItem(STORAGE_KEY_V3, savedStores.v3);
+    if (savedStores.v2 !== null) localStorage.setItem(STORAGE_KEY_V2, savedStores.v2);
+    if (savedStores.v1 !== null) localStorage.setItem(STORAGE_KEY_V1, savedStores.v1);
+    state = savedState;
   }
   // Task 3 — parsePastedNames
   {
@@ -2646,15 +2781,20 @@ function newState() {
   return {
     phase: "setup",                                  // setup | playing | finals | crown | done
     format: "rr",                                    // "rr" | "stack" | "crown"
+    courtCount: 2,
+    scheduleSeed: makeScheduleSeed(),
     stackRounds:    8,                                  // only used when format === "stack"
     kingRounds:     9,                                  // only used when format === "king"
     gauntletRounds: 8,                                  // only used when format === "gauntlet"
+    rrRounds: 7,
+    rrScheduleMode: "wh8",
     rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle, used on setup screen; always 8 elements
     rawPhones: ["", "", "", "", "", "", "", ""],     // parallel to rawNames; optional cell numbers
     slots:    ["", "", "", "", "", "", "", ""],      // post-shuffle, slot index 0..7 = slot 1..8; always 8 elements
+    players: [],
     currentRound: 1,
     rounds: [],                                      // populated on Start
-    finals: null,                                    // {championship, consolation}
+    finals: null,                                    // {tiers, unseated}; legacy championship/consolation retained during v5 transition
     tiebreakRandom: [],                              // stable per-tournament random for final tiebreak
     awardsShown: false,
     winScore: 11,
@@ -2681,6 +2821,101 @@ function newState() {
     },
   };
 }
+function makeScheduleSeed() {
+  return Math.floor(Math.random() * 0x100000000);
+}
+function legacyPlayersFrom(obj) {
+  const slots = Array.isArray(obj.slots) ? obj.slots : [];
+  const phones = Array.isArray(obj.phones) ? obj.phones : [];
+  const fallbackNames = Array.isArray(obj.rawNames) ? obj.rawNames : [];
+  const fallbackPhones = Array.isArray(obj.rawPhones) ? obj.rawPhones : [];
+  const count = obj.format === "crown"
+    ? Math.min(4, Math.max(slots.length, fallbackNames.length))
+    : Math.max(slots.length, fallbackNames.length, 8);
+  const players = [];
+  for (let i = 0; i < count; i++) {
+    const name = slots[i] !== undefined ? slots[i] : (fallbackNames[i] || "");
+    const phone = phones[i] !== undefined ? phones[i] : (fallbackPhones[i] || "");
+    if (obj.format === "crown" && i >= 4) continue;
+    players.push({
+      slot: i + 1,
+      name: name || "",
+      phone: phone || "",
+      status: "active",
+      eligibleFromRound: 1,
+      joinedRound: 1,
+      leftRound: null,
+    });
+  }
+  return players;
+}
+function normalizeRoundV5(r) {
+  if (!r) return r;
+  if (!Array.isArray(r.games)) {
+    r.games = [];
+    if (r.court1) {
+      r.court1.court = 1;
+      r.games.push(r.court1);
+    }
+    if (r.court2) {
+      r.court2.court = 2;
+      r.games.push(r.court2);
+    }
+  } else {
+    r.games.forEach((g, i) => { if (g && !Number.isInteger(g.court)) g.court = i + 1; });
+    r.games.sort((a, b) => (a.court || 0) - (b.court || 0));
+    if (!r.court1) r.court1 = r.games.find(g => g.court === 1) || r.games[0];
+    if (!r.court2) r.court2 = r.games.find(g => g.court === 2) || r.games[1];
+  }
+  if (!Array.isArray(r.byes)) r.byes = [];
+  return r;
+}
+function normalizeFinalsV5(finals) {
+  if (!finals) return finals;
+  if (!Array.isArray(finals.tiers)) {
+    finals.tiers = [];
+    if (finals.championship) {
+      finals.championship.name = "Championship";
+      finals.championship.court = 1;
+      finals.tiers.push(finals.championship);
+    }
+    if (finals.consolation) {
+      finals.consolation.name = "Consolation";
+      finals.consolation.court = 2;
+      finals.tiers.push(finals.consolation);
+    }
+  } else {
+    finals.tiers.forEach((g, i) => {
+      if (g && !g.name) g.name = i === 0 ? "Championship" : "Consolation";
+      if (g && !Number.isInteger(g.court)) g.court = i + 1;
+    });
+  }
+  if (!Array.isArray(finals.unseated)) finals.unseated = [];
+  if (!finals.championship && finals.tiers[0]) finals.championship = finals.tiers[0];
+  if (!finals.consolation && finals.tiers[1]) finals.consolation = finals.tiers[1];
+  return finals;
+}
+function migrateV4toV5(obj) {
+  const v5 = obj || {};
+  const crownMatches = v5.crownMatches === undefined ? undefined : JSON.parse(JSON.stringify(v5.crownMatches));
+  const crownFinal = v5.crownFinal === undefined ? undefined : JSON.parse(JSON.stringify(v5.crownFinal));
+  const currentMatch = v5.currentMatch;
+  if (!["rr","stack","crown","king","gauntlet"].includes(v5.format)) v5.format = "rr";
+  v5.courtCount = 2;
+  v5.rrRounds = 7;
+  if (!Number.isInteger(v5.scheduleSeed)) v5.scheduleSeed = makeScheduleSeed();
+  v5.rrScheduleMode = v5.format === "rr" ? "wh8" : "generated";
+  v5.players = legacyPlayersFrom(v5);
+  if (Array.isArray(v5.rounds)) v5.rounds.forEach(normalizeRoundV5);
+  v5.finals = normalizeFinalsV5(v5.finals);
+  backfillStateDefaults(v5);
+  if (v5.format === "crown") {
+    if (crownMatches !== undefined) v5.crownMatches = crownMatches;
+    if (crownFinal !== undefined) v5.crownFinal = crownFinal;
+    if (currentMatch !== undefined) v5.currentMatch = currentMatch;
+  }
+  return v5;
+}
 // Apply field defaults to any persisted state (used by both v2 load and v1 migration).
 function backfillStateDefaults(obj) {
   if (typeof obj.awardsShown !== "boolean") obj.awardsShown = false;
@@ -2689,6 +2924,12 @@ function backfillStateDefaults(obj) {
   if (obj.scoringSystem !== "sideout" && obj.scoringSystem !== "rally") obj.scoringSystem = "sideout";
   if (!Array.isArray(obj.notifiedRounds)) obj.notifiedRounds = [];
   if (!["rr","stack","crown","king","gauntlet"].includes(obj.format)) obj.format = "rr";
+  if (!Number.isInteger(obj.courtCount) || obj.courtCount < 1 || obj.courtCount > 6) obj.courtCount = 2;
+  if (!Number.isInteger(obj.scheduleSeed)) obj.scheduleSeed = makeScheduleSeed();
+  if (!Number.isInteger(obj.rrRounds) || obj.rrRounds < 4 || obj.rrRounds > 12) obj.rrRounds = 7;
+  if (obj.rrScheduleMode !== "wh8" && obj.rrScheduleMode !== "generated") {
+    obj.rrScheduleMode = obj.format === "rr" ? "wh8" : "generated";
+  }
   if (typeof obj.stackRounds !== "number") obj.stackRounds = 8;
   if (!Number.isInteger(obj.kingRounds)     || obj.kingRounds     < 6 || obj.kingRounds     > 12) obj.kingRounds     = 9;
   if (!Number.isInteger(obj.gauntletRounds) || obj.gauntletRounds < 6 || obj.gauntletRounds > 12) obj.gauntletRounds = 8;
@@ -2716,6 +2957,20 @@ function backfillStateDefaults(obj) {
   if (obj.crownFinal && !obj.crownFinal.theme) obj.crownFinal.theme = "Crown";
   if (!Array.isArray(obj.rawPhones)) obj.rawPhones = Array((obj.rawNames || []).length || 8).fill("");
   if (!Array.isArray(obj.phones))    obj.phones    = Array((obj.slots    || []).length || 8).fill("");
+  if (!Array.isArray(obj.players)) obj.players = legacyPlayersFrom(obj);
+  else {
+    obj.players = obj.players.map((p, i) => ({
+      slot: Number.isInteger(p.slot) ? p.slot : i + 1,
+      name: p.name || "",
+      phone: p.phone || "",
+      status: p.status === "left" ? "left" : "active",
+      eligibleFromRound: Number.isInteger(p.eligibleFromRound) ? p.eligibleFromRound : 1,
+      joinedRound: Number.isInteger(p.joinedRound) ? p.joinedRound : 1,
+      leftRound: Number.isInteger(p.leftRound) ? p.leftRound : null,
+    }));
+  }
+  if (Array.isArray(obj.rounds)) obj.rounds.forEach(normalizeRoundV5);
+  if (obj.finals) normalizeFinalsV5(obj.finals);
   // timeBudget backfill
   if (!obj.timeBudget || typeof obj.timeBudget !== "object") {
     obj.timeBudget = {
@@ -2752,12 +3007,24 @@ function load() {
       const obj = JSON.parse(raw);
       if (obj && obj.phase) return backfillStateDefaults(obj);
     }
+    const v4raw = localStorage.getItem(STORAGE_KEY_V4);
+    if (v4raw) {
+      const v4 = JSON.parse(v4raw);
+      if (v4 && v4.phase) {
+        const migrated = migrateV4toV5(v4);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          localStorage.removeItem(STORAGE_KEY_V4);
+        } catch (e) {}
+        return migrated;
+      }
+    }
     // v3 migration: copy fields verbatim, backfill adds timeBudget
     const v3raw = localStorage.getItem(STORAGE_KEY_V3);
     if (v3raw) {
       const v3 = JSON.parse(v3raw);
       if (v3 && v3.phase) {
-        const migrated = backfillStateDefaults(v3);
+        const migrated = migrateV4toV5(v3);
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
           localStorage.removeItem(STORAGE_KEY_V3);
@@ -2770,7 +3037,7 @@ function load() {
     if (v2raw) {
       const v2 = JSON.parse(v2raw);
       if (v2 && v2.phase) {
-        const migrated = backfillStateDefaults(v2);
+        const migrated = migrateV4toV5(v2);
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
           localStorage.removeItem(STORAGE_KEY_V2);
@@ -2783,7 +3050,7 @@ function load() {
     if (v1raw) {
       const v1 = JSON.parse(v1raw);
       if (v1 && v1.phase) {
-        const migrated = backfillStateDefaults(v1);
+        const migrated = migrateV4toV5(v1);
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
           localStorage.removeItem(STORAGE_KEY_V1);
@@ -3831,6 +4098,15 @@ function buildResultsMessage(slot, mode) {
 }
 
 function nameOf(slot) { return state.slots[slot - 1] || ("P" + slot); }
+function gamesOf(r) {
+  if (!r) return [];
+  if (Array.isArray(r.games)) return r.games.slice().sort((a, b) => (a.court || 0) - (b.court || 0));
+  return [r.court1, r.court2].filter(Boolean).map((g, i) => {
+    if (!Number.isInteger(g.court)) g.court = i + 1;
+    return g;
+  });
+}
+function byesOf(r) { return r && Array.isArray(r.byes) ? r.byes : []; }
 function teamName(team) { return nameOf(team[0]) + " & " + nameOf(team[1]); }
 function isGameComplete(g) { return Number.isInteger(g.score1) && Number.isInteger(g.score2); }
 
