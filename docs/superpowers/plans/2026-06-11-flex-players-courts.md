@@ -82,9 +82,9 @@
 
 ### Task 4.1: Pairing engine
 
-- [ ] Tests: cost function values on hand-built histories (partner repeat = 10·n², opponent = 1·n², +1000 consecutive-partner recency penalty, §6.1); generated round has each playing slot exactly once; determinism under seed; simulated quality invariants — no repeat partners in consecutive **played** rounds (per spec §6.1 the recency penalty keys on each player's immediately previous *played* round, so a pair separated by a bye may legally re-partner; degenerate 4-active configs excepted), no pair partnered 3+ times while another pair never partnered (across N∈{5,9,10,13,16,24}, C∈{1,2,3,6}, seeds×5).
-- [ ] Implement `generateRRSchedule(actives, courtCount, roundsWanted, history, rng)` per §6.1 (randomized greedy, 3-way team split, swap improvement, ~60 restarts/round).
-- [ ] Commit: `feat(rr): cost-minimizing pairing engine for arbitrary N/courts`
+- [x] Tests: cost function values on hand-built histories (partner repeat = 10·n², opponent = 1·n², +1000 consecutive-partner recency penalty, §6.1); generated round has each playing slot exactly once; determinism under seed; simulated quality invariants — no repeat partners in consecutive **played** rounds (per spec §6.1 the recency penalty keys on each player's immediately previous *played* round, so a pair separated by a bye may legally re-partner; degenerate 4-active configs excepted), no pair partnered 3+ times while another pair never partnered (across N∈{5,9,10,13,16,24}, C∈{1,2,3,6}, seeds×5).
+- [x] Implement `generateRRSchedule(actives, courtCount, roundsWanted, history, rng)` per §6.1 (randomized greedy, 3-way team split, swap improvement, ~60 restarts/round).
+- [x] Commit: `feat(rr): cost-minimizing pairing engine for arbitrary N/courts`
 
 ### Task 4.2: Golden path + integration
 

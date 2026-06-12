@@ -1676,6 +1676,45 @@ function runSelfTests() {
       "losersSitCapped cap baseline ignores late joiners after shielded round", capPick);
     state = savedState;
   }
+  // Flex Task 4.1 — generalized RR pairing engine
+  {
+    const hist = [makeRound(1, [makeGame(1, [1,2], [3,4])])];
+    const samePartner = [makeGame(1, [1,2], [3,4])];
+    const swapped = [makeGame(1, [1,3], [2,4])];
+    const costSame = typeof rrRoundCost === "function" ? rrRoundCost(samePartner, hist) : 0;
+    const costSwapped = typeof rrRoundCost === "function" ? rrRoundCost(swapped, hist) : 0;
+    console.assert(costSame >= 1010 && costSwapped >= 2 && costSame > costSwapped,
+      "rrRoundCost partner/opponent/recency penalties", { costSame, costSwapped });
+    const schedA = typeof generateRRSchedule === "function"
+      ? generateRRSchedule([1,2,3,4,5,6,7,8,9,10], 2, 4, [], mulberry32(777)) : [];
+    const schedB = typeof generateRRSchedule === "function"
+      ? generateRRSchedule([1,2,3,4,5,6,7,8,9,10], 2, 4, [], mulberry32(777)) : [];
+    const sig = rounds => rounds.map(r => ({ byes: byesOf(r), games: gamesOf(r).map(g => ({ court: g.court, team1: g.team1, team2: g.team2 })) }));
+    console.assert(JSON.stringify(sig(schedA)) === JSON.stringify(sig(schedB)),
+      "generateRRSchedule deterministic under seed");
+    console.assert(schedA.length === 4 && schedA.every(r => {
+      const playing = gamesOf(r).flatMap(g => [...g.team1, ...g.team2]);
+      return new Set(playing).size === playing.length && byesOf(r).every(s => !playing.includes(s));
+    }), "generateRRSchedule each playing slot exactly once", schedA);
+    const pairKey = (a, b) => Math.min(a, b) + "-" + Math.max(a, b);
+    let badConsecutive = 0;
+    for (const [n, c] of [[5,1], [9,2], [13,3], [16,4]]) {
+      const rounds = typeof generateRRSchedule === "function"
+        ? generateRRSchedule(Array.from({ length: n }, (_, i) => i + 1), c, 6, [], mulberry32(500 + n + c)) : [];
+      const lastPartner = new Map();
+      for (const r of rounds) {
+        for (const g of gamesOf(r)) {
+          for (const t of [g.team1, g.team2]) {
+            const k = pairKey(t[0], t[1]);
+            if (lastPartner.get(t[0]) === t[1] || lastPartner.get(t[1]) === t[0]) badConsecutive++;
+            lastPartner.set(t[0], t[1]);
+            lastPartner.set(t[1], t[0]);
+          }
+        }
+      }
+    }
+    console.assert(badConsecutive === 0, "generateRRSchedule avoids consecutive repeat partners", badConsecutive);
+  }
   // Task 3 — parsePastedNames
   {
     const a = parsePastedNames("Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd");
@@ -4444,7 +4483,7 @@ function allocateByes(policy, context) {
   const active = (context.activeSlots || []).slice();
   const shape = roundShapeFor(active.length, context.courtCount || 2);
   const byesNeeded = shape.byesNeeded;
-  if (byesNeeded <= 0) return { byes: [], playing: active, ...shape };
+  if (byesNeeded <= 0) return { ...shape, byes: [], playing: active };
   const rng = context.rng || Math.random;
   const statsBySlot = new Map(active.map(slot => [slot, byeStatsFor(slot, context)]));
   const randBySlot = new Map(active.map(slot => [slot, rng()]));
@@ -4459,7 +4498,7 @@ function allocateByes(policy, context) {
     if (pool.length < byesNeeded) pool = buildPool(true, false);
     if (pool.length < byesNeeded) pool = buildPool(true, true);
     const byes = selectSorted(pool);
-    return { byes, playing: active.filter(s => !byes.includes(s)), ...shape };
+    return { ...shape, byes, playing: active.filter(s => !byes.includes(s)) };
   }
 
   const prev = context.rounds[context.rounds.length - 1];
@@ -4493,7 +4532,86 @@ function allocateByes(policy, context) {
   if (pool.length < byesNeeded) pool = buildPool(false, false, true);
   if (pool.length < byesNeeded) pool = buildPool(false, false, false);
   const byes = selectSorted(pool);
-  return { byes, playing: active.filter(s => !byes.includes(s)), ...shape };
+  return { ...shape, byes, playing: active.filter(s => !byes.includes(s)) };
+}
+function rrPairKey(a, b) {
+  return Math.min(a, b) + "-" + Math.max(a, b);
+}
+function rrHistoryCounts(rounds) {
+  const partners = new Map(), opponents = new Map(), lastPartner = new Map();
+  for (const r of rounds || []) {
+    for (const g of gamesOf(r)) {
+      for (const t of [g.team1, g.team2]) {
+        const k = rrPairKey(t[0], t[1]);
+        partners.set(k, (partners.get(k) || 0) + 1);
+        lastPartner.set(t[0], t[1]);
+        lastPartner.set(t[1], t[0]);
+      }
+      for (const a of g.team1) for (const b of g.team2) {
+        const k = rrPairKey(a, b);
+        opponents.set(k, (opponents.get(k) || 0) + 1);
+      }
+    }
+  }
+  return { partners, opponents, lastPartner };
+}
+function rrRoundCost(games, history) {
+  const h = rrHistoryCounts(history);
+  let cost = 0;
+  for (const g of games) {
+    for (const t of [g.team1, g.team2]) {
+      const k = rrPairKey(t[0], t[1]);
+      const n = h.partners.get(k) || 0;
+      cost += 10 * n * n;
+      if (h.lastPartner.get(t[0]) === t[1] || h.lastPartner.get(t[1]) === t[0]) cost += 1000;
+    }
+    for (const a of g.team1) for (const b of g.team2) {
+      const k = rrPairKey(a, b);
+      const n = h.opponents.get(k) || 0;
+      cost += n * n;
+    }
+  }
+  return cost;
+}
+function rrTeamSplits(four) {
+  return [
+    [[four[0], four[1]], [four[2], four[3]]],
+    [[four[0], four[2]], [four[1], four[3]]],
+    [[four[0], four[3]], [four[1], four[2]]],
+  ];
+}
+function bestRRSplit(four, court, history, chosen) {
+  let best = null, bestCost = Infinity;
+  for (const [team1, team2] of rrTeamSplits(four)) {
+    const game = makeGame(court, team1, team2);
+    const cost = rrRoundCost([...chosen, game], history);
+    if (cost < bestCost) { best = game; bestCost = cost; }
+  }
+  return best;
+}
+function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
+  const rounds = [];
+  const players = actives.map(slot => ({ slot, status: "active", eligibleFromRound: 1 }));
+  const baseRound = history && history.length ? Math.max(...history.map(r => r.round || 0)) : 0;
+  for (let ri = 0; ri < roundsWanted; ri++) {
+    const roundNum = baseRound + ri + 1;
+    const prior = [...(history || []), ...rounds];
+    const alloc = allocateByes("rotation", { activeSlots: actives, players, rounds: prior, round: roundNum, courtCount, rng });
+    let bestGames = null, bestCost = Infinity;
+    const restarts = Math.max(1, alloc.playing.length === 4 ? 1 : 60);
+    for (let attempt = 0; attempt < restarts; attempt++) {
+      const shuffled = seededShuffle(alloc.playing, rng);
+      const games = [];
+      for (let c = 0; c < alloc.activeCourts; c++) {
+        const four = shuffled.slice(c * 4, c * 4 + 4);
+        games.push(bestRRSplit(four, c + 1, prior, games));
+      }
+      const cost = rrRoundCost(games, prior);
+      if (cost < bestCost) { bestGames = games; bestCost = cost; }
+    }
+    rounds.push(makeRound(roundNum, bestGames || [], alloc.byes));
+  }
+  return rounds;
 }
 function teamName(team) { return nameOf(team[0]) + " & " + nameOf(team[1]); }
 function isGameComplete(g) { return Number.isInteger(g.score1) && Number.isInteger(g.score2); }
