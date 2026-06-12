@@ -24,6 +24,10 @@
     --bad: #ef4444;
     --court1: #38bdf8;
     --court2: #a78bfa;
+    --court3: #34d399;
+    --court4: #f472b6;
+    --court5: #f59e0b;
+    --court6: #22d3ee;
     --gold: #fbbf24;
     --silver: #cbd5e1;
   }
@@ -114,7 +118,7 @@
   }
   .court-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
     gap: 14px;
     margin-bottom: 14px;
   }
@@ -130,6 +134,10 @@
   }
   .court-card.c1 { border-top-color: var(--court1); }
   .court-card.c2 { border-top-color: var(--court2); }
+  .court-card.c3 { border-top-color: var(--court3); }
+  .court-card.c4 { border-top-color: var(--court4); }
+  .court-card.c5 { border-top-color: var(--court5); }
+  .court-card.c6 { border-top-color: var(--court6); }
   .court-card.gold { border-top-color: var(--gold); }
   .court-card.silver { border-top-color: var(--silver); }
   .bye-banner {
@@ -165,6 +173,10 @@
   }
   .court-card.c1 .court-label { color: var(--court1); }
   .court-card.c2 .court-label { color: var(--court2); }
+  .court-card.c3 .court-label { color: var(--court3); }
+  .court-card.c4 .court-label { color: var(--court4); }
+  .court-card.c5 .court-label { color: var(--court5); }
+  .court-card.c6 .court-label { color: var(--court6); }
   .court-card.gold .court-label { color: var(--gold); }
   .court-card.silver .court-label { color: var(--silver); }
   .matchup {
@@ -401,6 +413,10 @@
   }
   .history-game .court-tag.c1 { background: rgba(56, 189, 248, 0.15); color: var(--court1); }
   .history-game .court-tag.c2 { background: rgba(167, 139, 250, 0.15); color: var(--court2); }
+  .history-game .court-tag.c3 { background: rgba(52, 211, 153, 0.15); color: var(--court3); }
+  .history-game .court-tag.c4 { background: rgba(244, 114, 182, 0.15); color: var(--court4); }
+  .history-game .court-tag.c5 { background: rgba(245, 158, 11, 0.15); color: var(--court5); }
+  .history-game .court-tag.c6 { background: rgba(34, 211, 238, 0.15); color: var(--court6); }
   .history-game .game-text { flex: 1; }
   .history-game .game-score {
     font-weight: 800;
@@ -454,6 +470,57 @@
     font-size: 12px;
     color: var(--muted);
     line-height: 1.4;
+  }
+  .setup-control-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .stepper button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    font-size: 24px;
+  }
+  .stepper-value {
+    min-width: 44px;
+    text-align: center;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .fit-line {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .fit-line.warning { color: var(--accent); font-weight: 700; }
+  .setup-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .setup-actions button {
+    min-height: 44px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  .remove-player {
+    width: 44px;
+    min-width: 44px;
+    min-height: 48px;
+    padding: 0;
+    font-size: 20px;
   }
   @media (max-width: 480px) {
     .format-options { grid-template-columns: 1fr; }
@@ -737,6 +804,11 @@
   }
   .partner-chip.c1 { color: var(--court1); background: rgba(56, 189, 248, 0.15); }
   .partner-chip.c2 { color: var(--court2); background: rgba(167, 139, 250, 0.15); }
+  .partner-chip.c3 { color: var(--court3); background: rgba(52, 211, 153, 0.15); }
+  .partner-chip.c4 { color: var(--court4); background: rgba(244, 114, 182, 0.15); }
+  .partner-chip.c5 { color: var(--court5); background: rgba(245, 158, 11, 0.15); }
+  .partner-chip.c6 { color: var(--court6); background: rgba(34, 211, 238, 0.15); }
+  .partner-chip.bye { color: var(--muted); background: var(--panel-2); }
   /* Tap-winner quick-fill pill */
   .team-row {
     /* override existing 1fr 110px to allow pill column */
@@ -991,6 +1063,10 @@
   }
   .schedule-game .court-tag.c1 { background: rgba(56, 189, 248, 0.15); color: var(--court1); }
   .schedule-game .court-tag.c2 { background: rgba(167, 139, 250, 0.15); color: var(--court2); }
+  .schedule-game .court-tag.c3 { background: rgba(52, 211, 153, 0.15); color: var(--court3); }
+  .schedule-game .court-tag.c4 { background: rgba(244, 114, 182, 0.15); color: var(--court4); }
+  .schedule-game .court-tag.c5 { background: rgba(245, 158, 11, 0.15); color: var(--court5); }
+  .schedule-game .court-tag.c6 { background: rgba(34, 211, 238, 0.15); color: var(--court6); }
   .schedule-game .court-tag.gold { background: rgba(251, 191, 36, 0.18); color: var(--gold); }
   .schedule-game .court-tag.silver { background: rgba(203, 213, 225, 0.15); color: var(--silver); }
   .schedule-game .game-text { flex: 1; }
@@ -3172,92 +3248,136 @@ function runSelfTests() {
     state = savedState;
   }
 
-  // Audit pass-2 — ties are in-progress; only decided games count toward
-  // standings/partners (and the "N left" badge no longer reads 0 from round 1).
-  {
-    const savedState = state;
-    state = newState();
-    state.format = "rr";
-    state.rawNames = ["Ava","Ben","Cy","Dee","Eli","Fay","Gus","Hal"];
-    state.slots = state.rawNames.slice();
-    state.tiebreakRandom = [0,1,2,3,4,5,6,7];
-    state.rounds = generateRounds();   // RR pre-generates all 7 rounds up front
-    state.currentRound = 1;
-    state.phase = "playing";
-
-    // Pre-game: no decided games → 0 partners used ("7 left"), 0 points.
-    const pre = computeStats(state.rounds.length, false);
-    console.assert(pre.every(s => s.partnersUsed.size === 0 && s.points === 0),
-      "audit2: pre-game RR counts no partners/points despite pre-generated rounds");
-
-    // A tied game is in-progress: no points, no partners, round not decided.
-    const r1 = state.rounds[0];
-    const r1c1 = gameForCourt(r1, 1);
-    r1c1.score1 = 9; r1c1.score2 = 9;
-    console.assert(!isRoundDecided(r1), "audit2: tied round is not decided");
-    const tie = computeStats(state.rounds.length, false);
-    console.assert(tie.every(s => s.points === 0 && s.partnersUsed.size === 0),
-      "audit2: a tied game adds no points/partners");
-
-    // Decide it (11-9) → partners/points/win now count for that court's players.
-    r1c1.score1 = 11;
-    console.assert(isGameDecided(r1c1), "audit2: 11-9 is decided");
-    const won = computeStats(state.rounds.length, false);
-    const [a, b] = r1c1.team1;
-    console.assert(won[a-1].partnersUsed.has(b) && won[a-1].points === 11 && won[a-1].wins === 1,
-      "audit2: a decided game counts partners/points/win");
-
-    // Stack & King: a tied game adds nothing to Stack Score / King Score; a
-    // decided game does.
-    for (const fmt of ["stack", "king"]) {
-      state.format = fmt;
+    // Audit pass-2 — ties are in-progress; only decided games count toward
+    // standings/partners (and the "N left" badge no longer reads 0 from round 1).
+    {
+      const savedState = state;
+      state = newState();
+      state.format = "rr";
+      state.rawNames = ["Ava","Ben","Cy","Dee","Eli","Fay","Gus","Hal"];
       state.slots = state.rawNames.slice();
-      state.rounds = [fmt === "stack" ? assignInitialStackCourts() : assignInitialKingCourts()];
-      const compute = fmt === "stack" ? computeStackStats : computeKingStats;
-      const scoreOf = s => (fmt === "stack" ? s.stackScore : s.kingScore);
-      const g = gameForCourt(state.rounds[0], 1);
-      g.score1 = 9; g.score2 = 9;   // tie
-      const tieSum = compute(state.rounds.length).reduce((acc, s) => acc + scoreOf(s), 0);
-      console.assert(tieSum === 0, "audit2: " + fmt + " tied game adds no score", tieSum);
-      g.score1 = 11;                // 11-9 decided
-      const winSum = compute(state.rounds.length).reduce((acc, s) => acc + scoreOf(s), 0);
-      console.assert(winSum > 0, "audit2: " + fmt + " decided game scores", winSum);
+      state.tiebreakRandom = [0,1,2,3,4,5,6,7];
+      state.rounds = generateRounds();   // RR pre-generates all 7 rounds up front
+      state.currentRound = 1;
+      state.phase = "playing";
+
+      // Pre-game: no decided games → 0 partners used ("7 left"), 0 points.
+      const pre = computeStats(state.rounds.length, false);
+      console.assert(pre.every(s => s.partnersUsed.size === 0 && s.points === 0),
+        "audit2: pre-game RR counts no partners/points despite pre-generated rounds");
+
+      // A tied game is in-progress: no points, no partners, round not decided.
+      const r1 = state.rounds[0];
+      const r1c1 = gameForCourt(r1, 1);
+      r1c1.score1 = 9; r1c1.score2 = 9;
+      console.assert(!isRoundDecided(r1), "audit2: tied round is not decided");
+      const tie = computeStats(state.rounds.length, false);
+      console.assert(tie.every(s => s.points === 0 && s.partnersUsed.size === 0),
+        "audit2: a tied game adds no points/partners");
+
+      // Decide it (11-9) → partners/points/win now count for that court's players.
+      r1c1.score1 = 11;
+      console.assert(isGameDecided(r1c1), "audit2: 11-9 is decided");
+      const won = computeStats(state.rounds.length, false);
+      const [a, b] = r1c1.team1;
+      console.assert(won[a-1].partnersUsed.has(b) && won[a-1].points === 11 && won[a-1].wins === 1,
+        "audit2: a decided game counts partners/points/win");
+
+      // Stack & King: a tied game adds nothing to Stack Score / King Score; a
+      // decided game does.
+      for (const fmt of ["stack", "king"]) {
+        state.format = fmt;
+        state.slots = state.rawNames.slice();
+        state.rounds = [fmt === "stack" ? assignInitialStackCourts() : assignInitialKingCourts()];
+        const compute = fmt === "stack" ? computeStackStats : computeKingStats;
+        const scoreOf = s => (fmt === "stack" ? s.stackScore : s.kingScore);
+        const g = gameForCourt(state.rounds[0], 1);
+        g.score1 = 9; g.score2 = 9;   // tie
+        const tieSum = compute(state.rounds.length).reduce((acc, s) => acc + scoreOf(s), 0);
+        console.assert(tieSum === 0, "audit2: " + fmt + " tied game adds no score", tieSum);
+        g.score1 = 11;                // 11-9 decided
+        const winSum = compute(state.rounds.length).reduce((acc, s) => acc + scoreOf(s), 0);
+        console.assert(winSum > 0, "audit2: " + fmt + " decided game scores", winSum);
+      }
+
+      // Gauntlet: a tied game adds no points (uses the shared computeStats).
+      state.format = "gauntlet";
+      state.slots = state.rawNames.slice();
+      state.rounds = [assignInitialGauntletCourts()];
+      const gg = gameForCourt(state.rounds[0], 1);
+      gg.score1 = 9; gg.score2 = 9;
+      console.assert(computeStats(state.rounds.length, false).every(s => s.points === 0),
+        "audit2: gauntlet tied game adds no points");
+      gg.score1 = 11;
+      console.assert(computeStats(state.rounds.length, false).some(s => s.points > 0),
+        "audit2: gauntlet decided game scores");
+
+      // projectFinishTime: a tied round stays in the remaining estimate (so the
+      // projected finish is later than when that round is decided).
+      state.format = "rr";
+      state.slots = state.rawNames.slice();
+      state.rounds = generateRounds();
+      state.timeBudget = { ...newState().timeBudget, enabled: true, minutes: 90,
+        plannedConfig: { target: 11, winBy: 2, scoring: "sideout" } };
+      const rr0 = state.rounds[0];
+      const rr0c1 = gameForCourt(rr0, 1), rr0c2 = gameForCourt(rr0, 2);
+      rr0c1.score1 = 11; rr0c1.score2 = 5; rr0c2.score1 = 9; rr0c2.score2 = 9; // tied round
+      const winTied = projectFinishTime(state, null, 0);
+      rr0c2.score1 = 11;                                                                             // now decided
+      const winDecided = projectFinishTime(state, null, 0);
+      console.assert(winTied && winDecided && winTied[0] > winDecided[0],
+        "audit2: tied round counts as remaining in the finish estimate", winTied, winDecided);
+
+      state = savedState;
     }
 
-    // Gauntlet: a tied game adds no points (uses the shared computeStats).
-    state.format = "gauntlet";
-    state.slots = state.rawNames.slice();
-    state.rounds = [assignInitialGauntletCourts()];
-    const gg = gameForCourt(state.rounds[0], 1);
-    gg.score1 = 9; gg.score2 = 9;
-    console.assert(computeStats(state.rounds.length, false).every(s => s.points === 0),
-      "audit2: gauntlet tied game adds no points");
-    gg.score1 = 11;
-    console.assert(computeStats(state.rounds.length, false).some(s => s.points > 0),
-      "audit2: gauntlet decided game scores");
+    // Flex Task 9.1 — setup validation and fit-line helpers
+    {
+      const names = n => Array.from({ length: n }, (_, i) => "Player " + (i + 1));
+      const validate = typeof validateSetupConfig === "function" ? validateSetupConfig : () => ({ ok: false });
+      const fitText = typeof fitLineText === "function" ? fitLineText : () => "";
+      const valid10 = validate("rr", names(10), 2);
+      console.assert(valid10.ok && valid10.playerCount === 10 && valid10.effectiveCourtCount === 2,
+        "setup validation accepts 10-player RR / 2 courts", valid10);
+      console.assert(!validate("rr", names(3), 1).ok,
+        "setup validation rejects fewer than 4 flexible players");
+      console.assert(!validate("rr", names(25), 6).ok,
+        "setup validation rejects more than 24 flexible players");
+      console.assert(!validate("rr", ["A","B","C","a"], 1).ok,
+        "setup validation rejects duplicate names");
+      const crownValid = validate("crown", ["A","B","C","D"], 6);
+      console.assert(crownValid.ok && crownValid.playerCount === 4 && crownValid.effectiveCourtCount === 1,
+        "setup validation ignores court stepper for Crown", crownValid);
+      console.assert(!validate("crown", ["A","B","C","D","E"], 1).ok,
+        "setup validation requires exactly 4 Crown players");
+      const fit10 = fitText(10, 2);
+      console.assert(fit10 === "10 players · 2 courts → 8 play, 2 sit out each round.",
+        "fit-line text reports byes", fit10);
+      const fit8 = fitText(8, 2);
+      console.assert(fit8 === "8 players · 2 courts → all play each round.",
+        "fit-line text reports all-play", fit8);
+      const fit24 = fitText(24, 2);
+      console.assert(/16 sit out each round/.test(fit24) && />1\/3 sitting/.test(fit24),
+        "fit-line warns when more than one third sit", fit24);
+      const savedState = state;
+      state = {
+        phase: "playing", format: "rr", currentRound: 1,
+        players: names(5).map((name, i) => ({ slot: i + 1, name, phone: "", status: "active",
+          eligibleFromRound: 1, joinedRound: 1, leftRound: null })),
+        rounds: [
+          makeRound(1, [makeGame(1, [1,2], [3,4])], [5]),
+          makeRound(2, [makeGame(1, [1,3], [2,4])], [5]),
+        ],
+      };
+      const byeInfo = nextPartnerInfo(5);
+      console.assert(byeInfo && byeInfo.bye === true,
+        "nextPartnerInfo reports a next-round bye", byeInfo);
+      state = savedState;
+    }
 
-    // projectFinishTime: a tied round stays in the remaining estimate (so the
-    // projected finish is later than when that round is decided).
-    state.format = "rr";
-    state.slots = state.rawNames.slice();
-    state.rounds = generateRounds();
-    state.timeBudget = { ...newState().timeBudget, enabled: true, minutes: 90,
-      plannedConfig: { target: 11, winBy: 2, scoring: "sideout" } };
-    const rr0 = state.rounds[0];
-    const rr0c1 = gameForCourt(rr0, 1), rr0c2 = gameForCourt(rr0, 2);
-    rr0c1.score1 = 11; rr0c1.score2 = 5; rr0c2.score1 = 9; rr0c2.score2 = 9; // tied round
-    const winTied = projectFinishTime(state, null, 0);
-    rr0c2.score1 = 11;                                                                             // now decided
-    const winDecided = projectFinishTime(state, null, 0);
-    console.assert(winTied && winDecided && winTied[0] > winDecided[0],
-      "audit2: tied round counts as remaining in the finish estimate", winTied, winDecided);
-
-    state = savedState;
+    console.log(`[self-tests] complete — ${failures} failure(s)`);
+    console.assert = _origAssert;
   }
-
-  console.log(`[self-tests] complete — ${failures} failure(s)`);
-  console.assert = _origAssert;
-}
 
 // -------- tournament simulation (gated by ?simulate URL param) --------
 // Plays full random RR tournaments end-to-end through the real UI components:
@@ -3440,8 +3560,8 @@ function newState() {
     gauntletRounds: 8,                                  // only used when format === "gauntlet"
     rrRounds: 7,
     rrScheduleMode: "wh8",
-    rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle, used on setup screen; always 8 elements
-    rawPhones: ["", "", "", "", "", "", "", ""],     // parallel to rawNames; optional cell numbers
+      rawNames: ["", "", "", "", "", "", "", ""],      // pre-shuffle setup roster; dynamic length 4..24
+      rawPhones: ["", "", "", "", "", "", "", ""],     // parallel to rawNames; optional cell numbers
     slots:    ["", "", "", "", "", "", "", ""],      // post-shuffle, slot index 0..7 = slot 1..8; always 8 elements
     players: [],
     currentRound: 1,
@@ -3476,13 +3596,81 @@ function newState() {
 function makeScheduleSeed() {
   return Math.floor(Math.random() * 0x100000000);
 }
-function setCourtCount(count) {
-  const next = Math.max(1, Math.min(6, parseInt(count, 10) || state.courtCount || 2));
-  const changed = next !== state.courtCount;
-  state.courtCount = next;
-  if (changed && state.format === "rr" && state.phase !== "setup") state.rrScheduleMode = "generated";
-}
-function legacyPlayersFrom(obj) {
+  function setCourtCount(count) {
+    const next = Math.max(1, Math.min(6, parseInt(count, 10) || state.courtCount || 2));
+    const changed = next !== state.courtCount;
+    state.courtCount = next;
+    if (changed && state.format === "rr" && state.phase !== "setup") state.rrScheduleMode = "generated";
+  }
+  function effectiveCourtCountForFormat(format, courtCount) {
+    return format === "crown" ? 1 : Math.max(1, Math.min(6, parseInt(courtCount, 10) || 2));
+  }
+  function clampSetupRosterCount(count) {
+    return Math.max(4, Math.min(24, parseInt(count, 10) || 8));
+  }
+  function setupRosterCount(format = state.format) {
+    if (format === "crown") return 4;
+    const names = Array.isArray(state.rawNames) ? state.rawNames : [];
+    return clampSetupRosterCount(names.length || 8);
+  }
+  function ensureSetupRosterArrays(count) {
+    if (!Array.isArray(state.rawNames)) state.rawNames = [];
+    if (!Array.isArray(state.rawPhones)) state.rawPhones = [];
+    while (state.rawNames.length < count) state.rawNames.push("");
+    while (state.rawPhones.length < count) state.rawPhones.push("");
+  }
+  function setSetupRosterCount(count) {
+    const next = clampSetupRosterCount(count);
+    ensureSetupRosterArrays(next);
+    state.rawNames.length = next;
+    state.rawPhones.length = next;
+    if (Array.isArray(_phoneAutofilled)) _phoneAutofilled.length = next;
+  }
+  function setupNames(count = setupRosterCount()) {
+    ensureSetupRosterArrays(count);
+    return state.rawNames.slice(0, count).map(n => (n || "").trim());
+  }
+  function validateSetupConfig(format, names, courtCount) {
+    const trimmed = (names || []).map(n => (n || "").trim());
+    const effectiveCourtCount = effectiveCourtCountForFormat(format, courtCount);
+    const playerCount = trimmed.length;
+    const min = format === "crown" ? 4 : 4;
+    const max = format === "crown" ? 4 : 24;
+    if (playerCount < min || playerCount > max) {
+      return { ok: false, playerCount, effectiveCourtCount,
+        error: format === "crown" ? "Crown Court requires exactly 4 players." : "Use 4–24 players." };
+    }
+    const filled = trimmed.filter(Boolean).length;
+    if (filled < playerCount) {
+      return { ok: false, playerCount, effectiveCourtCount,
+        error: "Enter all " + playerCount + " player names to start (" + filled + "/" + playerCount + " so far)." };
+    }
+    const seen = new Set();
+    for (const n of trimmed) {
+      const k = n.toLowerCase();
+      if (seen.has(k)) {
+        return { ok: false, playerCount, effectiveCourtCount,
+          error: "Duplicate name: “" + n + "”. Each player needs a unique name." };
+      }
+      seen.add(k);
+    }
+    return { ok: true, names: trimmed, playerCount, effectiveCourtCount };
+  }
+  function fitLineText(playerCount, courtCount) {
+    const shape = roundShapeFor(playerCount, courtCount);
+    const courtWord = courtCount === 1 ? "court" : "courts";
+    let text = playerCount + " players · " + courtCount + " " + courtWord + " → ";
+    if (shape.byesNeeded === 0) {
+      text += "all play each round.";
+    } else {
+      text += shape.playing + " play, " + shape.byesNeeded + " sit out each round.";
+    }
+    if (shape.byesNeeded > playerCount / 3) {
+      text += " ⚠️ >1/3 sitting (" + shape.byesNeeded + " of " + playerCount + " sit each round) — consider more courts.";
+    }
+    return text;
+  }
+  function legacyPlayersFrom(obj) {
   const slots = Array.isArray(obj.slots) ? obj.slots : [];
   const phones = Array.isArray(obj.phones) ? obj.phones : [];
   const fallbackNames = Array.isArray(obj.rawNames) ? obj.rawNames : [];
@@ -4779,28 +4967,43 @@ function finalRankingCrown() {
     return state.tiebreakRandom[a-1] - state.tiebreakRandom[b-1];
   });
 
-  const ordered = [...sortWithin(crownWinTeam), ...sortWithin(crownLoseTeam)];
-  return ordered.map(slot => ({ ...stats[slot-1] }));
-}
-
-function startTournament() {
-  // No syncKeepAwakeToState() here — this function mutates state in-place rather than
-  // replacing it, so keepAwake settings are already live. syncKeepAwakeToState() is only
-  // needed after full state replacements (e.g. newState(), format-switch, data-clear).
-  const isCrown = state.format === "crown";
-  const rawEntries = (state.rawNames || []).map((name, i) => ({
-    name: (name || "").trim(),
-    phone: (state.rawPhones || [])[i] || "",
-  }));
-  let entries;
-  if (isCrown) {
-    entries = rawEntries.slice(0, 4);
-  } else if (state.format === "rr") {
-    entries = rawEntries.filter(e => e.name);
-  } else {
-    entries = rawEntries.slice(0, 8);
-    while (entries.length < 8) entries.push({ name: "", phone: "" });
+    const ordered = [...sortWithin(crownWinTeam), ...sortWithin(crownLoseTeam)];
+    return ordered.map(slot => ({ ...stats[slot-1] }));
   }
+
+  function shuffleRevealForRound(round) {
+    const display = [];
+    const groups = [];
+    for (const g of gamesOf(round)) {
+      const slots = [...(g.team1 || []), ...(g.team2 || [])];
+      display.push(...slots.map(nameOf));
+      groups.push({ label: shuffleRevealLabel(g.court || 1), count: slots.length });
+    }
+    const byes = byesOf(round);
+    if (byes.length) {
+      display.push(...byes.map(nameOf));
+      groups.push({ label: "Sitting", count: byes.length });
+    }
+    return { display, groups };
+  }
+
+  function startTournament() {
+    // No syncKeepAwakeToState() here — this function mutates state in-place rather than
+    // replacing it, so keepAwake settings are already live. syncKeepAwakeToState() is only
+    // needed after full state replacements (e.g. newState(), format-switch, data-clear).
+    const isCrown = state.format === "crown";
+    const setupCount = setupRosterCount();
+    ensureSetupRosterArrays(setupCount);
+    const rawEntries = (state.rawNames || []).map((name, i) => ({
+      name: (name || "").trim(),
+      phone: (state.rawPhones || [])[i] || "",
+    }));
+    let entries;
+    if (isCrown) {
+      entries = rawEntries.slice(0, 4);
+    } else {
+      entries = rawEntries.slice(0, setupCount);
+    }
   const count = entries.length;
   const names = entries.map(e => e.name);
   const shuffled = shuffle(names);
@@ -4846,60 +5049,39 @@ function startTournament() {
     state.phase = "playing";
     save();
     runShuffleReveal(shuffled.slice(), () => render());
-  } else if (state.format === "stack") {
-    state.slots = shuffled;
-    writePlayersFromSlots(count, phoneByName);
-    state.rounds = [assignInitialStackCourts()];
-    state.phase = "playing";
-    save();
-    const r1 = state.rounds[0];
-    const sGame1 = gameForCourt(r1, 1), sGame2 = gameForCourt(r1, 2);
-    const c1Slots = [...sGame1.team1, ...sGame1.team2];
-    const c2Slots = [...sGame2.team1, ...sGame2.team2];
-    const display = [...c1Slots.map(nameOf), ...c2Slots.map(nameOf)];
-    runShuffleReveal(display, () => render(), {
-      title: "Drawing courts…",
-      groups: [
-        { label: "🏆 Court 1", count: 4 },
-        { label: "Court 2",    count: 4 },
-      ],
-    });
-  } else if (state.format === "king") {
-    state.slots = shuffled;
-    writePlayersFromSlots(count, phoneByName);
-    state.rounds = [assignInitialKingCourts()];
-    state.phase = "playing";
-    save();
-    const r1k = state.rounds[0];
-    const kGame1 = gameForCourt(r1k, 1), kGame2 = gameForCourt(r1k, 2);
-    const kC1Slots = [...kGame1.team1, ...kGame1.team2];
-    const kC2Slots = [...kGame2.team1, ...kGame2.team2];
-    const kDisplay = [...kC1Slots.map(nameOf), ...kC2Slots.map(nameOf)];
-    runShuffleReveal(kDisplay, () => render(), {
-      title: "Drawing courts…",
-      groups: [
-        { label: "👑 King's Court", count: 4 },
-        { label: "Bottom Court",   count: 4 },
-      ],
-    });
-  } else if (state.format === "gauntlet") {
-    state.slots = shuffled;
-    writePlayersFromSlots(count, phoneByName);
-    state.rounds = [assignInitialGauntletCourts()];
-    state.phase = "playing";
-    save();
-    const r1g = state.rounds[0];
-    const gGame1 = gameForCourt(r1g, 1), gGame2 = gameForCourt(r1g, 2);
-    const gC1Slots = [...gGame1.team1, ...gGame1.team2];
-    const gC2Slots = [...gGame2.team1, ...gGame2.team2];
-    const gDisplay = [...gC1Slots.map(nameOf), ...gC2Slots.map(nameOf)];
-    runShuffleReveal(gDisplay, () => render(), {
-      title: "Drawing courts…",
-      groups: [
-        { label: "Court 1 (Top)", count: 4 },
-        { label: "Court 2",       count: 4 },
-      ],
-    });
+    } else if (state.format === "stack") {
+      state.slots = shuffled;
+      writePlayersFromSlots(count, phoneByName);
+      state.rounds = [assignInitialStackCourts()];
+      state.phase = "playing";
+      save();
+      const reveal = shuffleRevealForRound(state.rounds[0]);
+      runShuffleReveal(reveal.display, () => render(), {
+        title: "Drawing courts…",
+        groups: reveal.groups,
+      });
+    } else if (state.format === "king") {
+      state.slots = shuffled;
+      writePlayersFromSlots(count, phoneByName);
+      state.rounds = [assignInitialKingCourts()];
+      state.phase = "playing";
+      save();
+      const reveal = shuffleRevealForRound(state.rounds[0]);
+      runShuffleReveal(reveal.display, () => render(), {
+        title: "Drawing courts…",
+        groups: reveal.groups,
+      });
+    } else if (state.format === "gauntlet") {
+      state.slots = shuffled;
+      writePlayersFromSlots(count, phoneByName);
+      state.rounds = [assignInitialGauntletCourts()];
+      state.phase = "playing";
+      save();
+      const reveal = shuffleRevealForRound(state.rounds[0]);
+      runShuffleReveal(reveal.display, () => render(), {
+        title: "Drawing courts…",
+        groups: reveal.groups,
+      });
   } else {
     state.slots = shuffled;
     writePlayersFromSlots(count, phoneByName);
@@ -5059,12 +5241,56 @@ function activeSlots(round) {
     .filter(p => p.status === "active" && p.eligibleFromRound <= round)
     .map(p => p.slot);
 }
-function roundShapeFor(activeN, courtCount) {
-  const activeCourts = Math.min(courtCount, Math.floor(activeN / 4));
-  const playing = 4 * activeCourts;
-  return { activeCourts, playing, byesNeeded: activeN - playing };
-}
-function roundParticipantSet(r) {
+  function roundShapeFor(activeN, courtCount) {
+    const activeCourts = Math.min(courtCount, Math.floor(activeN / 4));
+    const playing = 4 * activeCourts;
+    return { activeCourts, playing, byesNeeded: activeN - playing };
+  }
+  function courtCardLabel(court, format = state.format) {
+    if (format === "stack") return court === 1 ? "🏆 COURT 1" : "COURT " + court;
+    if (format === "king") {
+      if (court === 1) return "👑 KING'S COURT";
+      if (court === 2) return "BOTTOM COURT";
+      return "COURT " + court;
+    }
+    if (format === "gauntlet") return court === 1 ? "COURT 1 (TOP)" : "COURT " + court;
+    if (court === 1) return "SOUTH COURT";
+    if (court === 2) return "NORTH COURT";
+    return "COURT " + court;
+  }
+  function courtTagLabel(court, format = state.format) {
+    if (format === "stack") return "Court " + court;
+    if (format === "king") {
+      if (court === 1) return "King's Court";
+      if (court === 2) return "Bottom";
+      return "Court " + court;
+    }
+    if (format === "gauntlet") return "Court " + court;
+    if (court === 1) return "South";
+    if (court === 2) return "North";
+    return "Court " + court;
+  }
+  function courtLocationLabel(court, format = state.format) {
+    if (format === "king") {
+      if (court === 1) return "King's Court";
+      if (court === 2) return "Bottom Court";
+      return "Court " + court;
+    }
+    if (format === "gauntlet") return court === 1 ? "Court 1 (Top)" : "Court " + court;
+    if (format === "rr") {
+      if (court === 1) return "South Court";
+      if (court === 2) return "North Court";
+    }
+    return "Court " + court;
+  }
+  function shuffleRevealLabel(court, format = state.format) {
+    if (format === "stack" && court === 1) return "🏆 Court 1";
+    if (format === "king" && court === 1) return "👑 King's Court";
+    if (format === "king" && court === 2) return "Bottom Court";
+    if (format === "gauntlet" && court === 1) return "Court 1 (Top)";
+    return "Court " + court;
+  }
+  function roundParticipantSet(r) {
   const slots = new Set();
   for (const g of gamesOf(r)) {
     [...(g.team1 || []), ...(g.team2 || [])].forEach(s => slots.add(s));
@@ -5381,16 +5607,17 @@ function buildFinals() {
   save();
 }
 
-// Returns { partner: number, courtKey: 1|2 } for the given player's next round,
-// or null if there's no next round or no rounds yet. Partner chips are an RR
+// Returns { partner: number, courtKey: number } or { bye: true } for the given
+// player's next round, or null if there's no next round or no rounds yet. Partner chips are an RR
 // affordance — Stack rounds are built incrementally so the next pairing isn't
 // known until after advancing.
 function nextPartnerInfo(slot) {
   if (state.phase !== "playing") return null;
   if (state.format === "stack" || state.format === "king" || state.format === "gauntlet") return null;
-  if (state.currentRound >= 7) return null;
+  if (state.currentRound >= (state.rounds || []).length) return null;
   const next = state.rounds[state.currentRound]; // currentRound is 1-based; this is round N+1
   if (!next) return null;
+  if (byesOf(next).includes(slot)) return { bye: true };
   for (const game of gamesOf(next)) {
     const courtKey = game.court || 1;
     for (const team of [game.team1, game.team2]) {
@@ -5854,31 +6081,21 @@ function renderHeader() {
   return header;
 }
 
-function canStart() {
-  const count = state.format === "crown" ? 4 : 8;
-  const trimmed = (state.rawNames || []).slice(0, count).map(n => (n || "").trim());
-  if (trimmed.length < count || trimmed.some(n => !n)) return false;
-  if (new Set(trimmed.map(n => n.toLowerCase())).size !== count) return false;
-  if (state.timeBudget && state.timeBudget.enabled && !state.timeBudget.plannedConfig) return false;
-  return true;
-}
+  function canStart() {
+    const validation = validateSetupConfig(state.format, setupNames(), state.courtCount);
+    if (!validation.ok) return false;
+    if (state.timeBudget && state.timeBudget.enabled && !state.timeBudget.plannedConfig) return false;
+    return true;
+  }
 
 // Human-readable reason the Start button is disabled (empty string = ready).
-function startBlockReason() {
-  if (!state) return "";
-  const count = state.format === "crown" ? 4 : 8;
-  const trimmed = (state.rawNames || []).slice(0, count).map(n => (n || "").trim());
-  const filled = trimmed.filter(Boolean).length;
-  if (filled < count) return "Enter all " + count + " player names to start (" + filled + "/" + count + " so far).";
-  const seen = new Set();
-  for (const n of trimmed) {
-    const k = n.toLowerCase();
-    if (seen.has(k)) return "Duplicate name: “" + n + "”. Each player needs a unique name.";
-    seen.add(k);
-  }
-  if (state.timeBudget && state.timeBudget.enabled && !state.timeBudget.plannedConfig)
-    return "Pick an event time for the time budget (or turn it off).";
-  return "";
+  function startBlockReason() {
+    if (!state) return "";
+    const validation = validateSetupConfig(state.format, setupNames(), state.courtCount);
+    if (!validation.ok) return validation.error || "Check the player list.";
+    if (state.timeBudget && state.timeBudget.enabled && !state.timeBudget.plannedConfig)
+      return "Pick an event time for the time budget (or turn it off).";
+    return "";
 }
 
 // Keep the Start button + its hint in sync without a full re-render.
@@ -5985,20 +6202,23 @@ function parsePastedNames(text, count) {
   return { ok: true, names: parts };
 }
 
-function openPasteModal() {
-  const playerCount = state.format === "crown" ? 4 : 8;
-  const bg = el("div", { class: "modal-bg" });
+  function openPasteModal() {
+    const playerCount = setupRosterCount();
+    ensureSetupRosterArrays(playerCount);
+    const bg = el("div", { class: "modal-bg" });
   const close = () => bg.remove();
   bg.addEventListener("click", e => { if (e.target === bg) close(); });
 
   const modal = el("div", { class: "modal" });
   modal.appendChild(el("h2", null, "Paste " + playerCount + " names"));
-  modal.appendChild(el("p", { class: "muted", style: "margin: 0 0 12px;" },
-    "One name per line, or comma-separated. Whitespace is trimmed."));
+    modal.appendChild(el("p", { class: "muted", style: "margin: 0 0 12px;" },
+      "One name per line, or comma-separated. Whitespace is trimmed."));
 
-  const textarea = el("textarea", {
-    class: "paste-textarea",
-    placeholder: playerCount === 4 ? "Adrian\nAlex\nKen\nSam" : "Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd",
+    const sampleNames = ["Adrian","Alex","John","Joe","Ken","Kris","Sam","Todd",
+      "Ava","Ben","Cy","Dee","Eli","Fay","Gus","Hal","Ivy","Jay","Kai","Liv","Mia","Noah","Owen","Pia"];
+    const textarea = el("textarea", {
+      class: "paste-textarea",
+      placeholder: sampleNames.slice(0, playerCount).join("\n"),
     autocomplete: "off",
     autocapitalize: "words",
     autocorrect: "off",
@@ -6019,7 +6239,7 @@ function openPasteModal() {
         return;
       }
       for (let i = 0; i < playerCount; i++) state.rawNames[i] = result.names[i];
-      // rawNames[playerCount..7] intentionally untouched to preserve names on format switch
+        // Names beyond the current setup count are intentionally untouched to preserve format switches.
       save();
       close();
       render();
@@ -6062,11 +6282,41 @@ function renderFormatChooser() {
     btn.appendChild(el("div", { class: "format-option-title" }, opt.title));
     btn.appendChild(el("div", { class: "format-option-blurb" }, opt.blurb));
     row.appendChild(btn);
-  });
-  wrap.appendChild(row);
-  const rrSetupCount = (state.rawNames || []).map(n => (n || "").trim()).filter(Boolean).length;
-  if (state.format === "rr" && rrSetupCount > 0 && !(rrSetupCount === 8 && state.courtCount === 2)) {
-    const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
+    });
+    wrap.appendChild(row);
+    const crownCourts = state.format === "crown";
+    const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
+    const courtRow = el("div", { class: "setup-control-row" });
+    courtRow.appendChild(el("div", null,
+      el("div", { style: "font-weight:700;" }, "Courts"),
+      el("div", { class: "muted", style: "font-size:12px;" },
+        crownCourts ? "Crown Court always uses one court." : "Courts available for this event.")
+    ));
+    const stepper = el("div", { class: "stepper" });
+    const minus = el("button", { "aria-label": "Use fewer courts", disabled: crownCourts || courtDisplay <= 1 }, "-");
+    const plus = el("button", { "aria-label": "Use more courts", disabled: crownCourts || courtDisplay >= 6 }, "+");
+    minus.addEventListener("click", () => {
+      setCourtCount(courtDisplay - 1);
+      save();
+      render();
+    });
+    plus.addEventListener("click", () => {
+      setCourtCount(courtDisplay + 1);
+      save();
+      render();
+    });
+    stepper.appendChild(minus);
+    stepper.appendChild(el("span", { class: "stepper-value" }, "" + courtDisplay));
+    stepper.appendChild(plus);
+    courtRow.appendChild(stepper);
+    wrap.appendChild(courtRow);
+    const fitCount = setupRosterCount();
+    const fitMessage = fitLineText(fitCount, courtDisplay);
+    wrap.appendChild(el("div", { class: "fit-line" + (fitMessage.includes(">1/3") ? " warning" : "") }, fitMessage));
+
+    const rrSetupCount = setupRosterCount();
+    if (state.format === "rr" && !(rrSetupCount === 8 && courtDisplay === 2)) {
+      const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
     sub.appendChild(el("label", null, "Rounds"));
     const sel = el("select");
     [4,5,6,7,8,9,10,11,12].forEach(v => {
@@ -6564,30 +6814,44 @@ function renderTimeBudgetBlock() {
   return card;
 }
 
-function renderSetup() {
-  const playerCount = state.format === "crown" ? 4 : 8;
-  const wrap = el("div");
-  wrap.appendChild(renderRulesBlock());
-  wrap.appendChild(renderTimeBudgetBlock());
-  wrap.appendChild(renderFormatChooser());
-  const subtitleMap = {
-    stack: "Names are randomly assigned to Court 1 and Court 2 when the tournament starts.",
-    crown: "Names are randomly assigned to slots 1–4 when the tournament starts.",
-  };
-  const card = el("div", { class: "card" },
-    el("h2", null, "Enter " + playerCount + " Players"),
-    el("p", { class: "muted", style: "margin: 0 0 14px;" },
-      subtitleMap[state.format] || "Names are randomly assigned to slots 1–8 when the tournament starts.")
-  );
-  const pasteLink = el("button", {
-    class: "paste-link",
-    onclick: openPasteModal,
-  }, "Paste " + playerCount + " names");
-  card.appendChild(pasteLink);
-  const list = el("div", { class: "setup-list" });
-  // Display only playerCount inputs; rawNames[playerCount..7] preserved on format switch
-  for (let i = 0; i < playerCount; i++) {
-    const row = el("div", { class: "setup-row", style: "display:flex;gap:8px;" });
+  function renderSetup() {
+    const playerCount = setupRosterCount();
+    ensureSetupRosterArrays(playerCount);
+    const isCrown = state.format === "crown";
+    const wrap = el("div");
+    wrap.appendChild(renderRulesBlock());
+    wrap.appendChild(renderTimeBudgetBlock());
+    wrap.appendChild(renderFormatChooser());
+    const subtitleMap = {
+      stack: "Names are randomly assigned to courts when the tournament starts.",
+      crown: "Names are randomly assigned to slots 1–4 when the tournament starts.",
+    };
+    const card = el("div", { class: "card" },
+      el("h2", null, "Enter " + playerCount + " Players"),
+      el("p", { class: "muted", style: "margin: 0 0 14px;" },
+        subtitleMap[state.format] || "Names are randomly assigned to slots when the tournament starts.")
+    );
+    const actions = el("div", { class: "setup-actions" });
+    if (!isCrown) {
+      actions.appendChild(el("button", {
+        onclick: () => {
+          setSetupRosterCount(playerCount + 1);
+          save();
+          render();
+        },
+        disabled: playerCount >= 24,
+      }, "+ Add player"));
+    }
+    const pasteLink = el("button", {
+      class: "paste-link",
+      onclick: openPasteModal,
+    }, "Paste " + playerCount + " names");
+    actions.appendChild(pasteLink);
+    card.appendChild(actions);
+    const list = el("div", { class: "setup-list" });
+    // Display only playerCount inputs; extra saved rows are preserved on Crown format switches.
+    for (let i = 0; i < playerCount; i++) {
+      const row = el("div", { class: "setup-row", style: "display:flex;gap:8px;" });
     const nameInput = el("input", {
       class: "name-input",
       type: "text",
@@ -6629,10 +6893,23 @@ function renderSetup() {
       _phoneAutofilled[i] = false;   // manual edit locks the value
       save();
     });
-    row.appendChild(nameInput);
-    row.appendChild(phoneInput);
-    list.appendChild(row);
-  }
+      row.appendChild(nameInput);
+      row.appendChild(phoneInput);
+      if (!isCrown && playerCount > 4) {
+        row.appendChild(el("button", {
+          class: "remove-player",
+          "aria-label": "Remove player " + (i + 1),
+          onclick: () => {
+            state.rawNames.splice(i, 1);
+            state.rawPhones.splice(i, 1);
+            if (Array.isArray(_phoneAutofilled)) _phoneAutofilled.splice(i, 1);
+            save();
+            render();
+          },
+        }, "×"));
+      }
+      list.appendChild(row);
+    }
   card.appendChild(list);
 
   const startBtn = el("button", {
@@ -7614,14 +7891,12 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   const isStack = state.format === "stack";
   if (courtKey === "champ")     { className += " gold";   labelText = "🏆 CHAMPIONSHIP"; }
   else if (courtKey === "cons") { className += " silver"; labelText = "🥈 CONSOLATION"; }
-  else if (courtKey === "tier") { className += " silver"; labelText = (game.name || "Final").toUpperCase(); }
-  else if (courtKey === 1) {
-    className += " c1" + (isStack ? " stack-top" : "");
-    labelText = { stack: "🏆 COURT 1", king: "👑 KING'S COURT", gauntlet: "COURT 1 (TOP)" }[state.format] || "SOUTH COURT";
-  } else {
-    className += " c2" + (isStack ? " stack-bot" : "");
-    labelText = { stack: "COURT 2", king: "BOTTOM COURT", gauntlet: "COURT 2" }[state.format] || "NORTH COURT";
-  }
+    else if (courtKey === "tier") { className += " silver"; labelText = (game.name || "Final").toUpperCase(); }
+    else {
+      const courtNum = Math.max(1, Math.min(6, parseInt(courtKey, 10) || 1));
+      className += " c" + courtNum + (isStack && courtNum === 1 ? " stack-top" : "");
+      labelText = courtCardLabel(courtNum);
+    }
 
   const isFinalCard = courtKey === "champ" || courtKey === "cons" || courtKey === "tier";
   const card = el("div", { class: className });
@@ -7634,12 +7909,8 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   } else {
     // Finals: tell players which physical court to walk to. Championship gets
     // the court-1 surface, consolation court 2, using the format's court names.
-    const finalCourt = game.court || (courtKey === "champ" ? 1 : (courtKey === "cons" ? 2 : 1));
-    const courtName = finalCourt === 1
-      ? ({ stack: "Court 1", king: "King's Court", gauntlet: "Court 1 (Top)" }[state.format] || "South Court")
-      : (finalCourt === 2
-        ? ({ stack: "Court 2", king: "Bottom Court", gauntlet: "Court 2" }[state.format] || "North Court")
-        : "Court " + finalCourt);
+      const finalCourt = game.court || (courtKey === "champ" ? 1 : (courtKey === "cons" ? 2 : 1));
+      const courtName = courtLocationLabel(finalCourt);
     card.appendChild(el("div", { class: "court-score-desc" }, "📍 Play on " + courtName));
   }
   if (courtKey === "champ") {
@@ -7954,9 +8225,9 @@ function renderStandingsCard(throughRound, opts) {
     // Next-round partner chip (only when applicable)
     const npi = nextPartnerInfo(s.slot);
     const partnerChip = npi ? el("span", {
-      class: "partner-chip c" + npi.courtKey,
-      title: "Next round partner",
-    }, "→ " + nameOf(npi.partner)) : null;
+      class: "partner-chip " + (npi.bye ? "bye" : ("c" + npi.courtKey)),
+      title: npi.bye ? "Sitting next round" : "Next round partner",
+    }, npi.bye ? "→ sitting" : ("→ " + nameOf(npi.partner))) : null;
     tbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankCell(i),
       el("td", { class: "name" }, s.name, partnerChip, partnerBadge),
@@ -8036,11 +8307,9 @@ function renderHistory(currentRound) {
   past.forEach(r => {
     const block = el("div", { class: "history-round" });
     block.appendChild(el("div", { class: "history-round-title" }, "Round " + r.round));
-    const c1Label = { stack: "Court 1", king: "King's Court", gauntlet: "Court 1" }[state.format] || "South";
-    const c2Label = { stack: "Court 2", king: "Bottom",       gauntlet: "Court 2" }[state.format] || "North";
     gamesOf(r).forEach(g => {
       const num = g.court || 1;
-      const label = num === 1 ? c1Label : c2Label;
+      const label = courtTagLabel(num);
       const t1Win = isGameComplete(g) && g.score1 > g.score2;
       const t2Win = isGameComplete(g) && g.score2 > g.score1;
       const scoreText = (Number.isInteger(g.score1) ? g.score1 : "–") + "–" + (Number.isInteger(g.score2) ? g.score2 : "–");
@@ -8055,6 +8324,11 @@ function renderHistory(currentRound) {
       );
       block.appendChild(row);
     });
+    const byes = byesOf(r);
+    if (byes.length) {
+      block.appendChild(el("div", { class: "schedule-byes" },
+        "☕ Sitting this round: " + byes.map(nameOf).join(", ")));
+    }
     body.appendChild(block);
   });
   details.appendChild(body);
@@ -8202,16 +8476,14 @@ function computeAwards() {
     mvp = { names: mvpNames, detail: maxPts.toFixed(1) + " pts/game" };
   }
 
-  // Build chronological game list: regular rounds (each has c1, c2), then champ, cons.
-  const games = [];
-  const c1Tag = { stack: "Court 1", king: "King's Court", gauntlet: "Court 1" }[state.format] || "South";
-  const c2Tag = { stack: "Court 2", king: "Bottom Court", gauntlet: "Court 2" }[state.format] || "North";
-  for (let r = 0; r < state.rounds.length; r++) {
-    const round = state.rounds[r];
-    for (const g of gamesOf(round)) {
-      games.push({ ...g, label: "R" + (r + 1) + " " + (g.court === 1 ? c1Tag : c2Tag) });
+    // Build chronological game list: regular rounds, then finals.
+    const games = [];
+    for (let r = 0; r < state.rounds.length; r++) {
+      const round = state.rounds[r];
+      for (const g of gamesOf(round)) {
+        games.push({ ...g, label: "R" + (r + 1) + " " + courtTagLabel(g.court || 1) });
+      }
     }
-  }
   if (state.finals) {
     finalTiers().forEach(g => games.push({ ...g, label: g.name }));
   }
@@ -9119,15 +9391,13 @@ function openScheduleModal() {
       block.appendChild(gameRow(g, "👑", "gold"));
       list.appendChild(block);
     }
-  } else {
-    const c1Tag = { stack: "Court 1", king: "King's Court", gauntlet: "Court 1" }[state.format] || "South";
-    const c2Tag = { stack: "Court 2", king: "Bottom",       gauntlet: "Court 2" }[state.format] || "North";
-    state.rounds.forEach(r => {
-      const block = el("div", { class: "schedule-round" });
-      block.appendChild(el("div", { class: "schedule-round-title" }, "Round " + r.round));
-      gamesOf(r).forEach(g => {
-        block.appendChild(gameRow(g, g.court === 1 ? c1Tag : c2Tag, "c" + (g.court || 1)));
-      });
+    } else {
+      state.rounds.forEach(r => {
+        const block = el("div", { class: "schedule-round" });
+        block.appendChild(el("div", { class: "schedule-round-title" }, "Round " + r.round));
+        gamesOf(r).forEach(g => {
+          block.appendChild(gameRow(g, courtTagLabel(g.court || 1), "c" + (g.court || 1)));
+        });
       const byes = byesOf(r);
       if (byes.length) {
         block.appendChild(el("div", { class: "schedule-byes" },
@@ -9225,8 +9495,8 @@ function openSettings() {
     modal.appendChild(el("h3", null, "Edit Names"));
     modal.appendChild(el("p", { class: "muted", style: "margin: 0 0 10px;" },
       "Slots are fixed. Renaming updates the player everywhere."));
-    const editableSlots = state.format === "crown" ? 4 : 8;
-    for (let i = 0; i < editableSlots; i++) {
+      const editableSlots = state.format === "crown" ? 4 : playerCount();
+      for (let i = 0; i < editableSlots; i++) {
       const input = el("input", {
         class: "name-input",
         style: "margin-bottom: 8px;",
@@ -9237,10 +9507,12 @@ function openSettings() {
         autocorrect: "off",
         spellcheck: "false",
       });
-      input.addEventListener("input", () => {
-        state.slots[i] = input.value;
-        save();
-      });
+        input.addEventListener("input", () => {
+          state.slots[i] = input.value;
+          const p = playerBySlot(i + 1);
+          if (p) p.name = input.value;
+          save();
+        });
       modal.appendChild(input);
     }
 
@@ -9678,70 +9950,91 @@ function openSettings() {
   modal.appendChild(fmtDetails);
 
   // Reset Tournament — visible only outside the setup phase
-  if (state.phase !== "setup") {
-    modal.appendChild(el("button", {
-      style: "width: 100%; margin-top: 8px; background: var(--accent); color: #1a1207; border-color: var(--accent);",
-      onclick: () => {
-        const isCrown = state.format === "crown";
-        const playerCount = isCrown ? 4 : 8;
-        showConfirm("Reset scores and re-shuffle the schedule? Your " + playerCount + " names will be kept.", () => {
-        const keptNames = state.slots.slice();
-        const keptPhones = (state.phones || []).slice();
-        const keptPhoneByName = {};
-        keptNames.forEach((n, i) => { if (n) keptPhoneByName[n] = keptPhones[i] || ""; });
-        const keptWinScore = state.winScore;
-        const keptWinBy = state.winBy;
-        const keptScoringSystem = state.scoringSystem;
-        const keptFormat = state.format;
-        const keptStackRounds = state.stackRounds;
-        const keptKingRounds = state.kingRounds;
-        const keptGauntletRounds = state.gauntletRounds;
-        const keptKeepAwake = state.keepAwake;
-        const keptKeepAwakeAggressive = state.keepAwakeAggressive;
-        state = newState();
-        state.format = keptFormat;
-        state.stackRounds = keptStackRounds;
-        state.kingRounds = keptKingRounds;
-        state.gauntletRounds = keptGauntletRounds;
-        state.winScore = keptWinScore;
-        state.winBy = keptWinBy;
-        state.scoringSystem = keptScoringSystem;
-        state.keepAwake = keptKeepAwake;
-        state.keepAwakeAggressive = keptKeepAwakeAggressive;
-        state.phase = "playing";
-        state.currentRound = 1;
-        if (isCrown) {
-          const crowNames = keptNames.slice(0, 4);
-          const shuffled = shuffle(crowNames.slice());
-          state.rawNames = [...crowNames, "", "", "", ""];
-          state.rawPhones = crowNames.map(n => keptPhoneByName[n] || "").concat(["", "", "", ""]);
-          state.slots = [...shuffled, "", "", "", ""];
-          writePlayersFromSlots(4, keptPhoneByName);
-          state.tiebreakRandom = shuffle([0,1,2,3]);
-          state.crownMatches = CROWN_SCHEDULE.map(s => ({
-            team1: s.team1.slice(), team2: s.team2.slice(), theme: s.theme,
-            games: [{score1:null,score2:null},{score1:null,score2:null},{score1:null,score2:null}],
-          }));
-          state.currentMatch = 0;
-          state.crownFinal = null;
-        } else {
-          state.rawNames = keptNames.slice();
-          state.rawPhones = keptNames.map(n => keptPhoneByName[n] || "");
-          state.slots = shuffle(keptNames);
-          writePlayersFromSlots(8, keptPhoneByName);
-          state.tiebreakRandom = shuffle([0,1,2,3,4,5,6,7]);
-          state.rounds = keptFormat === "stack"    ? [assignInitialStackCourts()]
-                       : keptFormat === "king"     ? [assignInitialKingCourts()]
-                       : keptFormat === "gauntlet" ? [assignInitialGauntletCourts()]
-                       : generateRounds();
+    if (state.phase !== "setup") {
+      modal.appendChild(el("button", {
+        style: "width: 100%; margin-top: 8px; background: var(--accent); color: #1a1207; border-color: var(--accent);",
+        onclick: () => {
+          const isCrown = state.format === "crown";
+          const playerCount = isCrown ? 4 : activeCount();
+          showConfirm("Reset scores and re-shuffle the schedule? Your " + playerCount + " names will be kept.", () => {
+            const keptNames = state.slots.filter(Boolean);
+            const keptPhones = (state.phones || []).slice();
+            const keptPhoneByName = {};
+            keptNames.forEach((n, i) => { if (n) keptPhoneByName[n] = keptPhones[i] || ""; });
+            const keptWinScore = state.winScore;
+            const keptWinBy = state.winBy;
+            const keptScoringSystem = state.scoringSystem;
+            const keptFormat = state.format;
+            const keptCourtCount = state.courtCount;
+            const keptRrRounds = state.rrRounds;
+            const keptStackRounds = state.stackRounds;
+            const keptKingRounds = state.kingRounds;
+            const keptGauntletRounds = state.gauntletRounds;
+            const keptKeepAwake = state.keepAwake;
+            const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+            state = newState();
+            state.format = keptFormat;
+            state.courtCount = keptCourtCount;
+            state.rrRounds = keptRrRounds;
+            state.stackRounds = keptStackRounds;
+            state.kingRounds = keptKingRounds;
+            state.gauntletRounds = keptGauntletRounds;
+            state.winScore = keptWinScore;
+            state.winBy = keptWinBy;
+            state.scoringSystem = keptScoringSystem;
+            state.keepAwake = keptKeepAwake;
+            state.keepAwakeAggressive = keptKeepAwakeAggressive;
+            state.phase = "playing";
+            state.currentRound = 1;
+            if (isCrown) {
+              const crowNames = keptNames.slice(0, 4);
+              const shuffled = shuffle(crowNames.slice());
+              state.rawNames = [...crowNames, "", "", "", ""];
+              state.rawPhones = crowNames.map(n => keptPhoneByName[n] || "").concat(["", "", "", ""]);
+              state.slots = [...shuffled, "", "", "", ""];
+              writePlayersFromSlots(4, keptPhoneByName);
+              state.tiebreakRandom = shuffle([0,1,2,3]);
+              state.crownMatches = CROWN_SCHEDULE.map(s => ({
+                team1: s.team1.slice(), team2: s.team2.slice(), theme: s.theme,
+                games: [{score1:null,score2:null},{score1:null,score2:null},{score1:null,score2:null}],
+              }));
+              state.currentMatch = 0;
+              state.crownFinal = null;
+            } else {
+              state.rawNames = keptNames.slice();
+              state.rawPhones = keptNames.map(n => keptPhoneByName[n] || "");
+              state.slots = shuffle(keptNames);
+              writePlayersFromSlots(keptNames.length, keptPhoneByName);
+              state.tiebreakRandom = shuffle(Array.from({ length: keptNames.length }, (_, i) => i));
+              if (keptFormat === "stack") {
+                state.rounds = [assignInitialStackCourts()];
+              } else if (keptFormat === "king") {
+                state.rounds = [assignInitialKingCourts()];
+              } else if (keptFormat === "gauntlet") {
+                state.rounds = [assignInitialGauntletCourts()];
+              } else if (keptNames.length === 8 && state.courtCount === 2) {
+                state.rrScheduleMode = "wh8";
+                state.rrRounds = 7;
+                state.rounds = generateRounds();
+              } else {
+                state.rrScheduleMode = "generated";
+                state.rrRounds = Math.max(4, Math.min(12, parseInt(state.rrRounds, 10) || 7));
+                state.rounds = generateRRSchedule(
+                  Array.from({ length: keptNames.length }, (_, i) => i + 1),
+                  state.courtCount,
+                  state.rrRounds,
+                  [],
+                  mulberry32(state.scheduleSeed)
+                );
+              }
+            }
+            syncKeepAwakeToState();
+            save();
+            close();
+            render();
+          }, { title: "Reset tournament", confirmText: "Reset", danger: true });
         }
-        syncKeepAwakeToState();
-        save();
-        close();
-        render();
-        }, { title: "Reset tournament", confirmText: "Reset", danger: true });
-      }
-    }, "Reset Tournament"));
+      }, "Reset Tournament"));
   }
 
   // Clear All — always visible

@@ -128,9 +128,9 @@
 
 ## Phase 9 — Setup UX
 
-- [ ] Courts stepper (1–6, default 2), dynamic roster rows (4–24, quick-fill/paste adapt), live fit line + ">⅓ sitting" warning, per-format validation (Crown: exactly 4 players AND the courts stepper disabled/ignored — Crown always plays its single court, never render multi-court UI for it), per §9.1. Court accent palette extended to 6 (CSS); responsive court-card grid (1/2/3 columns per §9.2).
-- [ ] Tests where logic is pure (fit-line text builder, validation predicate); manual visual verification for layout at 1, 2, 3, 6 courts.
-- [ ] Verify + commit: `feat(setup): court count + dynamic roster with fit line and byes warning`
+- [x] Courts stepper (1–6, default 2), dynamic roster rows (4–24, quick-fill/paste adapt), live fit line + ">⅓ sitting" warning, per-format validation (Crown: exactly 4 players AND the courts stepper disabled/ignored — Crown always plays its single court, never render multi-court UI for it), per §9.1. Court accent palette extended to 6 (CSS); responsive court-card grid (1/2/3 columns per §9.2).
+- [x] Tests where logic is pure (fit-line text builder, validation predicate); manual visual verification for layout at 1, 2, 3, 6 courts.
+- [x] Verify + commit: `feat(setup): court count + dynamic roster with fit line and byes warning`
 
 ## Phase 10 — Mid-event roster management
 
