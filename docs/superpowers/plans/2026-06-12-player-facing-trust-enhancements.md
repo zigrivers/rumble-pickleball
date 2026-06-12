@@ -578,7 +578,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 8 - pre-start summary
@@ -600,11 +600,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because `preStartSummaryModel` does not exist.
 
-- [ ] **Step 3: Implement summary model**
+- [x] **Step 3: Implement summary model**
 
   Add `preStartSummaryModel()` near setup validation helpers. Include:
 
@@ -615,15 +615,15 @@
   }
   ```
 
-- [ ] **Step 4: Add Review & Start modal**
+- [x] **Step 4: Add Review & Start modal**
 
   Change the setup Start button handler from direct `startTournament()` to `openPreStartSummary()`. The modal calls `startTournament()` only after the organizer confirms. If `canStart()` is false, keep the existing disabled behavior and hint.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually verify 8/2 RR, 13/3 RR, Crown, bye-heavy 24/2, time-budget enabled, and duplicate-name blocking.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html

@@ -3780,6 +3780,24 @@ function runSelfTests() {
       "finals explanation references seed and tier", exp);
   }
 
+  // Player-facing/trust Task 8 - pre-start summary
+  {
+    console.assert(typeof preStartSummaryModel === "function", "preStartSummaryModel exists");
+    const saved = state;
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 3;
+    state.rawNames = ["A","B","C","D","E","F","G","H","I","J","K","L","M"];
+    state.rawPhones = ["5551112222"].concat(Array(12).fill(""));
+    backfillStateDefaults(state);
+    const model = preStartSummaryModel();
+    console.assert(model.players === 13 && model.configuredCourts === 3 && model.byesPerRound === 1,
+      "preStartSummaryModel reports players courts and byes", model);
+    console.assert(model.phoneCount === 1 && model.finalsStyle.includes("tier"),
+      "preStartSummaryModel reports phones and finals style", model);
+    state = saved;
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -7596,6 +7614,99 @@ function updateStartState() {
   }
 }
 
+function setupRoundCountForSummary(players, activeCourts) {
+  if (state.format === "rr") return players === 8 && activeCourts === 2 ? 7 : Math.max(4, Math.min(12, parseInt(state.rrRounds, 10) || 7));
+  if (state.format === "stack") return state.stackRounds;
+  if (state.format === "king") return state.kingRounds;
+  if (state.format === "gauntlet") return state.gauntletRounds;
+  return 3;
+}
+
+function preStartSummaryModel() {
+  const names = setupNames();
+  const validation = validateSetupConfig(state.format, names, state.courtCount);
+  const players = validation.playerCount || names.length;
+  const configuredCourts = state.courtCount;
+  const effectiveCourts = validation.effectiveCourtCount || effectiveCourtCountForFormat(state.format, configuredCourts);
+  const shape = roundShapeFor(players, effectiveCourts);
+  const activeCourts = state.format === "crown" ? 1 : shape.activeCourts;
+  const rounds = setupRoundCountForSummary(players, activeCourts);
+  const cfg = state.timeBudget && state.timeBudget.enabled && state.timeBudget.plannedConfig
+    ? state.timeBudget.plannedConfig : null;
+  const scoringSystem = cfg ? cfg.scoring : state.scoringSystem;
+  const winScore = cfg ? cfg.target : state.winScore;
+  const winBy = cfg ? cfg.winBy : state.winBy;
+  const scoring = cfg && cfg.preset
+    ? cfg.preset + " preset"
+    : (scoringSystem === "rally" ? "Rally" : "Side-out") + " to " + winScore + ", win by " + winBy;
+  let estimatedDuration = "";
+  if (state.timeBudget && state.timeBudget.enabled) {
+    const readout = formatTimeBudgetReadout(cfg, state.timeBudget.minutes, null);
+    estimatedDuration = readout.likelyDone ? readout.willPlay + " · " + readout.likelyDone : readout.willPlay;
+  }
+  const tierCount = state.format === "crown" ? 0 : Math.min(activeCourts, Math.floor(players / 4));
+  const unseated = state.format === "crown" ? 0 : Math.max(0, players - tierCount * 4);
+  const finalsStyle = state.format === "crown"
+    ? "Crown Match after 3 themed rounds"
+    : tierCount + " finals tier" + (tierCount === 1 ? "" : "s") + (unseated ? " · " + unseated + " unseated by seed" : "");
+  const phoneCount = (state.rawPhones || []).slice(0, players).filter(isValidPhone).length;
+  const warnings = [];
+  if (!validation.ok) warnings.push(validation.error || "Check the player list.");
+  if (shape.byesNeeded > players / 3) warnings.push("More than one third of the field sits each round.");
+  if (state.timeBudget && state.timeBudget.enabled && !cfg) warnings.push("Time budget needs a playable scoring plan.");
+  return {
+    formatLabel: formatNameForSnapshot(state.format),
+    players,
+    configuredCourts,
+    activeCourts,
+    byesPerRound: state.format === "crown" ? 0 : shape.byesNeeded,
+    rounds,
+    scoring,
+    estimatedDuration,
+    finalsStyle,
+    phoneCount,
+    nameValidation: validation.ok ? "Names ready" : (validation.error || "Check names"),
+    warnings
+  };
+}
+
+function openPreStartSummary() {
+  if (!canStart()) return;
+  const model = preStartSummaryModel();
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Review & Start"));
+  const rows = [
+    ["Format", model.formatLabel],
+    ["Players", model.players + " · " + model.nameValidation],
+    ["Courts", model.configuredCourts + " configured · " + model.activeCourts + " active"],
+    ["Byes", model.byesPerRound ? model.byesPerRound + " per round" : "None"],
+    ["Rounds", "" + model.rounds],
+    ["Scoring", model.scoring],
+    ["Finals", model.finalsStyle],
+    ["Phones", model.phoneCount + " saved for text results"],
+  ];
+  if (model.estimatedDuration) rows.splice(6, 0, ["Estimate", model.estimatedDuration]);
+  rows.forEach(([label, value]) => {
+    modal.appendChild(el("div", { class: "settings-row" },
+      el("label", null, label),
+      el("span", { style: "text-align:right;" }, value)));
+  });
+  if (model.warnings.length) {
+    const warn = el("div", { class: "rules", style: "margin:10px 0;padding:10px;" });
+    model.warnings.forEach(w => warn.appendChild(el("div", null, "⚠ " + w)));
+    modal.appendChild(warn);
+  }
+  const startBtn = el("button", { class: "primary", style: "width:100%;margin-top:8px;" }, "Start tournament");
+  startBtn.addEventListener("click", () => { close(); startTournament(); });
+  modal.appendChild(startBtn);
+  modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Back to setup"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+
 const RULES_RR = [
   "4–24 players, 1–6 courts, doubles. Each round fills the active courts; anyone extra sits that round.",
   "With exactly 8 players and 2 courts, Rumble keeps the classic 7-round schedule: every partner once, every opponent twice. Other setups use generated pairings with fair bye rotation.",
@@ -8584,7 +8695,7 @@ function renderTimeBudgetBlock() {
     id: "start-btn",
     class: "primary",
     style: "width: 100%;",
-    onclick: () => { if (canStart()) startTournament(); }
+    onclick: () => { if (canStart()) openPreStartSummary(); }
   }, "Start Tournament");
   startBtn.disabled = !canStart();
 
