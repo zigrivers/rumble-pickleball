@@ -103,9 +103,9 @@
 
 ### Task 5.2: Stack scoring generalization
 
-- [ ] Tests: `stackMultiplier(court, C)` per §6.2 — `(1,2)→1.5`, `(2,2)→1.0`, `(1,1)→1`, linear interior values for C=4; `stackScoreGain` reproduces today's outputs at C=2 (reuse existing assert fixtures); climb bonus on any court > 1.
-- [ ] Implement; update `computeStackStats` for N players / C courts.
-- [ ] Verify + commit: `feat(stack): court-scaled score multiplier for C courts`
+- [x] Tests: `stackMultiplier(court, C)` per §6.2 — `(1,2)→1.5`, `(2,2)→1.0`, `(1,1)→1`, linear interior values for C=4; `stackScoreGain` reproduces today's outputs at C=2 (reuse existing assert fixtures); climb bonus on any court > 1.
+- [x] Implement; update `computeStackStats` for N players / C courts.
+- [x] Verify + commit: `feat(stack): court-scaled score multiplier for C courts`
 
 ## Phase 6 — Gauntlet
 

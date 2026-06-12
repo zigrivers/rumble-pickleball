@@ -1873,6 +1873,48 @@ function runSelfTests() {
     console.assert(oneCourtToasts, "ladder one-court movement toasts do not require court 2");
     state = savedState;
   }
+  // Flex Task 5.2 — Stack scoring scales by court count
+  {
+    const savedState = state;
+    const close = (a, b) => Math.abs(a - b) < 1e-9;
+    const mult = typeof stackMultiplier === "function" ? stackMultiplier : () => NaN;
+    console.assert(close(mult(1, 2), 1.5) && close(mult(2, 2), 1),
+      "stackMultiplier preserves 2-court values", [mult(1, 2), mult(2, 2)]);
+    console.assert(close(mult(1, 1), 1), "stackMultiplier one court is neutral", mult(1, 1));
+    console.assert(close(mult(1, 4), 1.5) && close(mult(2, 4), 1 + 0.5 * 2 / 3)
+      && close(mult(3, 4), 1 + 0.5 / 3) && close(mult(4, 4), 1),
+      "stackMultiplier linearly scales interior courts", [mult(1, 4), mult(2, 4), mult(3, 4), mult(4, 4)]);
+    console.assert(close(stackScoreGain(10, 3, 4, true), 10 * mult(3, 4) + 3 + 2),
+      "stackScoreGain gives climb bonus on any court below top", stackScoreGain(10, 3, 4, true));
+
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    const scoredGame = (court, team1, team2, score1, score2) => {
+      const g = makeGame(court, team1, team2);
+      g.score1 = score1; g.score2 = score2;
+      return g;
+    };
+    const r = makeRound(1, [
+      scoredGame(1, [1,2], [3,4], 11, 7),
+      scoredGame(2, [5,6], [7,8], 11, 8),
+      scoredGame(3, [9,10], [11,12], 11, 6),
+    ]);
+    state = {
+      phase: "playing", format: "stack", courtCount: 1, stackRounds: 4,
+      slots: Array.from({ length: 12 }, (_, i) => "P" + (i + 1)),
+      players: makePlayers(12), rounds: [r], currentRound: 1,
+      tiebreakRandom: Array.from({ length: 12 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    let stats = [];
+    try { stats = computeStackStats(1); } catch (e) { stats = []; }
+    const s9 = stats.find(s => s.slot === 9);
+    console.assert(stats.length === 12 && s9 && close(s9.stackScore, 11 * mult(3, 3) + 3 + 2),
+      "computeStackStats uses round active-court count and supports N players", { statsLength: stats.length, s9 });
+    state = savedState;
+  }
   // Task 3 — parsePastedNames
   {
     const a = parsePastedNames("Adrian\nAlex\nJohn\nJoe\nKen\nKris\nSam\nTodd");
@@ -3992,21 +4034,40 @@ function assignInitialStackCourts() {
 
 // Stack score gain for one player on one completed game.
 //   pts:      points their team scored
-//   isCourt1: was this game on Court 1?
+//   court:    1-based court number, or legacy boolean isCourt1
 //   won:      did their team win?
-function stackScoreGain(pts, isCourt1, won) {
+function stackMultiplier(court, courtCount) {
+  court = Math.max(1, parseInt(court, 10) || 1);
+  courtCount = Math.max(1, parseInt(courtCount, 10) || 1);
+  if (courtCount === 1) return 1;
+  return 1 + 0.5 * (courtCount - court) / (courtCount - 1);
+}
+function stackScoreGain(pts, court, courtCount, won) {
   if (!Number.isInteger(pts)) return 0;
-  let gain = pts;
-  if (isCourt1) gain += pts * 0.5;
+  if (typeof court === "boolean") {
+    won = courtCount;
+    courtCount = 2;
+    court = court ? 1 : 2;
+  }
+  let gain = pts * stackMultiplier(court, courtCount);
   if (won) gain += 3;
-  if (won && !isCourt1) gain += 2; // climbing bonus: a win on Court 2 earns a climb
+  if (won && court > 1) gain += 2; // climbing bonus: a win below the top court earns a climb
   return gain;
 }
 
 // Per-player stack stats through the given round (1-based, inclusive).
 function computeStackStats(throughRound) {
+  const upTo = Math.min(throughRound || 0, state.rounds.length);
+  let count = Math.max(playerCount(), (state.slots || []).length);
+  for (let i = 0; i < upTo; i++) {
+    const r = state.rounds[i];
+    for (const g of gamesOf(r)) {
+      [...g.team1, ...g.team2].forEach(slot => { if (slot > count) count = slot; });
+    }
+    byesOf(r).forEach(slot => { if (slot > count) count = slot; });
+  }
   const stats = [];
-  for (let s = 1; s <= 8; s++) {
+  for (let s = 1; s <= count; s++) {
     stats.push({
       slot: s, name: nameOf(s),
       stackScore: 0,
@@ -4018,9 +4079,9 @@ function computeStackStats(throughRound) {
       onePointGames: { wins: 0, losses: 0 },
     });
   }
-  const upTo = Math.min(throughRound || 0, state.rounds.length);
   for (let i = 0; i < upTo; i++) {
     const r = state.rounds[i];
+    const roundCourtCount = Math.max(1, gamesOf(r).length);
     for (const game of gamesOf(r)) {
       const courtKey = game.court || 1;
       const teams = [game.team1, game.team2];
@@ -4043,7 +4104,7 @@ function computeStackStats(throughRound) {
         const ag  = teamKey === "team1" ? game.score2 : game.score1;
         const won = (teamKey === "team1" && t1Won) || (teamKey === "team2" && t2Won);
         const lost = (teamKey === "team1" && t2Won) || (teamKey === "team2" && t1Won);
-        const gain = stackScoreGain(pts, courtKey === 1, won);
+        const gain = stackScoreGain(pts, courtKey, roundCourtCount, won);
         for (const slot of team) {
           const st = stats[slot-1];
           st.stackScore += gain;
@@ -4062,28 +4123,34 @@ function computeStackStats(throughRound) {
     // next round has actually been built).
     if (i + 1 < state.rounds.length) {
       const nextR = state.rounds[i + 1];
-      const topNow = gamesOf(r).find(g => g.court === 1) || gamesOf(r)[0];
-      const topNext = gamesOf(nextR).find(g => g.court === 1) || gamesOf(nextR)[0];
-      const onC1Now  = new Set(topNow  ? [...topNow.team1,  ...topNow.team2]  : []);
-      const onC1Next = new Set(topNext ? [...topNext.team1, ...topNext.team2] : []);
-      for (let s = 1; s <= 8; s++) {
-        const wasC1 = onC1Now.has(s);
-        const willC1 = onC1Next.has(s);
-        if (!wasC1 && willC1) stats[s-1].courtClimbs++;
-        if (wasC1 && !willC1) stats[s-1].courtDrops++;
+      const courtMap = round => {
+        const map = new Map();
+        gamesOf(round).forEach(g => [...g.team1, ...g.team2].forEach(slot => map.set(slot, g.court || 1)));
+        return map;
+      };
+      const now = courtMap(r), next = courtMap(nextR);
+      for (let s = 1; s <= stats.length; s++) {
+        if (!now.has(s) || !next.has(s)) continue;
+        if (next.get(s) < now.get(s)) stats[s-1].courtClimbs++;
+        if (next.get(s) > now.get(s)) stats[s-1].courtDrops++;
       }
     }
   }
   return stats;
 }
 
+function tiebreakOrder(slot) {
+  const tieRand = Array.isArray(state.tiebreakRandom) ? state.tiebreakRandom : [];
+  const idx = tieRand.indexOf(slot - 1);
+  return idx === -1 ? slot : idx;
+}
+
 // Sort by stack score descending, tiebreak by tiebreakRandom ordering of slots.
 function rankPlayersStack(throughRound) {
   const stats = computeStackStats(throughRound);
-  const tieRand = (state.tiebreakRandom && state.tiebreakRandom.length === 8) ? state.tiebreakRandom : [0,1,2,3,4,5,6,7];
   stats.sort((a, b) => {
     if (b.stackScore !== a.stackScore) return b.stackScore - a.stackScore;
-    return tieRand.indexOf(a.slot - 1) - tieRand.indexOf(b.slot - 1);
+    return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
   });
   return stats;
 }
@@ -4094,12 +4161,11 @@ function rankPlayersStack(throughRound) {
 //   stackBySlot:     Map<slot, stackScore> at the time of pairing
 // Returns [team1, team2], each a length-2 array of slots.
 function pairForStackCourt(slotsOnCourt, prevSameCourt, stackBySlot) {
-  const tieRand = (state.tiebreakRandom && state.tiebreakRandom.length === 8) ? state.tiebreakRandom : [0,1,2,3,4,5,6,7];
   const ranked = slotsOnCourt.slice().sort((a, b) => {
     const sa = stackBySlot.get(a) || 0;
     const sb = stackBySlot.get(b) || 0;
     if (sb !== sa) return sb - sa;
-    return tieRand.indexOf(a - 1) - tieRand.indexOf(b - 1);
+    return tiebreakOrder(a) - tiebreakOrder(b);
   });
   // Default: rank1 + rank4 vs rank2 + rank3
   let teamA = [ranked[0], ranked[3]];
