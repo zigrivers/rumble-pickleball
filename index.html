@@ -3812,6 +3812,17 @@ function runSelfTests() {
     ].forEach(name => console.assert(typeof window[name] === "function", name + " is available"));
   }
 
+  // Adjusted Margin — metric primitives
+  {
+    const closeTo = (a, b) => Math.abs(a - b) < 1e-9;
+    console.assert(closeTo(marginScore(2), Math.SQRT2), "marginScore(2)=√2", marginScore(2));
+    console.assert(closeTo(marginScore(8), Math.sqrt(8)), "marginScore(8)=√8", marginScore(8));
+    console.assert(closeTo(marginScore(-2), -Math.SQRT2), "marginScore(-2)=-√2", marginScore(-2));
+    console.assert(marginScore(0) === 0, "marginScore(0)=0", marginScore(0));
+    console.assert(clampAdj(2) === 1 && clampAdj(-2) === -1 && clampAdj(0.5) === 0.5,
+      "clampAdj caps at ±1", [clampAdj(2), clampAdj(-2), clampAdj(0.5)]);
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6979,6 +6990,18 @@ function statsSlotCount(throughRound, includeFinals) {
   }
   if (includeFinals && state.finals) finalTiers().forEach(scanGame);
   return count;
+}
+
+// === Adjusted Margin ranking primitives (RR + Gauntlet) ===
+// Diminishing-returns point margin with light opponent/partner strength
+// weighting. See docs/superpowers/specs/2026-06-13-strength-adjusted-margin-ranking-design.md
+const MARGIN_STRENGTH_K = 0.5;   // opponent/partner sensitivity
+const MARGIN_ADJ_CAP    = 1.0;   // max strength adjustment per game; < √2 keeps every win > 0 and every loss < 0
+function marginScore(d) {        // signed square-root diminishing-returns curve
+  return Math.sign(d) * Math.sqrt(Math.abs(d));
+}
+function clampAdj(x) {
+  return Math.max(-MARGIN_ADJ_CAP, Math.min(MARGIN_ADJ_CAP, x));
 }
 
 function computeStats(throughRound, includeFinals) {
