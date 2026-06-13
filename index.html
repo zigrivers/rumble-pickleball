@@ -2224,7 +2224,7 @@ function runSelfTests() {
     console.assert(order(rankPlayers(1)) === totalEquivalent,
       "RR equal-GP average ranking matches totals ranking", { avg: order(rankPlayers(1)), totalEquivalent });
     const standings = renderStandingsCard(2);
-    console.assert(/GP/.test(standings.textContent) && /\bAM\b/.test(standings.textContent),
+    console.assert(/GP/.test(standings.textContent) && /AM/.test(standings.textContent),
       "RR standings show GP and Adjusted Margin columns", standings.textContent);
 
     state = {
@@ -3964,16 +3964,35 @@ function runSimulation() {
   const savedStore = {};
   for (const k of [STORAGE_KEY, "pb_durations_v1", "pb_calibration_v1"]) savedStore[k] = localStorage.getItem(k);
 
-  // Independent expectations from the scores the simulation entered, following
-  // the documented ranking rules: points → wins → diff → h2h → tiebreakRandom.
+  // Independent expectations from the entered scores, following the Adjusted
+  // Margin rules: adjScore (diminishing-returns margin + opponent/partner
+  // strength, regular rounds only) → win rate → head-to-head → tiebreakRandom.
   function expectedTable(games, tieRand) {
     const st = {};
-    for (let s = 1; s <= 8; s++) st[s] = { slot: s, pts: 0, w: 0, l: 0, diff: 0, gp: 0 };
+    for (let s = 1; s <= 8; s++) st[s] = { slot: s, pts: 0, w: 0, l: 0, diff: 0, gp: 0, rgp: 0, sumMs: 0 };
+    const ms = g => Math.sign(g.s1 - g.s2) * Math.sqrt(Math.abs(g.s1 - g.s2));
     for (const g of games) {
       const t1w = g.s1 > g.s2, t2w = g.s2 > g.s1;
-      for (const s of g.t1) { st[s].pts += g.s1; st[s].diff += g.s1 - g.s2; st[s].gp++; if (t1w) st[s].w++; if (t2w) st[s].l++; }
-      for (const s of g.t2) { st[s].pts += g.s2; st[s].diff += g.s2 - g.s1; st[s].gp++; if (t2w) st[s].w++; if (t1w) st[s].l++; }
+      const m1 = ms(g);
+      for (const s of g.t1) { st[s].pts += g.s1; st[s].diff += g.s1 - g.s2; st[s].gp++; if (t1w) st[s].w++; if (t2w) st[s].l++; if (!g.final) { st[s].rgp++; st[s].sumMs += m1; } }
+      for (const s of g.t2) { st[s].pts += g.s2; st[s].diff += g.s2 - g.s1; st[s].gp++; if (t2w) st[s].w++; if (t1w) st[s].l++; if (!g.final) { st[s].rgp++; st[s].sumMs -= m1; } }
     }
+    const base = {}, strength = {};
+    let fSum = 0, fCount = 0;
+    for (let s = 1; s <= 8; s++) { if (st[s].rgp > 0) { base[s] = st[s].sumMs / st[s].rgp; fSum += base[s]; fCount++; } else base[s] = 0; }
+    const fieldAvg = fCount ? fSum / fCount : 0;
+    for (let s = 1; s <= 8; s++) strength[s] = st[s].rgp > 0 ? base[s] - fieldAvg : 0;
+    const K = 0.5, CAP = 1.0, clamp = x => Math.max(-CAP, Math.min(CAP, x));
+    const credit = {};
+    for (let s = 1; s <= 8; s++) credit[s] = 0;
+    const addC = (team, opp, m) => {
+      const O = (strength[opp[0]] + strength[opp[1]]) / 2;
+      for (let k = 0; k < team.length; k++) {
+        const P = strength[team[k === 0 ? 1 : 0]];
+        credit[team[k]] += m + clamp(K * (O - P));
+      }
+    };
+    for (const g of games) { if (g.final) continue; const m1 = ms(g); addC(g.t1, g.t2, m1); addC(g.t2, g.t1, -m1); }
     const h2h = (a, b) => {                       // regular rounds only, like headToHead()
       let d = 0;
       for (const g of games) {
@@ -3988,12 +4007,13 @@ function runSimulation() {
       ppg: s.pts / Math.max(1, s.gp),
       wg: s.w / Math.max(1, s.gp),
       dg: s.diff / Math.max(1, s.gp),
+      adjScore: s.rgp > 0 ? credit[s.slot] / s.rgp : 0,
     })).sort((x, y) => {
       if (x.gp === 0 || y.gp === 0) {
         if (x.gp !== y.gp) return x.gp === 0 ? 1 : -1;
         return tieRand.indexOf(x.slot - 1) - tieRand.indexOf(y.slot - 1);
       }
-      return y.ppg - x.ppg || y.wg - x.wg || y.dg - x.dg || -h2h(x.slot, y.slot) ||
+      return y.adjScore - x.adjScore || y.wg - x.wg || -h2h(x.slot, y.slot) ||
         (tieRand.indexOf(x.slot - 1) - tieRand.indexOf(y.slot - 1));
     });
   }
@@ -4023,14 +4043,14 @@ function runSimulation() {
       .filter(tr => tr.cells.length > 1)          // skip tier-divider rows
       .map(tr => ({
         name: tr.cells[1].childNodes[0].textContent,
-        gp: tr.cells[2].textContent, ppg: tr.cells[3].textContent,
+        gp: tr.cells[2].textContent, am: tr.cells[3].textContent,
         wg: tr.cells[4].textContent, diff: tr.cells[5].textContent,
       }));
     console.assert(rows.length === 8, label + ": 8 rows", rows.length);
     expected.forEach((e, i) => {
       const r = rows[i] || {};
       console.assert(
-        r.name === e.name && r.gp === String(e.gp) && r.ppg === fmtRate(e.ppg)
+        r.name === e.name && r.gp === String(e.gp) && r.am === fmtRate(e.adjScore)
           && r.wg === fmtRate(e.wg) && r.diff === fmtDiff(e.dg),
         label + " row " + (i + 1), { got: r, want: e });
     });
