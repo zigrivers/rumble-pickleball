@@ -121,6 +121,13 @@
     border-radius:12px; padding:18px 20px; margin:22px 0; color:#e6edf6;
   }
   .callout b{color:var(--gold)}
+  .callout.cgood{border-left-color:var(--good); background:linear-gradient(180deg, rgba(16,185,129,.08), transparent); margin-top:18px}
+  .callout.cgood b{color:var(--good)}
+
+  /* ---------- plain-language subsections ---------- */
+  .subsec{margin-top:44px}
+  .subhead{font-family:var(--display); font-weight:800; letter-spacing:-.015em; font-size:clamp(22px,3.4vw,28px); margin:0 0 6px}
+  .subintro{color:var(--muted); margin:0 0 20px; max-width:780px; font-size:18px}
 
   /* ---------- tables ---------- */
   .tbl{width:100%; border-collapse:collapse; margin:18px 0; font-size:15px; overflow:hidden; border-radius:12px; border:1px solid var(--border)}
@@ -252,8 +259,70 @@
 
   </div>
 
-  <div class="callout" style="margin-top:26px">
-    <b>"My rank changed and I didn't even play!"</b> In Round Robin and Gauntlet, your standing reflects <em>who</em> you played. If an early-round opponent turns out to be strong, your result against them quietly gains value as the session goes on. That's strength of schedule doing its job — not a glitch.
+  <!-- ---- how standings evolve ---- -->
+  <div class="subsec">
+    <h3 class="subhead">Why your standing keeps moving — even for games you already played</h3>
+    <p class="subintro">This is the part that surprises people most, so it's worth a moment. In <b>Round Robin and Gauntlet</b>, the standings get <em>more accurate</em> as the session goes on — which means rounds you've already finished can be re-valued. Here's the life of a result:</p>
+
+    <div class="grid">
+      <div class="card">
+        <span class="tag">Step 1 · Early on</span>
+        <h3>Everyone starts equal</h3>
+        <p>At the start, the app has no results to go on, so it can't tell who's strong yet. Every opponent and partner is treated the same, and your winning margins count at face value.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Step 2 · As you play</span>
+        <h3>It learns who's strong</h3>
+        <p>Round by round, results pile up and a picture forms of how strong each player is — based on how convincingly everyone has been winning and losing across the whole group.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Step 3 · Looking back</span>
+        <h3>Earlier games get re-weighted</h3>
+        <p>The app then revisits your past games with what it now knows. A win over someone who turned out to be a top player counts for more; a win over someone who's been struggling counts for a little less.</p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top:18px">
+      <b>A quick example.</b> In round 1 you beat Dana 11–6, back when nobody knew much about anyone. By round 5, Dana has won nearly every other game — clearly one of the strongest players in the room. The app now counts your round-1 win more generously, so your standing can tick up <em>between rounds</em> — even in a round where you sat out for a bye. You didn't gain or lose anything; the picture just came into focus.
+    </div>
+
+    <div class="callout cgood">
+      <b>It settles — it doesn't swing wildly.</b> Strength can only nudge a game's value within set limits, and <b>winning always helps while losing always hurts</b> — no amount of re-weighting can turn a win into something worth less than a loss. So the standings <em>refine and settle</em> as more becomes known; they don't lurch around at random. <span style="color:var(--muted)">(Stack and King of the Court don't do this — they're scored purely on what happened on court.)</span>
+    </div>
+  </div>
+
+  <!-- ---- the fine print ---- -->
+  <div class="subsec">
+    <h3 class="subhead">The fine print — still in plain English</h3>
+    <p class="subintro">A few more rules quietly shape every standing. Here they are, so nothing's left unsaid.</p>
+
+    <div class="grid">
+      <div class="card">
+        <span class="tag">Per game, not total</span>
+        <h3>It's an average</h3>
+        <p>You're judged on your performance <em>per game</em>, not your running total. Playing more games never inflates your rank, and missing one never deflates it — so byes, late arrivals, and uneven game counts all stay fair. (This is true in every format.)</p>
+      </div>
+      <div class="card">
+        <span class="tag">Byes</span>
+        <h3>Sitting out is free</h3>
+        <p>A bye simply doesn't count. It isn't a win and isn't a loss — it has no effect on your standing whatsoever.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Unfinished games</span>
+        <h3>Only finished games count</h3>
+        <p>Because pickleball is win-by-2, a tied score like 11–11 means the game isn't over. Unfinished games stay out of the standings until they're decided, so a stalled game can never pad anyone's numbers.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Breaking ties</span>
+        <h3>If two players are even</h3>
+        <p>Ties break differently by format (see each card above). In Round Robin and Gauntlet it's <b>win rate</b> first, then the <b>head-to-head</b> result if those two played each other. Every format ends with a <b>fixed random draw</b> set once at the start — so a tiebreak never shifts mid-event.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Haven't played yet</span>
+        <h3>No games, no rank</h3>
+        <p>Anyone who hasn't finished a game yet sits at the bottom until they do — there's simply nothing to measure them on.</p>
+      </div>
+    </div>
   </div>
 
   <!-- ============ TECHNICAL ============ -->

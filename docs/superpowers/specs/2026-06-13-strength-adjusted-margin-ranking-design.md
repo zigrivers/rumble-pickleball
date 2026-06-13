@@ -152,6 +152,11 @@ One card per game type:
 - **King of the Court** — King's Court (Court 1) is the throne; score = wins + points scored + wins on the King's Court, averaged per game.
 - **Finals** — top players seeded into brackets of four (1 v 4, 2 v 3): Championship, then Consolation, Bronze, … one per court; leftovers unseated; finals don't change regular standings.
 
+Plus two plain-language subsections that ensure every calculation element is covered without jargon:
+
+- **"Why your standing keeps moving"** — explains the retroactive strength-of-schedule behavior as a 3-step story (everyone starts equal → the app learns who's strong → earlier games get re-weighted), with a concrete worked example (a round-1 win over a player who later proves strong gains value), and a reassurance that standings *settle* rather than swing (bounded adjustment + the win-always-helps invariant). Scoped explicitly to Round Robin/Gauntlet; notes Stack/King don't do this.
+- **"The fine print"** — plain-language coverage of the remaining elements: per-game averaging (totals/byes never inflate or deflate), byes don't count, only decided games count (win-by-2), the tiebreaker order, and 0-game players ranking last.
+
 ### 9.2 Technical deep-dive section — "Under the hood"
 
 - Full Adjusted Margin formula: the three layers, the `√` curve table, centering, the additive strength term, constants `k`/`C`, the clamp, and the sign invariant.
