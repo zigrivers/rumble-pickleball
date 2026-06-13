@@ -2224,8 +2224,9 @@ function runSelfTests() {
     console.assert(order(rankPlayers(1)) === totalEquivalent,
       "RR equal-GP average ranking matches totals ranking", { avg: order(rankPlayers(1)), totalEquivalent });
     const standings = renderStandingsCard(2);
-    console.assert(/GP/.test(standings.textContent) && /AM/.test(standings.textContent),
-      "RR standings show GP and Adjusted Margin columns", standings.textContent);
+    console.assert(/GP/.test(standings.textContent) && /AM/.test(standings.textContent)
+      && /\d+–\d+/.test(standings.textContent) && /%/.test(standings.textContent),
+      "RR standings show GP, AM, W–L and W% columns", standings.textContent);
 
     state = {
       phase: "playing", format: "stack", courtCount: 2, stackRounds: 2,
@@ -4045,14 +4046,16 @@ function runSimulation() {
       .map(tr => ({
         name: tr.cells[1].childNodes[0].textContent,
         gp: tr.cells[2].textContent, am: tr.cells[3].textContent,
-        wg: tr.cells[4].textContent, diff: tr.cells[5].textContent,
+        wl: tr.cells[4].textContent, wpct: tr.cells[5].textContent, diff: tr.cells[6].textContent,
       }));
     console.assert(rows.length === 8, label + ": 8 rows", rows.length);
     expected.forEach((e, i) => {
       const r = rows[i] || {};
       console.assert(
         r.name === e.name && r.gp === String(e.gp) && r.am === fmtRate(e.adjScore)
-          && r.wg === fmtRate(e.wg) && r.diff === fmtDiff(e.dg),
+          && r.wl === e.w + "–" + (e.gp - e.w)
+          && r.wpct === Math.round(e.wg * 100) + "%"
+          && r.diff === fmtDiff(e.dg),
         label + " row " + (i + 1), { got: r, want: e });
     });
   }
@@ -10229,7 +10232,7 @@ function renderKingStandingsCard(throughRound, opts) {
     el("col", { class: "c-name" }),
     el("col", { class: "c-stack-extra" }),
     el("col", { class: "c-pts" }),
-    el("col", { class: "c-w" }),
+    el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
     el("col", { class: "c-stack-extra" }),
     el("col", { class: "c-stack-extra" }),
   );
@@ -10239,7 +10242,7 @@ function renderKingStandingsCard(throughRound, opts) {
     el("th", null, "Player"),
     el("th", { class: "num", title: "Games played" }, "GP"),
     el("th", { class: "num", title: "King Score per game" }, "KS/G"),
-    el("th", { class: "num", title: "Wins per game" }, "W/G"),
+    el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
     el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
     el("th", { class: "num col-hide-mobile", title: "Points per game" }, "PPG"),
   )));
@@ -10255,7 +10258,7 @@ function renderKingStandingsCard(throughRound, opts) {
       standingNameCell(s),
       el("td", { class: "num" }, "" + s.gp),
       el("td", { class: "num" }, s.kingRate.toFixed(1)),
-      el("td", { class: "num" }, s.winRate.toFixed(1)),
+      el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
       el("td", { class: "num col-hide-mobile" }, "" + s.kingCourtWins),
       el("td", { class: "num col-hide-mobile" }, (s.pointsScored / Math.max(1, s.gp)).toFixed(1)),
     ));
@@ -10284,7 +10287,7 @@ function renderStandingsCard(throughRound, opts) {
     el("col", { class: "c-name" }),
     el("col", { class: "c-stack-extra" }),
     el("col", { class: "c-pts" }),
-    el("col", { class: "c-w" }),
+    el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
     el("col", { class: "c-diff" }),
   );
   table.appendChild(colgroup);
@@ -10293,7 +10296,7 @@ function renderStandingsCard(throughRound, opts) {
     el("th", null, "Player"),
     el("th", { class: "num", title: "Games played" }, "GP"),
     el("th", { class: "num", title: "Adjusted Margin — diminishing-returns point margin, weighted by opponent and partner strength. Updates retroactively as the field's strength becomes clearer." }, "AM"),
-    el("th", { class: "num", title: "Wins per game" }, "W/G"),
+    el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
     el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
   )));
   const tbody = el("tbody");
@@ -10317,7 +10320,7 @@ function renderStandingsCard(throughRound, opts) {
         class: "num",
         style: s.adjScore > 0 ? "color: var(--good);" : (s.adjScore < 0 ? "color: var(--bad);" : ""),
       }, s.adjScore.toFixed(1)),
-      el("td", { class: "num" }, s.winRate.toFixed(1)),
+      el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
       el("td", {
         class: "num col-hide-mobile",
         style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : ""),
@@ -10344,7 +10347,7 @@ function renderStackStandingsCard(throughRound, opts) {
     el("col", { class: "c-name" }),
     el("col", { class: "c-stack-extra" }),
     el("col", { class: "c-pts" }),
-    el("col", { class: "c-w" }),
+    el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
     el("col", { class: "c-stack-extra" }),
     el("col", { class: "c-stack-extra" }),
   );
@@ -10354,7 +10357,7 @@ function renderStackStandingsCard(throughRound, opts) {
     el("th", null, "Player"),
     el("th", { class: "num", title: "Games played" }, "GP"),
     el("th", { class: "num", title: "Stack Score per game" }, "SS/G"),
-    el("th", { class: "num", title: "Wins per game" }, "W/G"),
+    el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
     el("th", { class: "num col-hide-mobile", title: "Court climbs (C2 → C1)" }, "Climbs"),
     el("th", { class: "num col-hide-mobile", title: "Games on Court 1" }, "C1"),
   )));
@@ -10370,7 +10373,7 @@ function renderStackStandingsCard(throughRound, opts) {
       standingNameCell(s),
       el("td", { class: "num" }, "" + s.gp),
       el("td", { class: "num" }, s.stackRate.toFixed(1)),
-      el("td", { class: "num" }, s.winRate.toFixed(1)),
+      el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
       el("td", { class: "num col-hide-mobile" }, "" + s.courtClimbs),
       el("td", { class: "num col-hide-mobile" }, "" + s.gamesOnCourt1),
     ));
@@ -11314,7 +11317,7 @@ function renderDoneScreen() {
       el("col", { class: "c-name" }),
       el("col", { class: "c-stack-extra" }),
       el("col", { class: "c-pts" }),
-      el("col", { class: "c-w" }),
+      el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
       el("col", { class: "c-stack-extra" }),
       el("col", { class: "c-stack-extra" }),
     );
@@ -11324,7 +11327,7 @@ function renderDoneScreen() {
       el("th", null, "Player"),
       el("th", { class: "num", title: "Games played" }, "GP"),
       el("th", { class: "num", title: "Stack Score per game" }, "SS/G"),
-      el("th", { class: "num", title: "Wins per game" }, "W/G"),
+      el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
       el("th", { class: "num col-hide-mobile", title: "Court climbs" }, "Climbs"),
       el("th", { class: "num col-hide-mobile", title: "Games on Court 1" }, "C1"),
     )));
@@ -11337,7 +11340,7 @@ function renderDoneScreen() {
         standingNameCell(s),
         el("td", { class: "num" }, "" + s.gp),
         el("td", { class: "num" }, s.stackRate.toFixed(1)),
-        el("td", { class: "num" }, s.winRate.toFixed(1)),
+        el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
         el("td", { class: "num col-hide-mobile" }, "" + s.courtClimbs),
         el("td", { class: "num col-hide-mobile" }, "" + s.gamesOnCourt1),
       ));
@@ -11351,7 +11354,7 @@ function renderDoneScreen() {
       el("col", { class: "c-name" }),
       el("col", { class: "c-stack-extra" }),
       el("col", { class: "c-pts" }),
-      el("col", { class: "c-w" }),
+      el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
       el("col", { class: "c-stack-extra" }),
       el("col", { class: "c-stack-extra" }),
     );
@@ -11361,7 +11364,7 @@ function renderDoneScreen() {
       el("th", null, "Player"),
       el("th", { class: "num", title: "Games played" }, "GP"),
       el("th", { class: "num", title: "King Score per game" }, "KS/G"),
-      el("th", { class: "num", title: "Wins per game" }, "W/G"),
+      el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
       el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
       el("th", { class: "num col-hide-mobile", title: "Points per game" }, "PPG"),
     )));
@@ -11374,7 +11377,7 @@ function renderDoneScreen() {
         standingNameCell(s),
         el("td", { class: "num" }, "" + s.gp),
         el("td", { class: "num" }, s.kingRate.toFixed(1)),
-        el("td", { class: "num" }, s.winRate.toFixed(1)),
+        el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
         el("td", { class: "num col-hide-mobile" }, "" + s.kingCourtWins),
         el("td", { class: "num col-hide-mobile" }, (s.pointsScored / Math.max(1, s.gp)).toFixed(1)),
       ));
@@ -11389,7 +11392,7 @@ function renderDoneScreen() {
       el("col", { class: "c-name" }),
       el("col", { class: "c-stack-extra" }),
       el("col", { class: "c-pts" }),
-      el("col", { class: "c-w" }),
+      el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
       el("col", { class: "c-diff" }),
     );
     table.appendChild(colgroup);
@@ -11398,7 +11401,7 @@ function renderDoneScreen() {
       el("th", null, "Player"),
       el("th", { class: "num", title: "Games played" }, "GP"),
       el("th", { class: "num", title: "Adjusted Margin (regular rounds)" }, "AM"),
-      el("th", { class: "num", title: "Wins per game" }, "W/G"),
+      el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
       el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
     )));
     const tbody = el("tbody");
@@ -11414,7 +11417,7 @@ function renderDoneScreen() {
           style: (marginBySlot.get(s.slot) || 0) > 0 ? "color: var(--good);"
                : ((marginBySlot.get(s.slot) || 0) < 0 ? "color: var(--bad);" : ""),
         }, (marginBySlot.get(s.slot) || 0).toFixed(1)),
-        el("td", { class: "num" }, s.winRate.toFixed(1)),
+        el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
         el("td", { class: "num col-hide-mobile", style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : "") },
           (s.avgDiff > 0 ? "+" : "") + s.avgDiff.toFixed(1)),
       ));
