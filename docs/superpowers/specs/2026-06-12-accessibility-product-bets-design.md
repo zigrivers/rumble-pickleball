@@ -223,6 +223,8 @@ Recommended future architecture:
 
 This batch should create a decision record and future plan, not production multi-device score entry.
 
+The implementation decision is recorded in `docs/superpowers/specs/2026-06-12-multi-device-score-entry-decision.md`.
+
 ## Testing Strategy
 
 Use inline self-tests for pure helpers:
