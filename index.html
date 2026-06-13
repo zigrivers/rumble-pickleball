@@ -383,6 +383,8 @@
     table.standings th.col-hide-mobile,
     table.standings td.col-hide-mobile { display: none; padding: 0; }
   }
+  table.standings.hide-advanced th.col-hide-mobile,
+  table.standings.hide-advanced td.col-hide-mobile { display: none; padding: 0; }
   table.standings tr.tier-divider td {
     border-top: 1px solid var(--border);
     padding: 10px 8px 4px;
@@ -1665,6 +1667,19 @@ function runSelfTests() {
       "compact view enabled on narrow screen");
     console.assert(shouldUseCompactTournamentView({ compactMobileView: true }, 900) === false,
       "compact view disabled on wide screen");
+  }
+  // Accessibility/product Task 5 - visual noise options
+  {
+    console.assert(typeof visualNoiseOptions === "function", "visualNoiseOptions exists");
+    const full = visualNoiseOptions({ reduceVisualNoise: false, showPartnerChips: true,
+      showPartnerBadges: true, showTrajectory: true, showAdvancedStats: true });
+    const quiet = visualNoiseOptions({ reduceVisualNoise: true, showPartnerChips: true,
+      showPartnerBadges: true, showTrajectory: true, showAdvancedStats: true });
+    console.assert(full.partnerChips === true && full.advancedStats === true,
+      "visualNoiseOptions keeps full detail by default", full);
+    console.assert(quiet.partnerChips === false && quiet.partnerBadges === false &&
+      quiet.trajectory === false && quiet.advancedStats === false,
+      "visualNoiseOptions master toggle hides noisy details", quiet);
   }
   // Flex Task 1.1 — v4 → v5 migration shape
   {
@@ -10412,8 +10427,21 @@ function trajectorySpan(slot, currentIdx) {
   return wrap;
 }
 
+function visualNoiseOptions(prefs = state.accessibilityPrefs || {}) {
+  if (prefs.reduceVisualNoise) {
+    return { partnerChips: false, partnerBadges: false, trajectory: false, advancedStats: false };
+  }
+  return {
+    partnerChips: prefs.showPartnerChips !== false,
+    partnerBadges: prefs.showPartnerBadges !== false,
+    trajectory: prefs.showTrajectory !== false,
+    advancedStats: prefs.showAdvancedStats !== false,
+  };
+}
+
 function renderKingStandingsCard(throughRound, opts) {
   opts = opts || {};
+  const vno = visualNoiseOptions();
   const stats = rankPlayersKing(throughRound);
   const card = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
@@ -10421,7 +10449,7 @@ function renderKingStandingsCard(throughRound, opts) {
     opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
   );
   card.appendChild(head);
-  const table = el("table", { class: "standings" });
+  const table = el("table", { class: "standings" + (vno.advancedStats ? "" : " hide-advanced") });
   const colgroup = el("colgroup", null,
     el("col", { class: "c-rank" }),
     el("col", { class: "c-name" }),
@@ -10443,7 +10471,7 @@ function renderKingStandingsCard(throughRound, opts) {
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
-    const traj = trajectorySpan(s.slot, i);
+    const traj = vno.trajectory ? trajectorySpan(s.slot, i) : null;
     const rankTd = el("td", { class: "rank" });
     if (i < 3) rankTd.appendChild(el("span", { class: "rank-badge medal" }, MEDALS[i]));
     else       rankTd.appendChild(el("span", { class: "rank-badge" }, "" + (i + 1)));
@@ -10469,6 +10497,7 @@ function renderStandingsCard(throughRound, opts) {
   if (state.format === "king")     return renderKingStandingsCard(throughRound, opts);
   opts = opts || {};
   if (state.format === "gauntlet") opts = { ...opts, hidePartners: true };
+  const vno = visualNoiseOptions();
   const stats = rankPlayers(throughRound);
   const card = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
@@ -10476,7 +10505,7 @@ function renderStandingsCard(throughRound, opts) {
     opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
   );
   card.appendChild(head);
-  const table = el("table", { class: "standings" });
+  const table = el("table", { class: "standings" + (vno.advancedStats ? "" : " hide-advanced") });
   const colgroup = el("colgroup", null,
     el("col", { class: "c-rank" }),
     el("col", { class: "c-name" }),
@@ -10497,13 +10526,13 @@ function renderStandingsCard(throughRound, opts) {
   const tbody = el("tbody");
   stats.forEach((s, i) => {
     const remaining = Math.max(0, playerCount() - 1 - s.partnersUsed.size);
-    const partnerBadge = opts.hidePartners ? null : el("span", {
+    const partnerBadge = (opts.hidePartners || !vno.partnerBadges) ? null : el("span", {
       class: "partner-badge" + (remaining === 0 ? " done" : ""),
       title: "Partners remaining"
     }, remaining + " left");
     // Next-round partner chip (only when applicable)
     const npi = nextPartnerInfo(s.slot);
-    const partnerChip = npi ? el("span", {
+    const partnerChip = (npi && vno.partnerChips) ? el("span", {
       class: "partner-chip " + (npi.bye ? "bye" : ("c" + npi.courtKey)),
       title: npi.bye ? "Sitting next round" : "Next round partner",
     }, npi.bye ? "→ sitting" : ("→ " + nameOf(npi.partner))) : null;
@@ -10529,6 +10558,7 @@ function renderStandingsCard(throughRound, opts) {
 
 function renderStackStandingsCard(throughRound, opts) {
   opts = opts || {};
+  const vno = visualNoiseOptions();
   const stats = rankPlayersStack(throughRound);
   const card = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
@@ -10536,7 +10566,7 @@ function renderStackStandingsCard(throughRound, opts) {
     opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
   );
   card.appendChild(head);
-  const table = el("table", { class: "standings" });
+  const table = el("table", { class: "standings" + (vno.advancedStats ? "" : " hide-advanced") });
   const colgroup = el("colgroup", null,
     el("col", { class: "c-rank" }),
     el("col", { class: "c-name" }),
@@ -10558,7 +10588,7 @@ function renderStackStandingsCard(throughRound, opts) {
   )));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
-    const traj = trajectorySpan(s.slot, i);
+    const traj = vno.trajectory ? trajectorySpan(s.slot, i) : null;
     const rankTd = el("td", { class: "rank" });
     if (i < 3) rankTd.appendChild(el("span", { class: "rank-badge medal" }, MEDALS[i]));
     else       rankTd.appendChild(el("span", { class: "rank-badge" }, "" + (i + 1)));
@@ -12238,6 +12268,23 @@ function openSettings() {
   mkPrefToggle("highContrastCourts", "High-contrast court labels", "Show court identity with bold text badges, not just color.");
   mkPrefToggle("compactMobileView", "Compact mobile view", "On phones, focus the current scoring task with tabs.");
   mkPrefToggle("reduceVisualNoise", "Reduce visual noise", "Hide partner chips, badges, arrows, and advanced columns.");
+  const mkSubToggle = (key, title) => {
+    const row = el("div", { class: "ka-row indent" });
+    const text = el("div", { class: "ka-text" });
+    text.appendChild(el("div", { class: "ka-title" }, title));
+    const sw = el("label", { class: "ka-switch" });
+    const input = el("input", { type: "checkbox", "aria-label": title });
+    if (state.accessibilityPrefs[key] !== false) input.setAttribute("checked", "checked");
+    if (state.accessibilityPrefs.reduceVisualNoise) input.disabled = true;
+    input.addEventListener("change", () => { state.accessibilityPrefs[key] = input.checked; save(); render(); });
+    sw.appendChild(input); sw.appendChild(el("span", { class: "slider" }));
+    row.appendChild(text); row.appendChild(sw);
+    modal.appendChild(row);
+  };
+  mkSubToggle("showPartnerChips", "Partner chips");
+  mkSubToggle("showPartnerBadges", "Partner badges");
+  mkSubToggle("showTrajectory", "Trajectory arrows");
+  mkSubToggle("showAdvancedStats", "Advanced stat columns");
   // ---- Display & TV ----
   modal.appendChild(el("div", { class: "ka-section-title" }, "Display & TV"));
 
