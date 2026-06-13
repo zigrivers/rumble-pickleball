@@ -4067,6 +4067,17 @@ function runSelfTests() {
     console.assert(fastest[0].timeBudget.enabled === true && fastest[0].warnings.length >= 1,
       "fastest recommendation uses time budget and warnings", fastest);
   }
+  // Accessibility/product final surface availability
+  {
+    console.assert(typeof scoreEntryClass === "function", "scoreEntryClass is available");
+    console.assert(typeof courtIdentity === "function", "courtIdentity is available");
+    console.assert(typeof compactMobileTabsForPhase === "function", "compactMobileTabsForPhase is available");
+    console.assert(typeof visualNoiseOptions === "function", "visualNoiseOptions is available");
+    console.assert(typeof templateConfigFor === "function", "templateConfigFor is available");
+    console.assert(typeof applyTournamentTemplate === "function", "applyTournamentTemplate is available");
+    console.assert(typeof recommendSetups === "function", "recommendSetups is available");
+    console.assert(typeof applySetupRecommendation === "function", "applySetupRecommendation is available");
+  }
 
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
