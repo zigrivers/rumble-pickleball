@@ -2224,8 +2224,8 @@ function runSelfTests() {
     console.assert(order(rankPlayers(1)) === totalEquivalent,
       "RR equal-GP average ranking matches totals ranking", { avg: order(rankPlayers(1)), totalEquivalent });
     const standings = renderStandingsCard(2);
-    console.assert(/GP/.test(standings.textContent) && /11\.0/.test(standings.textContent),
-      "RR standings show GP and per-game values", standings.textContent);
+    console.assert(/GP/.test(standings.textContent) && /AM/.test(standings.textContent),
+      "RR standings show GP and Adjusted Margin columns", standings.textContent);
 
     state = {
       phase: "playing", format: "stack", courtCount: 2, stackRounds: 2,
@@ -3812,6 +3812,128 @@ function runSelfTests() {
     ].forEach(name => console.assert(typeof window[name] === "function", name + " is available"));
   }
 
+  // Adjusted Margin — metric primitives
+  {
+    const closeTo = (a, b) => Math.abs(a - b) < 1e-9;
+    console.assert(closeTo(marginScore(2), Math.SQRT2), "marginScore(2)=√2", marginScore(2));
+    console.assert(closeTo(marginScore(8), Math.sqrt(8)), "marginScore(8)=√8", marginScore(8));
+    console.assert(closeTo(marginScore(-2), -Math.SQRT2), "marginScore(-2)=-√2", marginScore(-2));
+    console.assert(marginScore(0) === 0, "marginScore(0)=0", marginScore(0));
+    console.assert(clampAdj(2) === 1 && clampAdj(-2) === -1 && clampAdj(0.5) === 0.5,
+      "clampAdj caps at ±1", [clampAdj(2), clampAdj(-2), clampAdj(0.5)]);
+  }
+
+  // Adjusted Margin — computeMarginStats
+  {
+    const savedState = state;
+    const closeTo = (a, b) => Math.abs(a - b) < 1e-9;
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    const sg = (court, team1, team2, score1, score2) => {
+      const g = makeGame(court, team1, team2); g.score1 = score1; g.score2 = score2; return g;
+    };
+    const baseState = (players, courtCount, rounds) => ({
+      phase: "playing", format: "rr", courtCount,
+      slots: Array.from({ length: players }, (_, i) => "P" + (i + 1)), players: makePlayers(players),
+      rounds, tiebreakRandom: Array.from({ length: players }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    });
+    const find = (stats, slot) => stats.find(s => s.slot === slot);
+
+    // (a) A deuce win (13–11) and an 11–9 win have identical base margin score.
+    state = baseState(8, 2, [
+      makeRound(1, [sg(1, [1,2], [3,4], 13, 11), sg(2, [5,6], [7,8], 11, 9)], []),
+    ]);
+    {
+      const ms = computeMarginStats(1);
+      console.assert(closeTo(find(ms, 1).avgMargin, find(ms, 5).avgMargin),
+        "deuce win and 11-9 win give equal base margin", { a: find(ms,1).avgMargin, b: find(ms,5).avgMargin });
+    }
+
+    // (b) Diminishing returns: three squeakers (3-0) outrank two blowouts + a blowout loss (2-1) on base margin.
+    state = baseState(8, 2, [
+      makeRound(1, [sg(1, [1,2], [3,4], 11, 0), sg(2, [5,6], [7,8], 11, 9)], []),
+      makeRound(2, [sg(1, [1,3], [2,4], 11, 0), sg(2, [5,7], [6,8], 11, 9)], []),
+      makeRound(3, [sg(1, [3,4], [1,2], 11, 0), sg(2, [5,8], [6,7], 11, 9)], []),
+    ]);
+    {
+      const ms = computeMarginStats(3);
+      // player 1: won 11-0, won 11-0, lost 0-11  → base = (√11 + √11 − √11)/3 = √11/3
+      // player 5: won 11-9, 11-9, 11-9           → base = √2
+      console.assert(find(ms, 5).avgMargin > find(ms, 1).avgMargin,
+        "3-0 of squeakers beats 2-1 with blowouts on base margin",
+        { p1: find(ms,1).avgMargin, p5: find(ms,5).avgMargin });
+    }
+
+    // (c) Sign invariant: with CAP < √2, a single-game player's adjScore has the sign of their result.
+    state = baseState(8, 2, [
+      makeRound(1, [sg(1, [1,2], [3,4], 11, 9), sg(2, [5,6], [7,8], 11, 0)], []),
+    ]);
+    {
+      const ms = computeMarginStats(1);
+      console.assert(find(ms,1).adjScore > 0 && find(ms,5).adjScore > 0,
+        "winners have positive adjScore", { p1: find(ms,1).adjScore, p5: find(ms,5).adjScore });
+      console.assert(find(ms,3).adjScore < 0 && find(ms,7).adjScore < 0,
+        "losers have negative adjScore", { p3: find(ms,3).adjScore, p7: find(ms,7).adjScore });
+    }
+
+    // (d) Opponent strength: beating a STRONG team beats the same margin vs a WEAK team.
+    state = baseState(8, 2, [
+      makeRound(1, [sg(1, [3,4], [5,6], 11, 1), sg(2, [1,2], [7,8], 11, 1)], []),
+      makeRound(2, [sg(1, [1,5], [3,4], 11, 9), sg(2, [2,6], [7,8], 11, 9)], []),
+    ]);
+    {
+      const ms = computeMarginStats(2);
+      console.assert(find(ms, 1).adjScore > find(ms, 2).adjScore,
+        "beating a strong team outscores beating a weak team (same margin)",
+        { p1: find(ms,1).adjScore, p2: find(ms,2).adjScore });
+    }
+
+    // (e) Partner strength: the SAME win counts for LESS when partnered with a stronger player.
+    const partnerState = partner => baseState(8, 2, [
+      makeRound(1, [sg(1, [3,4], [5,6], 11, 1), sg(2, [2,7], [8,1], 9, 11)], []),
+      makeRound(2, [sg(1, [1,partner], [7,8], 11, 9), sg(2, [2,6], [3,4], 9, 11)], []),
+    ]);
+    {
+      state = partnerState(3); const strongPartner = computeMarginStats(2).find(s => s.slot === 1).adjScore;
+      state = partnerState(5); const weakPartner   = computeMarginStats(2).find(s => s.slot === 1).adjScore;
+      console.assert(weakPartner > strongPartner,
+        "same win counts less with a stronger partner", { strongPartner, weakPartner });
+    }
+
+    state = savedState;
+  }
+
+  // Adjusted Margin — rankPlayers ordering
+  {
+    const savedState = state;
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    const sg = (court, team1, team2, score1, score2) => {
+      const g = makeGame(court, team1, team2); g.score1 = score1; g.score2 = score2; return g;
+    };
+    const idx = (ranked, slot) => ranked.findIndex(s => s.slot === slot);
+
+    // A blowout win (11-3) ranks above a squeaker win (11-9) of an otherwise-symmetric player.
+    state = {
+      phase: "playing", format: "rr", courtCount: 2,
+      slots: Array.from({ length: 8 }, (_, i) => "P" + (i + 1)), players: makePlayers(8),
+      rounds: [ makeRound(1, [sg(1, [1,2], [3,4], 11, 3), sg(2, [5,6], [7,8], 11, 9)], []) ],
+      tiebreakRandom: Array.from({ length: 8 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    const ranked = rankPlayers(1);
+    console.assert(idx(ranked, 1) < idx(ranked, 5),
+      "blowout winner outranks squeaker winner", ranked.map(s => s.slot).join(","));
+    console.assert(ranked[ranked.length - 1].slot >= 1,
+      "rankPlayers returns all players", ranked.length);
+    state = savedState;
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -3842,16 +3964,35 @@ function runSimulation() {
   const savedStore = {};
   for (const k of [STORAGE_KEY, "pb_durations_v1", "pb_calibration_v1"]) savedStore[k] = localStorage.getItem(k);
 
-  // Independent expectations from the scores the simulation entered, following
-  // the documented ranking rules: points → wins → diff → h2h → tiebreakRandom.
+  // Independent expectations from the entered scores, following the Adjusted
+  // Margin rules: adjScore (diminishing-returns margin + opponent/partner
+  // strength, regular rounds only) → win rate → head-to-head → tiebreakRandom.
   function expectedTable(games, tieRand) {
     const st = {};
-    for (let s = 1; s <= 8; s++) st[s] = { slot: s, pts: 0, w: 0, l: 0, diff: 0, gp: 0 };
+    for (let s = 1; s <= 8; s++) st[s] = { slot: s, pts: 0, w: 0, l: 0, diff: 0, gp: 0, rgp: 0, sumMs: 0 };
+    const ms = g => Math.sign(g.s1 - g.s2) * Math.sqrt(Math.abs(g.s1 - g.s2));
     for (const g of games) {
       const t1w = g.s1 > g.s2, t2w = g.s2 > g.s1;
-      for (const s of g.t1) { st[s].pts += g.s1; st[s].diff += g.s1 - g.s2; st[s].gp++; if (t1w) st[s].w++; if (t2w) st[s].l++; }
-      for (const s of g.t2) { st[s].pts += g.s2; st[s].diff += g.s2 - g.s1; st[s].gp++; if (t2w) st[s].w++; if (t1w) st[s].l++; }
+      const m1 = ms(g);
+      for (const s of g.t1) { st[s].pts += g.s1; st[s].diff += g.s1 - g.s2; st[s].gp++; if (t1w) st[s].w++; if (t2w) st[s].l++; if (!g.final) { st[s].rgp++; st[s].sumMs += m1; } }
+      for (const s of g.t2) { st[s].pts += g.s2; st[s].diff += g.s2 - g.s1; st[s].gp++; if (t2w) st[s].w++; if (t1w) st[s].l++; if (!g.final) { st[s].rgp++; st[s].sumMs -= m1; } }
     }
+    const base = {}, strength = {};
+    let fSum = 0, fCount = 0;
+    for (let s = 1; s <= 8; s++) { if (st[s].rgp > 0) { base[s] = st[s].sumMs / st[s].rgp; fSum += base[s]; fCount++; } else base[s] = 0; }
+    const fieldAvg = fCount ? fSum / fCount : 0;
+    for (let s = 1; s <= 8; s++) strength[s] = st[s].rgp > 0 ? base[s] - fieldAvg : 0;
+    const K = 0.5, CAP = 1.0, clamp = x => Math.max(-CAP, Math.min(CAP, x));
+    const credit = {};
+    for (let s = 1; s <= 8; s++) credit[s] = 0;
+    const addC = (team, opp, m) => {
+      const O = (strength[opp[0]] + strength[opp[1]]) / 2;
+      for (let k = 0; k < team.length; k++) {
+        const P = strength[team[k === 0 ? 1 : 0]];
+        credit[team[k]] += m + clamp(K * (O - P));
+      }
+    };
+    for (const g of games) { if (g.final) continue; const m1 = ms(g); addC(g.t1, g.t2, m1); addC(g.t2, g.t1, -m1); }
     const h2h = (a, b) => {                       // regular rounds only, like headToHead()
       let d = 0;
       for (const g of games) {
@@ -3866,12 +4007,13 @@ function runSimulation() {
       ppg: s.pts / Math.max(1, s.gp),
       wg: s.w / Math.max(1, s.gp),
       dg: s.diff / Math.max(1, s.gp),
+      adjScore: s.rgp > 0 ? credit[s.slot] / s.rgp : 0,
     })).sort((x, y) => {
       if (x.gp === 0 || y.gp === 0) {
         if (x.gp !== y.gp) return x.gp === 0 ? 1 : -1;
         return tieRand.indexOf(x.slot - 1) - tieRand.indexOf(y.slot - 1);
       }
-      return y.ppg - x.ppg || y.wg - x.wg || y.dg - x.dg || -h2h(x.slot, y.slot) ||
+      return y.adjScore - x.adjScore || y.wg - x.wg || -h2h(x.slot, y.slot) ||
         (tieRand.indexOf(x.slot - 1) - tieRand.indexOf(y.slot - 1));
     });
   }
@@ -3901,14 +4043,14 @@ function runSimulation() {
       .filter(tr => tr.cells.length > 1)          // skip tier-divider rows
       .map(tr => ({
         name: tr.cells[1].childNodes[0].textContent,
-        gp: tr.cells[2].textContent, ppg: tr.cells[3].textContent,
+        gp: tr.cells[2].textContent, am: tr.cells[3].textContent,
         wg: tr.cells[4].textContent, diff: tr.cells[5].textContent,
       }));
     console.assert(rows.length === 8, label + ": 8 rows", rows.length);
     expected.forEach((e, i) => {
       const r = rows[i] || {};
       console.assert(
-        r.name === e.name && r.gp === String(e.gp) && r.ppg === fmtRate(e.ppg)
+        r.name === e.name && r.gp === String(e.gp) && r.am === fmtRate(e.adjScore)
           && r.wg === fmtRate(e.wg) && r.diff === fmtDiff(e.dg),
         label + " row " + (i + 1), { got: r, want: e });
     });
@@ -5556,7 +5698,7 @@ function kingMovementToastText(prevRound) {
 
 // === GAUNTLET FORMAT ===
 // Re-rank all 8 after every round. Court 1: #1+#4 vs #2+#3; Court 2: #5+#8 vs #6+#7.
-// Reuses existing rankPlayers() (points scored → wins → diff → h2h) — no new stats needed.
+// Reuses existing rankPlayers() (Adjusted Margin → win rate → h2h) — no new stats needed.
 
 function buildGauntletPairing(ranked, roundNum) {
   const active = ladderActiveSlots(roundNum, null);
@@ -6981,6 +7123,18 @@ function statsSlotCount(throughRound, includeFinals) {
   return count;
 }
 
+// === Adjusted Margin ranking primitives (RR + Gauntlet) ===
+// Diminishing-returns point margin with light opponent/partner strength
+// weighting. See docs/superpowers/specs/2026-06-13-strength-adjusted-margin-ranking-design.md
+const MARGIN_STRENGTH_K = 0.5;   // opponent/partner sensitivity
+const MARGIN_ADJ_CAP    = 1.0;   // max strength adjustment per game; < √2 keeps every win > 0 and every loss < 0
+function marginScore(d) {        // signed square-root diminishing-returns curve
+  return Math.sign(d) * Math.sqrt(Math.abs(d));
+}
+function clampAdj(x) {
+  return Math.max(-MARGIN_ADJ_CAP, Math.min(MARGIN_ADJ_CAP, x));
+}
+
 function computeStats(throughRound, includeFinals) {
   const stats = [];
   const count = statsSlotCount(throughRound, includeFinals);
@@ -7029,6 +7183,59 @@ function computeStats(throughRound, includeFinals) {
   return stats;
 }
 
+// Per-player Adjusted Margin stats through `throughRound` (regular rounds only).
+// Builds on computeStats for display fields, then layers diminishing-returns
+// margin (avgMargin) and strength-adjusted credit (adjScore).
+function computeMarginStats(throughRound) {
+  const stats = computeStats(throughRound, false);
+  const n = stats.length;
+  const sumMs = new Array(n + 1).fill(0);
+  const sumCredit = new Array(n + 1).fill(0);
+  const games = [];
+  for (let i = 0; i < (throughRound || 0) && i < state.rounds.length; i++) {
+    for (const g of gamesOf(state.rounds[i])) {
+      if (isGameDecided(g)) games.push(g);
+    }
+  }
+  // Pass 1 — base margin score per player.
+  for (const g of games) {
+    const m1 = marginScore(g.score1 - g.score2);
+    for (const slot of g.team1) sumMs[slot] += m1;
+    for (const slot of g.team2) sumMs[slot] -= m1;
+  }
+  const base = new Array(n + 1).fill(0);
+  let fieldSum = 0, fieldCount = 0;
+  for (const s of stats) {
+    if (s.gp > 0) { base[s.slot] = sumMs[s.slot] / s.gp; fieldSum += base[s.slot]; fieldCount++; }
+  }
+  const fieldAvg = fieldCount ? fieldSum / fieldCount : 0;
+  const strength = new Array(n + 1).fill(0);
+  for (const s of stats) {
+    if (s.gp > 0) strength[s.slot] = base[s.slot] - fieldAvg;
+  }
+  // Pass 2 — strength-adjusted credit per player.
+  for (const g of games) {
+    const m1 = marginScore(g.score1 - g.score2);
+    addMarginCredit(g.team1, g.team2, m1, strength, sumCredit);
+    addMarginCredit(g.team2, g.team1, -m1, strength, sumCredit);
+  }
+  for (const s of stats) {
+    s.avgMargin = s.gp > 0 ? base[s.slot] : 0;
+    s.adjScore  = s.gp > 0 ? sumCredit[s.slot] / s.gp : 0;
+  }
+  return stats;
+}
+
+// Adds `ms + clamp(k·(opponentStrength − partnerStrength))` to each player on `team`.
+function addMarginCredit(team, opp, ms, strength, sumCredit) {
+  const O = (strength[opp[0]] + strength[opp[1]]) / 2;
+  for (let k = 0; k < team.length; k++) {
+    const partner = team[k === 0 ? 1 : 0];
+    const P = strength[partner];
+    sumCredit[team[k]] += ms + clampAdj(MARGIN_STRENGTH_K * (O - P));
+  }
+}
+
 function headToHead(slotA, slotB, throughRound) {
   let diff = 0;
   for (let i = 0; i < throughRound && i < state.rounds.length; i++) {
@@ -7047,15 +7254,14 @@ function headToHead(slotA, slotB, throughRound) {
 }
 
 function rankPlayers(throughRound) {
-  const stats = computeStats(throughRound, false);
+  const stats = computeMarginStats(throughRound);
   stats.sort((a, b) => {
     if (a.gp === 0 || b.gp === 0) {
       if (a.gp !== b.gp) return a.gp === 0 ? 1 : -1;
       return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
     }
-    if (b.avgPoints !== a.avgPoints) return b.avgPoints - a.avgPoints;
-    if (b.winRate   !== a.winRate)   return b.winRate   - a.winRate;
-    if (b.avgDiff   !== a.avgDiff)   return b.avgDiff   - a.avgDiff;
+    if (b.adjScore !== a.adjScore) return b.adjScore - a.adjScore;
+    if (b.winRate  !== a.winRate)  return b.winRate  - a.winRate;
     const h2h = headToHead(a.slot, b.slot, throughRound);
     if (h2h !== 0) return -h2h;
     return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
@@ -7725,7 +7931,7 @@ const RULES_RR = [
   "4–24 players, 1–6 courts, doubles. Each round fills the active courts; anyone extra sits that round.",
   "With exactly 8 players and 2 courts, Rumble keeps the classic 7-round schedule: every partner once, every opponent twice. Other setups use generated pairings with fair bye rotation.",
   "Score games however you normally would (typically first to 11, win by 2). Type any final score.",
-  "Standings rank by points/game, then wins/game, differential/game, head-to-head, and the initial random draw. Players with 0 GP rank below anyone who has played.",
+  "Standings rank by Adjusted Margin — your average winning margin on a diminishing-returns scale, adjusted for opponent and partner strength — then win rate, head-to-head, and the initial random draw. Players with 0 GP rank below anyone who has played.",
   "Finals seat one four-player tier per active court: Championship, Consolation, then lower tiers as needed. Extra active players stay unseated by season rank.",
   "Final ranking is by tournament outcome tier-by-tier: tier winners, tier runners-up, then unseated and departed players. Within each group, season rank breaks the order.",
 ];
@@ -7757,10 +7963,10 @@ const RULES_KING = [
 ];
 const RULES_GAUNTLET = [
   "4–24 players, 1–6 courts, doubles. Each round fills rank blocks of four; anyone extra sits by fair rotation.",
-  "After every round, players are re-ranked by per-game performance (points/game → wins/game → differential/game → head-to-head).",
+  "After every round, players are re-ranked by Adjusted Margin (diminishing-returns winning margin, adjusted for opponent and partner strength) → win rate → head-to-head.",
   "Pairing rule: Court 1 gets #1+#4 vs #2+#3; Court 2 gets #5+#8 vs #6+#7; lower courts continue the same rank-block pattern.",
   "Round 1 uses a random seed order.",
-  "Standard scoring (default first to 11, win by 2). Standings use the same per-game averages as Round Robin.",
+  "Standard scoring (default first to 11, win by 2). Standings use the same Adjusted Margin ranking as Round Robin.",
   "Finals seat one four-player tier per active court, seeded #1+#4 vs #2+#3 within each tier. Extra active players remain unseated by season rank.",
 ];
 function rulesForActiveFormat() {
@@ -10080,7 +10286,7 @@ function renderStandingsCard(throughRound, opts) {
     el("th", { style: "text-align: center;" }, "#"),
     el("th", null, "Player"),
     el("th", { class: "num", title: "Games played" }, "GP"),
-    el("th", { class: "num", title: "Points per game" }, "PPG"),
+    el("th", { class: "num", title: "Adjusted Margin — diminishing-returns point margin, weighted by opponent and partner strength. Updates retroactively as the field's strength becomes clearer." }, "AM"),
     el("th", { class: "num", title: "Wins per game" }, "W/G"),
     el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
   )));
@@ -10101,7 +10307,10 @@ function renderStandingsCard(throughRound, opts) {
       rankCell(i),
       standingNameCell(s, partnerChip, partnerBadge),
       el("td", { class: "num" }, "" + s.gp),
-      el("td", { class: "num" }, s.avgPoints.toFixed(1)),
+      el("td", {
+        class: "num",
+        style: s.adjScore > 0 ? "color: var(--good);" : (s.adjScore < 0 ? "color: var(--bad);" : ""),
+      }, s.adjScore.toFixed(1)),
       el("td", { class: "num" }, s.winRate.toFixed(1)),
       el("td", {
         class: "num col-hide-mobile",
@@ -10229,7 +10438,7 @@ function renderFinalsScreen() {
       ? s.stackRate.toFixed(1) + " SS/G · GP " + s.gp
       : isKing
         ? s.kingRate.toFixed(1) + " KS/G · GP " + s.gp
-        : s.avgPoints.toFixed(1) + " pts/G · GP " + s.gp;
+        : s.adjScore.toFixed(1) + " AM · GP " + s.gp;
     grid.appendChild(el("div", { class: "seed-row" },
       el("span", { class: "seed-rank" }, "#" + (i + 1)),
       el("span", null, s.name),
@@ -10295,8 +10504,8 @@ function renderPodium(ranking) {
     const ks = computeKingStats(state.rounds.length);
     labelBySlot = new Map(ks.map(s => [s.slot, s.kingRate.toFixed(1) + " KS/G"]));
   } else {
-    const stats = computeStats(totalRegularRounds(), true);
-    labelBySlot = new Map(stats.map(s => [s.slot, s.avgPoints.toFixed(1) + " pts/G"]));
+    const stats = computeMarginStats(totalRegularRounds());
+    labelBySlot = new Map(stats.map(s => [s.slot, s.adjScore.toFixed(1) + " AM"]));
   }
   const order = ["silver", "gold", "bronze"]; // visual left/center/right
   const ranks = [ranking[1], ranking[0], ranking[2]]; // map to visual order
@@ -11167,6 +11376,8 @@ function renderDoneScreen() {
     table.appendChild(tbody);
   } else {
     const allStats = computeStats(totalRegularRounds(), true);
+    const marginBySlot = new Map(
+      computeMarginStats(totalRegularRounds()).map(s => [s.slot, s.adjScore]));
     const colgroup = el("colgroup", null,
       el("col", { class: "c-rank" }),
       el("col", { class: "c-name" }),
@@ -11180,7 +11391,7 @@ function renderDoneScreen() {
       el("th", { style: "text-align: center;" }, "#"),
       el("th", null, "Player"),
       el("th", { class: "num", title: "Games played" }, "GP"),
-      el("th", { class: "num", title: "Points per game" }, "PPG"),
+      el("th", { class: "num", title: "Adjusted Margin (regular rounds)" }, "AM"),
       el("th", { class: "num", title: "Wins per game" }, "W/G"),
       el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
     )));
@@ -11192,7 +11403,11 @@ function renderDoneScreen() {
         rankCell(i),
         standingNameCell(s),
         el("td", { class: "num" }, "" + s.gp),
-        el("td", { class: "num" }, s.avgPoints.toFixed(1)),
+        el("td", {
+          class: "num",
+          style: (marginBySlot.get(s.slot) || 0) > 0 ? "color: var(--good);"
+               : ((marginBySlot.get(s.slot) || 0) < 0 ? "color: var(--bad);" : ""),
+        }, (marginBySlot.get(s.slot) || 0).toFixed(1)),
         el("td", { class: "num" }, s.winRate.toFixed(1)),
         el("td", { class: "num col-hide-mobile", style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : "") },
           (s.avgDiff > 0 ? "+" : "") + s.avgDiff.toFixed(1)),
@@ -11205,7 +11420,7 @@ function renderDoneScreen() {
     ? "Within each tier, King Score per game breaks ties."
     : isStack
       ? "Within each tier, Stack Score per game breaks ties."
-      : "Within each tier, points/game → wins/game → differential/game break ties.";
+      : "Within each tier, Adjusted Margin → win rate → head-to-head break ties.";
   finalCard.appendChild(el("p", { class: "standings-footer" }, footerText));
   wrap.appendChild(finalCard);
 
