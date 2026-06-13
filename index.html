@@ -648,6 +648,14 @@
   .row-actions button.primary { flex: 3; min-width: 200px; }
   .row-actions button.secondary { flex: 1; min-width: 140px; }
 
+  .mobile-tourney-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .mobile-tourney-tab {
+    flex: 1; min-height: 44px; border-radius: 10px;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); font-weight: 700;
+  }
+  .mobile-tourney-tab.active { background: var(--accent); color: #0b0b0c; border-color: var(--accent); }
+
   .modal-bg {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.75);
@@ -1643,6 +1651,20 @@ function runSelfTests() {
     const large = scoreEntryClass({ largeScoreEntry: true });
     console.assert(standard === "" && large.includes("large-score-entry"),
       "scoreEntryClass maps large preference to class", { standard, large });
+  }
+  // Accessibility/product Task 4 - compact mobile model
+  {
+    console.assert(typeof compactMobileTabsForPhase === "function", "compactMobileTabsForPhase exists");
+    const tabs = compactMobileTabsForPhase("playing");
+    console.assert(JSON.stringify(tabs.map(t => t.id)) === JSON.stringify(["score", "standings", "more"]),
+      "compact mobile playing tabs are score standings more", tabs);
+  }
+  {
+    console.assert(typeof shouldUseCompactTournamentView === "function", "shouldUseCompactTournamentView exists");
+    console.assert(shouldUseCompactTournamentView({ compactMobileView: true }, 390) === true,
+      "compact view enabled on narrow screen");
+    console.assert(shouldUseCompactTournamentView({ compactMobileView: true }, 900) === false,
+      "compact view disabled on wide screen");
   }
   // Flex Task 1.1 — v4 → v5 migration shape
   {
@@ -4369,6 +4391,7 @@ function newState() {
       showTrajectory: true,
       showAdvancedStats: true,
     },
+    mobileTournamentTab: "score",
     lastAppliedTemplate: null,
     setupAssistant: {
       goal: "balanced",
@@ -4776,6 +4799,7 @@ function backfillStateDefaults(obj) {
     if (typeof ap.showTrajectory !== "boolean")     ap.showTrajectory = true;
     if (typeof ap.showAdvancedStats !== "boolean")  ap.showAdvancedStats = true;
   }
+  if (!["score","standings","more"].includes(obj.mobileTournamentTab)) obj.mobileTournamentTab = "score";
   if (obj.lastAppliedTemplate === undefined)        obj.lastAppliedTemplate = null;
   if (!obj.setupAssistant || typeof obj.setupAssistant !== "object") {
     obj.setupAssistant = { goal: "balanced", minutes: 90 };
@@ -9898,6 +9922,19 @@ function renderDoneScreenCrown() {
 }
 
 // ---------- playing screens ----------
+function compactMobileTabsForPhase(phase) {
+  if (phase === "playing") return [
+    { id: "score", label: "Score" },
+    { id: "standings", label: "Standings" },
+    { id: "more", label: "More" },
+  ];
+  return [];
+}
+
+function shouldUseCompactTournamentView(prefs, width) {
+  return !!(prefs && prefs.compactMobileView) && width <= 640;
+}
+
 function renderPlaying() {
   if (state.format === "crown") return renderCrownPlaying();
   const wrap = el("div");
@@ -9912,13 +9949,17 @@ function renderPlaying() {
   const refreshes = [];
   const refresh = () => refreshes.forEach(fn => fn());
 
+  const scoreSection = el("div");
+  const standingsSection = el("div");
+  const moreSection = el("div");
+
   const roundByes = byesOf(round);
   if (roundByes.length) {
-    wrap.appendChild(el("div", { class: "bye-banner" },
+    scoreSection.appendChild(el("div", { class: "bye-banner" },
       "☕ Sitting this round: " + roundByes.map(nameOf).join(", ") + " — back next round.",
       whyButton("bye", { slots: roundByes.slice(), round: round.round || state.currentRound })));
   }
-  wrap.appendChild(renderRoundCourts(round, false, refreshes));
+  scoreSection.appendChild(renderRoundCourts(round, false, refreshes));
 
   // navigation row
   // A round is "advanceable" only when both courts are decided (no ties) — a
@@ -10012,7 +10053,7 @@ function renderPlaying() {
     primaryBtn.disabled = !allRoundsAdvanceable;
   }
   actions.appendChild(primaryBtn);
-  wrap.appendChild(actions);
+  scoreSection.appendChild(actions);
 
   // standings — always computed over ALL rounds, not just up to the viewed round,
   // so navigating back to check or fix an earlier score never drops later rounds'
@@ -10025,19 +10066,41 @@ function renderPlaying() {
     return { subtitle: sub };
   };
   let standingsCard = renderStandingsCard(state.rounds.length, standingsOpts());
-  wrap.appendChild(standingsCard);
+  standingsSection.appendChild(standingsCard);
 
   // Mid-event recap (RR/Gauntlet only, once at least one round is complete).
   if (textResultsSupported()) {
     const completedRounds = state.rounds.filter(isRoundDecided).length;
     if (completedRounds >= 1) {
-      wrap.appendChild(renderTextResultsCard({ throughRound: completedRounds }));
+      moreSection.appendChild(renderTextResultsCard({ throughRound: completedRounds }));
     }
   }
 
   // history
   const history = renderHistory(state.currentRound);
-  if (history) wrap.appendChild(history);
+  if (history) moreSection.appendChild(history);
+
+  const compact = shouldUseCompactTournamentView(state.accessibilityPrefs, (typeof window !== "undefined" ? window.innerWidth : 1024));
+  if (compact) {
+    const tabs = compactMobileTabsForPhase("playing");
+    let active = state.mobileTournamentTab;
+    if (!tabs.some(t => t.id === active)) active = "score";
+    const tabBar = el("div", { class: "mobile-tourney-tabs" });
+    tabs.forEach(t => {
+      const btn = el("button", { class: "mobile-tourney-tab" + (t.id === active ? " active" : "") },
+        t.label);
+      btn.addEventListener("click", () => { state.mobileTournamentTab = t.id; save(); render(); });
+      tabBar.appendChild(btn);
+    });
+    wrap.appendChild(tabBar);
+    const panel = el("div", { class: "mobile-tourney-panel" });
+    panel.appendChild(active === "standings" ? standingsSection : active === "more" ? moreSection : scoreSection);
+    wrap.appendChild(panel);
+  } else {
+    wrap.appendChild(scoreSection);
+    wrap.appendChild(standingsSection);
+    wrap.appendChild(moreSection);
+  }
 
   // Wire refresh: update primary button state + replace standings live
   refreshes.push(() => {
