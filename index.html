@@ -5698,7 +5698,7 @@ function kingMovementToastText(prevRound) {
 
 // === GAUNTLET FORMAT ===
 // Re-rank all 8 after every round. Court 1: #1+#4 vs #2+#3; Court 2: #5+#8 vs #6+#7.
-// Reuses existing rankPlayers() (points scored → wins → diff → h2h) — no new stats needed.
+// Reuses existing rankPlayers() (Adjusted Margin → win rate → h2h) — no new stats needed.
 
 function buildGauntletPairing(ranked, roundNum) {
   const active = ladderActiveSlots(roundNum, null);
@@ -7931,7 +7931,7 @@ const RULES_RR = [
   "4–24 players, 1–6 courts, doubles. Each round fills the active courts; anyone extra sits that round.",
   "With exactly 8 players and 2 courts, Rumble keeps the classic 7-round schedule: every partner once, every opponent twice. Other setups use generated pairings with fair bye rotation.",
   "Score games however you normally would (typically first to 11, win by 2). Type any final score.",
-  "Standings rank by points/game, then wins/game, differential/game, head-to-head, and the initial random draw. Players with 0 GP rank below anyone who has played.",
+  "Standings rank by Adjusted Margin — your average winning margin on a diminishing-returns scale, adjusted for opponent and partner strength — then win rate, head-to-head, and the initial random draw. Players with 0 GP rank below anyone who has played.",
   "Finals seat one four-player tier per active court: Championship, Consolation, then lower tiers as needed. Extra active players stay unseated by season rank.",
   "Final ranking is by tournament outcome tier-by-tier: tier winners, tier runners-up, then unseated and departed players. Within each group, season rank breaks the order.",
 ];
@@ -7963,10 +7963,10 @@ const RULES_KING = [
 ];
 const RULES_GAUNTLET = [
   "4–24 players, 1–6 courts, doubles. Each round fills rank blocks of four; anyone extra sits by fair rotation.",
-  "After every round, players are re-ranked by per-game performance (points/game → wins/game → differential/game → head-to-head).",
+  "After every round, players are re-ranked by Adjusted Margin (diminishing-returns winning margin, adjusted for opponent and partner strength) → win rate → head-to-head.",
   "Pairing rule: Court 1 gets #1+#4 vs #2+#3; Court 2 gets #5+#8 vs #6+#7; lower courts continue the same rank-block pattern.",
   "Round 1 uses a random seed order.",
-  "Standard scoring (default first to 11, win by 2). Standings use the same per-game averages as Round Robin.",
+  "Standard scoring (default first to 11, win by 2). Standings use the same Adjusted Margin ranking as Round Robin.",
   "Finals seat one four-player tier per active court, seeded #1+#4 vs #2+#3 within each tier. Extra active players remain unseated by season rank.",
 ];
 function rulesForActiveFormat() {
@@ -11420,7 +11420,7 @@ function renderDoneScreen() {
     ? "Within each tier, King Score per game breaks ties."
     : isStack
       ? "Within each tier, Stack Score per game breaks ties."
-      : "Within each tier, points/game → wins/game → differential/game break ties.";
+      : "Within each tier, Adjusted Margin → win rate → head-to-head break ties.";
   finalCard.appendChild(el("p", { class: "standings-footer" }, footerText));
   wrap.appendChild(finalCard);
 
