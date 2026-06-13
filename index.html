@@ -1681,6 +1681,21 @@ function runSelfTests() {
       quiet.trajectory === false && quiet.advancedStats === false,
       "visualNoiseOptions master toggle hides noisy details", quiet);
   }
+  // Accessibility/product Task 6 - tournament templates
+  {
+    console.assert(typeof TOURNAMENT_TEMPLATES !== "undefined", "TOURNAMENT_TEMPLATES exists");
+    console.assert(TOURNAMENT_TEMPLATES.some(t => t.id === "lunch-45"), "Lunch Break template exists");
+    console.assert(TOURNAMENT_TEMPLATES.some(t => t.id === "club-90"), "Club Night template exists");
+    console.assert(TOURNAMENT_TEMPLATES.some(t => t.id === "competitive-ladder"), "Competitive Ladder template exists");
+    console.assert(TOURNAMENT_TEMPLATES.some(t => t.id === "social-mixer"), "Social Mixer template exists");
+  }
+  {
+    console.assert(typeof templateConfigFor === "function", "templateConfigFor exists");
+    const cfg = templateConfigFor("lunch-45", { players: 8, courts: 2 });
+    console.assert(cfg.format === "rr" && cfg.rrRounds === 4 &&
+      cfg.timeBudget.enabled === true && cfg.timeBudget.minutes === 45,
+      "Lunch template config", cfg);
+  }
   // Flex Task 1.1 — v4 → v5 migration shape
   {
     const savedState = state;
@@ -8247,8 +8262,90 @@ function parsePastedNames(text, count) {
   setTimeout(() => textarea.focus(), 0);
 }
 
+const TOURNAMENT_TEMPLATES = [
+  { id: "lunch-45",          title: "Lunch Break 45",    goal: "fast",        blurb: "4 quick rounds, 45-min budget." },
+  { id: "club-90",           title: "Club Night 90",     goal: "balanced",    blurb: "Full Round Robin, 90-min budget." },
+  { id: "competitive-ladder", title: "Competitive Ladder", goal: "competitive", blurb: "Stack ladder, side-out to 11." },
+  { id: "social-mixer",      title: "Social Mixer",      goal: "social",      blurb: "Round Robin, max partner variety." },
+];
+
+function templateConfigFor(id, ctx = {}) {
+  const players = clampSetupRosterCount(ctx.players || setupRosterCount());
+  const courts = effectiveCourtCountForFormat("rr", ctx.courts || state.courtCount);
+  const eightTwo = players === 8 && courts === 2;
+  switch (id) {
+    case "lunch-45":
+      return { format: "rr", rrRounds: 4, timeBudget: { enabled: true, minutes: 45 },
+        winScore: 11, winBy: 2, scoringSystem: "rally" };
+    case "club-90":
+      return { format: "rr", rrRounds: eightTwo ? 7 : 6, timeBudget: { enabled: true, minutes: 90 },
+        winScore: 11, winBy: 2, scoringSystem: "sideout" };
+    case "competitive-ladder":
+      return { format: "stack", stackRounds: 8, timeBudget: { enabled: false, minutes: 90 },
+        winScore: 11, winBy: 2, scoringSystem: "sideout" };
+    case "social-mixer":
+      return { format: "rr", rrRounds: eightTwo ? 7 : 6, timeBudget: { enabled: false, minutes: 90 },
+        winScore: 11, winBy: 2, scoringSystem: "sideout" };
+    default:
+      return null;
+  }
+}
+
+function applyTournamentTemplate(id) {
+  const cfg = templateConfigFor(id, { players: setupRosterCount(), courts: state.courtCount });
+  if (!cfg) return { ok: false };
+  state.format = cfg.format;
+  if (cfg.format === "rr" && Number.isInteger(cfg.rrRounds)) state.rrRounds = cfg.rrRounds;
+  if (cfg.format === "stack" && Number.isInteger(cfg.stackRounds)) state.stackRounds = cfg.stackRounds;
+  if (cfg.format === "king" && Number.isInteger(cfg.kingRounds)) state.kingRounds = cfg.kingRounds;
+  if (cfg.format === "gauntlet" && Number.isInteger(cfg.gauntletRounds)) state.gauntletRounds = cfg.gauntletRounds;
+  state.timeBudget.enabled = !!cfg.timeBudget.enabled;
+  state.timeBudget.minutes = cfg.timeBudget.minutes;
+  state.winScore = cfg.winScore;
+  state.winBy = cfg.winBy;
+  state.scoringSystem = cfg.scoringSystem;
+  state.lastAppliedTemplate = id;
+  // Court suggestion: if >1/3 of players sit each round, suggest a better court count.
+  const players = setupRosterCount();
+  const shape = roundShapeFor(players, state.courtCount);
+  if (shape.byesNeeded > players / 3) {
+    // Find lowest court count that reduces byes, up to 6 and floor(players/4)
+    const maxCourts = Math.min(6, Math.floor(players / 4));
+    for (let c = state.courtCount + 1; c <= maxCourts; c++) {
+      const s2 = roundShapeFor(players, c);
+      if (s2.byesNeeded <= players / 3) {
+        if (window.confirm(`This setup sits ${shape.byesNeeded} players each round. Use ${c} courts instead?`)) {
+          setCourtCount(c);
+        }
+        break;
+      }
+    }
+  }
+  save();
+  return { ok: true };
+}
+
 function renderFormatChooser() {
   const wrap = el("div", { class: "format-chooser" });
+
+  // Quick templates block
+  wrap.appendChild(el("div", { class: "format-chooser-label" }, "Quick templates"));
+  const tplRow = el("div", { class: "format-options" });
+  TOURNAMENT_TEMPLATES.forEach(t => {
+    const active = state.lastAppliedTemplate === t.id;
+    const btn = el("button", { class: "format-option" + (active ? " active" : "") });
+    btn.appendChild(el("div", { class: "format-option-title" }, t.title));
+    btn.appendChild(el("div", { class: "format-option-blurb" }, t.blurb));
+    btn.addEventListener("click", () => { applyTournamentTemplate(t.id); render(); });
+    tplRow.appendChild(btn);
+  });
+  wrap.appendChild(tplRow);
+  if (state.lastAppliedTemplate) {
+    const cur = TOURNAMENT_TEMPLATES.find(t => t.id === state.lastAppliedTemplate);
+    if (cur) wrap.appendChild(el("div", { class: "muted", style: "font-size:12px;margin:4px 0 10px;" },
+      "Applied: " + cur.title + " — edit anything below."));
+  }
+
   wrap.appendChild(el("div", { class: "format-chooser-label" }, "Format"));
   const row = el("div", { class: "format-options" });
   const opts = [
