@@ -1578,6 +1578,33 @@ function runSelfTests() {
     console.assert(Array.isArray(s.notifiedRounds) && s.notifiedRounds.length === 0,
       "newState.notifiedRounds=[]");
   }
+  // Accessibility/product Task 1 - preference defaults
+  {
+    const s = newState();
+    backfillStateDefaults(s);
+    console.assert(s.accessibilityPrefs && s.accessibilityPrefs.largeScoreEntry === false,
+      "accessibilityPrefs.largeScoreEntry defaults false", s);
+    console.assert(s.accessibilityPrefs.highContrastCourts === false,
+      "accessibilityPrefs.highContrastCourts defaults false", s);
+    console.assert(s.accessibilityPrefs.compactMobileView === false,
+      "accessibilityPrefs.compactMobileView defaults false", s);
+    console.assert(s.accessibilityPrefs.reduceVisualNoise === false,
+      "accessibilityPrefs.reduceVisualNoise defaults false", s);
+    console.assert(s.accessibilityPrefs.showPartnerChips === true &&
+      s.accessibilityPrefs.showPartnerBadges === true &&
+      s.accessibilityPrefs.showTrajectory === true &&
+      s.accessibilityPrefs.showAdvancedStats === true,
+      "accessibilityPrefs detail toggles default true", s);
+  }
+  {
+    const s = { phase: "setup", accessibilityPrefs: { largeScoreEntry: true, showPartnerChips: false } };
+    backfillStateDefaults(s);
+    console.assert(s.accessibilityPrefs.largeScoreEntry === true &&
+      s.accessibilityPrefs.highContrastCourts === false &&
+      s.accessibilityPrefs.showPartnerChips === false &&
+      s.accessibilityPrefs.showAdvancedStats === true,
+      "accessibilityPrefs backfills partial legacy prefs", s);
+  }
   // Flex Task 1.1 — v4 → v5 migration shape
   {
     const savedState = state;
@@ -4293,6 +4320,21 @@ function newState() {
       lastSeenAt: 0,
       startedAt: 0,
     },
+    accessibilityPrefs: {
+      largeScoreEntry: false,
+      highContrastCourts: false,
+      compactMobileView: false,
+      reduceVisualNoise: false,
+      showPartnerChips: true,
+      showPartnerBadges: true,
+      showTrajectory: true,
+      showAdvancedStats: true,
+    },
+    lastAppliedTemplate: null,
+    setupAssistant: {
+      goal: "balanced",
+      minutes: 90,
+    },
   };
 }
 function makeScheduleSeed() {
@@ -4671,6 +4713,37 @@ function backfillStateDefaults(obj) {
     if (tb.crownActiveThemes === undefined)         tb.crownActiveThemes = null;
     if (typeof tb.lastSeenAt !== "number")          tb.lastSeenAt = 0;
     if (typeof tb.startedAt !== "number")           tb.startedAt = 0;
+  }
+  // accessibilityPrefs backfill
+  if (!obj.accessibilityPrefs || typeof obj.accessibilityPrefs !== "object") {
+    obj.accessibilityPrefs = {
+      largeScoreEntry: false,
+      highContrastCourts: false,
+      compactMobileView: false,
+      reduceVisualNoise: false,
+      showPartnerChips: true,
+      showPartnerBadges: true,
+      showTrajectory: true,
+      showAdvancedStats: true,
+    };
+  } else {
+    const ap = obj.accessibilityPrefs;
+    if (typeof ap.largeScoreEntry !== "boolean")    ap.largeScoreEntry = false;
+    if (typeof ap.highContrastCourts !== "boolean") ap.highContrastCourts = false;
+    if (typeof ap.compactMobileView !== "boolean")  ap.compactMobileView = false;
+    if (typeof ap.reduceVisualNoise !== "boolean")  ap.reduceVisualNoise = false;
+    if (typeof ap.showPartnerChips !== "boolean")   ap.showPartnerChips = true;
+    if (typeof ap.showPartnerBadges !== "boolean")  ap.showPartnerBadges = true;
+    if (typeof ap.showTrajectory !== "boolean")     ap.showTrajectory = true;
+    if (typeof ap.showAdvancedStats !== "boolean")  ap.showAdvancedStats = true;
+  }
+  if (obj.lastAppliedTemplate === undefined)        obj.lastAppliedTemplate = null;
+  if (!obj.setupAssistant || typeof obj.setupAssistant !== "object") {
+    obj.setupAssistant = { goal: "balanced", minutes: 90 };
+  } else {
+    const sa = obj.setupAssistant;
+    if (typeof sa.goal !== "string")    sa.goal = "balanced";
+    if (typeof sa.minutes !== "number") sa.minutes = 90;
   }
   return obj;
 }
@@ -12022,6 +12095,25 @@ function openSettings() {
     state.timeBudget.autoTighten = tbAutoChk.checked;
     save();
   });
+  // ---- Readability ----
+  modal.appendChild(el("div", { class: "ka-section-title" }, "Readability"));
+  const mkPrefToggle = (key, title, sub) => {
+    const row = el("div", { class: "ka-row" });
+    const text = el("div", { class: "ka-text" });
+    text.appendChild(el("div", { class: "ka-title" }, title));
+    if (sub) text.appendChild(el("div", { class: "ka-sub" }, sub));
+    const sw = el("label", { class: "ka-switch" });
+    const input = el("input", { type: "checkbox", "aria-label": title });
+    if (state.accessibilityPrefs[key]) input.setAttribute("checked", "checked");
+    input.addEventListener("change", () => { state.accessibilityPrefs[key] = input.checked; save(); render(); });
+    sw.appendChild(input); sw.appendChild(el("span", { class: "slider" }));
+    row.appendChild(text); row.appendChild(sw);
+    modal.appendChild(row);
+  };
+  mkPrefToggle("largeScoreEntry", "Large score entry", "Bigger score inputs and quick-fill targets for courtside use.");
+  mkPrefToggle("highContrastCourts", "High-contrast court labels", "Show court identity with bold text badges, not just color.");
+  mkPrefToggle("compactMobileView", "Compact mobile view", "On phones, focus the current scoring task with tabs.");
+  mkPrefToggle("reduceVisualNoise", "Reduce visual noise", "Hide partner chips, badges, arrows, and advanced columns.");
   // ---- Display & TV ----
   modal.appendChild(el("div", { class: "ka-section-title" }, "Display & TV"));
 
