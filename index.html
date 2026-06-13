@@ -116,6 +116,80 @@
     padding: 16px;
     margin-bottom: 14px;
   }
+  .app.display-app {
+    max-width: none;
+    min-height: 100vh;
+    padding: clamp(18px, 3vw, 44px);
+  }
+  .display-shell {
+    min-height: calc(100vh - 36px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(16px, 2vw, 28px);
+  }
+  .display-top {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: end;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 18px;
+  }
+  .display-title {
+    font-size: clamp(34px, 5vw, 72px);
+    line-height: 1;
+    font-weight: 900;
+  }
+  .display-status {
+    font-size: clamp(22px, 3vw, 42px);
+    color: var(--accent);
+    font-weight: 800;
+    text-align: right;
+  }
+  .display-meta {
+    color: var(--muted);
+    font-size: clamp(15px, 1.6vw, 22px);
+    margin-top: 8px;
+  }
+  .display-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: clamp(14px, 2vw, 24px);
+    align-items: start;
+  }
+  .display-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: clamp(16px, 2vw, 26px);
+  }
+  .display-panel h2 {
+    margin: 0 0 14px;
+    font-size: clamp(22px, 2.4vw, 34px);
+  }
+  .display-line,
+  .display-standing {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    border-top: 1px solid var(--border);
+    padding: 12px 0;
+    font-size: clamp(18px, 2vw, 30px);
+  }
+  .display-line:first-of-type,
+  .display-standing:first-of-type { border-top: 0; }
+  .display-line strong,
+  .display-standing strong { font-weight: 850; }
+  .display-score {
+    color: var(--accent);
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  @media (max-width: 780px) {
+    .display-top,
+    .display-grid { grid-template-columns: 1fr; }
+    .display-status { text-align: left; }
+  }
   .court-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
@@ -150,6 +224,20 @@
     text-align: center;
     font-size: 14px;
   }
+  .why-btn {
+    min-height: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1.2;
+    background: transparent;
+    color: var(--accent);
+    border-color: rgba(251, 191, 36, 0.45);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .bye-banner .why-btn { margin-left: 8px; }
+  .rank-trajectory-wrap .why-btn { margin-left: 4px; }
   /* Stack format: top court gets a subtle gold treatment to read as "the top court" */
   .court-card.c1.stack-top {
     border-top-color: var(--gold);
@@ -3557,6 +3645,173 @@ function runSelfTests() {
       state = savedState;
     }
 
+  // Player-facing/trust Task 1 - event log and undo defaults
+  {
+    const s = newState();
+    backfillStateDefaults(s);
+    console.assert(Array.isArray(s.eventLog) && s.eventLog.length === 0,
+      "eventLog defaults to []", s);
+    console.assert(Array.isArray(s.undoStack) && s.undoStack.length === 0,
+      "undoStack defaults to []", s);
+    console.assert(s.eventSeq === 0, "eventSeq defaults to 0", s);
+  }
+  {
+    console.assert(typeof stateSnapshotForUndo === "function", "stateSnapshotForUndo exists");
+    console.assert(typeof recordEvent === "function", "recordEvent exists");
+    console.assert(typeof undoLastEvent === "function", "undoLastEvent exists");
+    const saved = state;
+    state = newState();
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.slots = state.rawNames.slice();
+    backfillStateDefaults(state);
+    const before = stateSnapshotForUndo();
+    state.currentRound = 2;
+    recordEvent({ kind: "advance", label: "Advanced to Round 2", beforeState: before, reversible: true });
+    console.assert(state.eventLog.length === 1 && state.undoStack.length === 1,
+      "recordEvent stores log and undo entry", state);
+    const undone = undoLastEvent();
+    console.assert(undone.ok === true && state.currentRound === 1,
+      "undoLastEvent restores previous state", { undone, state });
+    console.assert(state.eventLog.some(e => e.kind === "undo"),
+      "undo appends undo event", state.eventLog);
+    state = saved;
+  }
+
+  // Player-facing/trust Task 2 - event labels
+  {
+    console.assert(typeof scoreChangeEventLabel === "function", "scoreChangeEventLabel exists");
+    const label = scoreChangeEventLabel({ round: 2, court: 1, before: [11, 8], after: [9, 11] });
+    console.assert(label === "R2 Court 1 score changed from 11-8 to 9-11",
+      "scoreChangeEventLabel describes score edit", label);
+  }
+  {
+    console.assert(typeof mutationEventLabel === "function", "mutationEventLabel exists");
+    console.assert(mutationEventLabel("buildFinals", { round: 7 }).includes("Built finals"),
+      "mutationEventLabel names finals build");
+  }
+
+  // Player-facing/trust Task 3 - personal recaps
+  {
+    console.assert(typeof buildPersonalRecap === "function", "buildPersonalRecap exists");
+    const saved = state;
+    state = newState();
+    state.format = "rr";
+    state.players = [1,2,3,4].map(i => ({ slot: i, name: "P" + i, phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null }));
+    state.slots = ["P1","P2","P3","P4"];
+    state.rounds = [
+      makeRound(1, [{ court: 1, team1: [1,2], team2: [3,4], score1: 11, score2: 5 }], []),
+      makeRound(2, [{ court: 1, team1: [1,3], team2: [2,4], score1: 8, score2: 11 }], [])
+    ];
+    const recap = buildPersonalRecap(1, { final: false, throughRound: 2 });
+    console.assert(recap.name === "P1" && recap.record === "1-1",
+      "personal recap includes record", recap);
+    console.assert(recap.bestWin && recap.bestWin.round === 1,
+      "personal recap finds best win", recap);
+    console.assert(recap.mostCommonPartner && ["P2", "P3"].includes(recap.mostCommonPartner.name),
+      "personal recap finds common partner", recap);
+    console.assert(recap.headline.includes("went 1-1"),
+      "personal recap builds headline", recap);
+    state = saved;
+  }
+
+  // Player-facing/trust Task 4 - share card models
+  {
+    console.assert(typeof buildShareCardModel === "function", "buildShareCardModel exists");
+    const model = buildShareCardModel("podium", { title: "Rumble Pickleball" });
+    console.assert(model.type === "podium" && Array.isArray(model.lines),
+      "share card model returns printable lines", model);
+  }
+  {
+    console.assert(typeof renderShareCardSvg === "function", "renderShareCardSvg exists");
+    const svg = renderShareCardSvg({ type: "round", title: "Round 2", lines: ["Court 1: A/B def C/D"], footer: "Rumble" });
+    console.assert(svg.includes("<svg") && svg.includes("Round 2") && svg.includes("Court 1"),
+      "renderShareCardSvg returns svg markup", svg);
+  }
+
+  // Player-facing/trust Task 5 - snapshots and QR
+  {
+    console.assert(typeof buildTournamentSnapshot === "function", "buildTournamentSnapshot exists");
+    const snap = buildTournamentSnapshot("snapshot", { now: 1790000000000 });
+    console.assert(snap.v === 1 && snap.createdAt === 1790000000000 && Array.isArray(snap.standings),
+      "buildTournamentSnapshot returns v1 snapshot", snap);
+  }
+  {
+    console.assert(typeof encodeSnapshotHash === "function", "encodeSnapshotHash exists");
+    console.assert(typeof decodeSnapshotHash === "function", "decodeSnapshotHash exists");
+    const payload = { v: 1, title: "Rumble", standings: [{ rank: 1, name: "A" }] };
+    const hash = encodeSnapshotHash(payload);
+    const decoded = decodeSnapshotHash(hash);
+    console.assert(decoded.title === "Rumble" && decoded.standings[0].name === "A",
+      "snapshot hash round-trips", { hash, decoded });
+  }
+  {
+    console.assert(typeof qrMatrixForText === "function", "qrMatrixForText exists");
+    const matrix = qrMatrixForText("https://example.com/#snapshot=test");
+    console.assert(Array.isArray(matrix) && matrix.length > 20 && matrix.every(row => row.length === matrix.length),
+      "qrMatrixForText returns square matrix", matrix);
+  }
+
+  // Player-facing/trust Task 6 - display mode
+  {
+    console.assert(typeof isDisplayMode === "function", "isDisplayMode exists");
+    console.assert(typeof displayModeModel === "function", "displayModeModel exists");
+    const model = displayModeModel(buildTournamentSnapshot("live", { now: 1790000000000 }));
+    console.assert(model.title && Array.isArray(model.panels),
+      "displayModeModel creates display panels", model);
+  }
+
+  // Player-facing/trust Task 7 - fairness explainers
+  {
+    console.assert(typeof buildFairnessExplanation === "function", "buildFairnessExplanation exists");
+    const saved = state;
+    state = newState();
+    state.players = [1,2,3,4,5].map(i => ({ slot: i, name: "P" + i, phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null }));
+    state.rounds = [makeRound(1, [{ court: 1, team1: [1,2], team2: [3,4], score1: null, score2: null }], [5])];
+    const exp = buildFairnessExplanation("bye", { slot: 5, round: 1 });
+    console.assert(exp.title.includes("P5") && exp.body.includes("sitting"),
+      "bye explanation names player and sitting state", exp);
+    state = saved;
+  }
+  {
+    const exp = buildFairnessExplanation("finals", { slot: 1, seed: 1, tier: "Championship" });
+    console.assert(exp.body.includes("seed") && exp.body.includes("Championship"),
+      "finals explanation references seed and tier", exp);
+  }
+
+  // Player-facing/trust Task 8 - pre-start summary
+  {
+    console.assert(typeof preStartSummaryModel === "function", "preStartSummaryModel exists");
+    const saved = state;
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 3;
+    state.rawNames = ["A","B","C","D","E","F","G","H","I","J","K","L","M"];
+    state.rawPhones = ["5551112222"].concat(Array(12).fill(""));
+    backfillStateDefaults(state);
+    const model = preStartSummaryModel();
+    console.assert(model.players === 13 && model.configuredCourts === 3 && model.byesPerRound === 1,
+      "preStartSummaryModel reports players courts and byes", model);
+    console.assert(model.phoneCount === 1 && model.finalsStyle.includes("tier"),
+      "preStartSummaryModel reports phones and finals style", model);
+    state = saved;
+  }
+
+  // Player-facing/trust final surface availability
+  {
+    [
+      "buildPersonalRecap",
+      "buildShareCardModel",
+      "buildTournamentSnapshot",
+      "qrMatrixForText",
+      "displayModeModel",
+      "buildFairnessExplanation",
+      "preStartSummaryModel",
+      "openEventLogModal"
+    ].forEach(name => console.assert(typeof window[name] === "function", name + " is available"));
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -3842,7 +4097,9 @@ function runSimulation() {
   console.assert = _origAssert;
   return failures;
 }
-let state = load() || newState();
+let state = isSnapshotRoute() ? newState() : (isDisplayMode() ? (readDisplayState() || newState()) : (load() || newState()));
+let displayRefreshStarted = false;
+let displayLastSaved = null;
 
 function newState() {
   return {
@@ -3869,6 +4126,10 @@ function newState() {
     scoringSystem: "sideout",
     notifiedRounds: [],
     previousRanks: [],                               // stack: prior-round rank order (slots), drives trajectory arrows
+    eventLog: [],
+    undoStack: [],
+    eventSeq: 0,
+    displayPrefs: { rotateSeconds: 12, showTopCount: 8 },
     keepAwake: true,                                 // prevents Mac/AirPlay TVs from sleeping during a tournament
     keepAwakeAggressive: false,                      // adds a silent audio loop (Layer 3); off by default
     crownMatches: [],                                // crown: 3 themed round-robin matches
@@ -4196,6 +4457,12 @@ function backfillStateDefaults(obj) {
   if (!Number.isInteger(obj.kingRounds)     || obj.kingRounds     < 6 || obj.kingRounds     > 12) obj.kingRounds     = 9;
   if (!Number.isInteger(obj.gauntletRounds) || obj.gauntletRounds < 6 || obj.gauntletRounds > 12) obj.gauntletRounds = 8;
   if (!Array.isArray(obj.previousRanks)) obj.previousRanks = [];
+  if (!Array.isArray(obj.eventLog)) obj.eventLog = [];
+  if (!Array.isArray(obj.undoStack)) obj.undoStack = [];
+  if (!Number.isInteger(obj.eventSeq)) obj.eventSeq = 0;
+  if (!obj.displayPrefs || typeof obj.displayPrefs !== "object") obj.displayPrefs = {};
+  if (!Number.isInteger(obj.displayPrefs.rotateSeconds) || obj.displayPrefs.rotateSeconds < 5) obj.displayPrefs.rotateSeconds = 12;
+  if (!Number.isInteger(obj.displayPrefs.showTopCount) || obj.displayPrefs.showTopCount < 3) obj.displayPrefs.showTopCount = 8;
   if (typeof obj.keepAwake !== "boolean") obj.keepAwake = true;
   if (typeof obj.keepAwakeAggressive !== "boolean") obj.keepAwakeAggressive = false;
   // Crown fields
@@ -4322,9 +4589,128 @@ function load() {
     return null;
   } catch (e) { return null; }
 }
+
+function readDisplayState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    return obj && obj.phase ? backfillStateDefaults(obj) : null;
+  } catch (e) { return null; }
+}
+
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { console.warn("save failed", e); }
+}
+
+function stateSnapshotForUndo() {
+  const copy = JSON.parse(JSON.stringify(state));
+  copy.eventLog = [];
+  copy.undoStack = [];
+  return copy;
+}
+
+function restoreUndoSnapshot(snapshot) {
+  const eventLog = state.eventLog || [];
+  const undoStack = state.undoStack || [];
+  const eventSeq = parseInt(state.eventSeq, 10) || 0;
+  state = backfillStateDefaults(JSON.parse(JSON.stringify(snapshot)));
+  state.eventLog = eventLog;
+  state.undoStack = undoStack;
+  state.eventSeq = Math.max(eventSeq, parseInt(state.eventSeq, 10) || 0);
+}
+
+function recordEvent(evt) {
+  if (!evt || !evt.kind || !evt.label) return null;
+  if (!Array.isArray(state.eventLog)) state.eventLog = [];
+  if (!Array.isArray(state.undoStack)) state.undoStack = [];
+  state.eventSeq = (parseInt(state.eventSeq, 10) || 0) + 1;
+  const id = state.eventSeq;
+  const entry = {
+    id,
+    ts: Date.now(),
+    kind: evt.kind,
+    label: evt.label,
+    detail: evt.detail || "",
+    reversible: !!(evt.reversible && evt.beforeState),
+    undoId: evt.beforeState ? id : null,
+  };
+  state.eventLog.unshift(entry);
+  state.eventLog = state.eventLog.slice(0, 100);
+  if (evt.beforeState) {
+    state.undoStack.unshift({
+      id,
+      eventId: id,
+      label: "Undo " + evt.label.charAt(0).toLowerCase() + evt.label.slice(1),
+      beforeState: evt.beforeState,
+      createdAt: entry.ts,
+    });
+    state.undoStack = state.undoStack.slice(0, 20);
+  }
+  save();
+  return entry;
+}
+
+function undoLastEvent() {
+  if (!Array.isArray(state.undoStack) || !state.undoStack.length) {
+    return { ok: false, error: "Nothing to undo." };
+  }
+  const undo = state.undoStack.shift();
+  restoreUndoSnapshot(undo.beforeState);
+  state.undoStack = (state.undoStack || []).filter(u => u.id !== undo.id);
+  recordEvent({ kind: "undo", label: undo.label, reversible: false });
+  save();
+  render();
+  return { ok: true };
+}
+
+function scoreChangeEventLabel(info) {
+  const before = info.before.map(v => Number.isInteger(v) ? v : "blank").join("-");
+  const after = info.after.map(v => Number.isInteger(v) ? v : "blank").join("-");
+  const roundLabel = Number.isInteger(info.round) ? "R" + info.round : (info.round || "Round");
+  return roundLabel + " Court " + info.court + " score changed from " + before + " to " + after;
+}
+
+function mutationEventLabel(kind, info) {
+  info = info || {};
+  if (kind === "advance") return "Advanced to Round " + info.round;
+  if (kind === "buildFinals") return "Built finals after Round " + info.round;
+  if (kind === "buildCrown") return "Built Crown Match";
+  if (kind === "finish") return "Finished tournament";
+  if (kind === "rosterAdd") return "Added " + info.name;
+  if (kind === "rosterLeave") return info.name + " left after Round " + info.round;
+  if (kind === "rosterReturn") return info.name + " returned for Round " + info.round;
+  if (kind === "courtCount") return "Changed courts to " + info.courts;
+  return "Updated tournament";
+}
+
+function scorePairForEvent(game) {
+  return [game.score1, game.score2].map(v => Number.isInteger(v) ? v : null);
+}
+
+function scoreEventInfoForGame(game) {
+  for (let i = 0; i < (state.rounds || []).length; i++) {
+    if (gamesOf(state.rounds[i]).includes(game)) {
+      return { round: state.rounds[i].round || i + 1, court: game.court || 1 };
+    }
+  }
+  if (state.finals && finalTiers().includes(game)) {
+    return { round: "Finals", court: game.court || 1 };
+  }
+  return { round: state.format === "crown" ? "Crown" : "Round", court: game.court || 1 };
+}
+
+function recordScoreChange(game, before, beforeState) {
+  const after = scorePairForEvent(game);
+  if (!beforeState || (before[0] === after[0] && before[1] === after[1])) return;
+  const info = scoreEventInfoForGame(game);
+  recordEvent({
+    kind: "score",
+    label: scoreChangeEventLabel({ round: info.round, court: info.court, before, after }),
+    beforeState,
+    reversible: true,
+  });
 }
 
 // ---------- KeepAwake: defeats display sleep on AirPlay-mirrored TVs ----------
@@ -5561,6 +5947,602 @@ function textResultsSupported() {
   return state.format === "rr" || state.format === "gauntlet";
 }
 
+function buildPersonalRecap(slot, opts) {
+  opts = opts || {};
+  const isFinal = !!opts.final;
+  const through = isFinal ? totalRegularRounds() : (opts.throughRound || state.currentRound || totalRegularRounds());
+  const ranking = state.format === "crown"
+    ? finalRankingCrown()
+    : (isFinal ? finalRanking() : rankPlayersForFormat(through));
+  const rankIdx = ranking.findIndex(s => s.slot === slot);
+  let stats;
+  if (state.format === "stack") stats = computeStackStats(through);
+  else if (state.format === "king") stats = computeKingStats(through);
+  else if (state.format === "crown") stats = crownPlayerStats();
+  else stats = computeStats(through, isFinal);
+  const st = stats.find(s => s.slot === slot) || { slot, name: nameOf(slot), gp: 0, wins: 0, losses: 0 };
+
+  let wins = Number.isFinite(st.wins) ? st.wins : (Number.isFinite(st.gamesWon) ? st.gamesWon : 0);
+  let losses = Number.isFinite(st.losses) ? st.losses : (Number.isFinite(st.gamesLost) ? st.gamesLost : 0);
+  let ties = 0;
+  const partners = new Map();
+  let bestWin = null;
+  let closestLoss = null;
+  let byeCount = 0;
+  const scanRound = (round, roundNum) => {
+    if (byesOf(round).includes(slot)) byeCount++;
+    gamesOf(round).forEach(g => {
+      const on1 = (g.team1 || []).includes(slot);
+      const on2 = (g.team2 || []).includes(slot);
+      if (!on1 && !on2) return;
+      const team = on1 ? g.team1 : g.team2;
+      const partner = team.find(s => s !== slot);
+      if (partner) partners.set(partner, (partners.get(partner) || 0) + 1);
+      if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) return;
+      if (g.score1 === g.score2) { ties++; return; }
+      const myScore = on1 ? g.score1 : g.score2;
+      const oppScore = on1 ? g.score2 : g.score1;
+      const diff = myScore - oppScore;
+      const entry = { round: roundNum, court: g.court || 1, diff: Math.abs(diff), score: myScore + "-" + oppScore };
+      if (diff > 0 && (!bestWin || diff > bestWin.diff)) bestWin = { ...entry, diff };
+      if (diff < 0 && (!closestLoss || Math.abs(diff) < closestLoss.diff)) closestLoss = entry;
+    });
+  };
+  for (let i = 0; i < Math.min(through, state.rounds.length); i++) scanRound(state.rounds[i], i + 1);
+  if (isFinal && state.finals) {
+    finalTiers().forEach((g, i) => scanRound({ games: [g], byes: [] }, "F" + (i + 1)));
+  }
+
+  const mostCommonPartnerSlot = [...partners.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+  const gp = Number.isFinite(st.gp) ? st.gp : (wins + losses + ties);
+  const points = Number.isFinite(st.points) ? st.points : (Number.isFinite(st.pointsScored) ? st.pointsScored : 0);
+  const diff = Number.isFinite(st.diff) ? st.diff : (Number.isFinite(st.pointDiff) ? st.pointDiff : 0);
+  const avgPoints = Number.isFinite(st.avgPoints) ? st.avgPoints : points / Math.max(1, gp);
+  const avgDiff = Number.isFinite(st.avgDiff) ? st.avgDiff : diff / Math.max(1, gp);
+  if (!losses && gp > wins + ties) losses = gp - wins - ties;
+  const name = nameOf(slot);
+  const rank = rankIdx >= 0 ? rankIdx + 1 : null;
+  const fieldSize = ranking.length || playerCount();
+  const record = wins + "-" + losses + (ties ? "-" + ties : "");
+  const partnerName = mostCommonPartnerSlot ? nameOf(mostCommonPartnerSlot[0]) : "";
+  const headlineBits = [
+    "You finished " + (rank ? ordinal(rank) : "unranked"),
+    "went " + record
+  ];
+  if (bestWin) headlineBits.push("best win was Round " + bestWin.round);
+  if (partnerName) headlineBits.push("most common partner was " + partnerName);
+  return {
+    slot, name, rank, fieldSize, gp, wins, losses, ties, record,
+    avgPoints, avgDiff, bestWin, closestLoss,
+    mostCommonPartner: mostCommonPartnerSlot ? { slot: mostCommonPartnerSlot[0], name: partnerName, games: mostCommonPartnerSlot[1] } : null,
+    byeCount, headline: headlineBits.join(", ") + ".", awards: []
+  };
+}
+
+function ordinal(n) {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return n + "th";
+  const suffix = n % 10 === 1 ? "st" : (n % 10 === 2 ? "nd" : (n % 10 === 3 ? "rd" : "th"));
+  return n + suffix;
+}
+
+function shareCardEscape(text) {
+  return String(text == null ? "" : text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildShareCardModel(type, opts) {
+  opts = opts || {};
+  const title = opts.title || (type === "round" ? "Round Recap" : type === "player" ? "Player Recap" : "Rumble Pickleball");
+  const lines = [];
+  let footer = opts.footer || "Rumble Pickleball";
+  if (type === "round") {
+    const roundNum = opts.round || state.currentRound || 1;
+    const round = state.rounds[roundNum - 1];
+    lines.push("Round " + roundNum);
+    gamesOf(round).forEach(g => {
+      const score = (Number.isInteger(g.score1) ? g.score1 : "–") + "-" + (Number.isInteger(g.score2) ? g.score2 : "–");
+      const winner = isGameDecided(g) ? (g.score1 > g.score2 ? teamName(g.team1) : teamName(g.team2)) : "in progress";
+      lines.push("Court " + (g.court || 1) + ": " + winner + " · " + score);
+    });
+    const byes = byesOf(round);
+    if (byes.length) lines.push("Sitting: " + byes.map(nameOf).join(", "));
+    footer = "Standings through Round " + roundNum;
+  } else if (type === "player") {
+    const slot = opts.slot || 1;
+    const recap = buildPersonalRecap(slot, { final: state.phase === "done", throughRound: opts.throughRound || state.currentRound });
+    lines.push(recap.name);
+    lines.push(recap.headline);
+    lines.push("Record: " + recap.record + " · GP " + recap.gp);
+    if (recap.bestWin) lines.push("Best win: Round " + recap.bestWin.round + " (" + recap.bestWin.score + ")");
+    if (recap.mostCommonPartner) lines.push("Most common partner: " + recap.mostCommonPartner.name);
+    if (recap.byeCount) lines.push("Byes: " + recap.byeCount);
+  } else {
+    const ranking = state.format === "crown" ? finalRankingCrown() : finalRanking();
+    const champ = finalTier(0);
+    const champWin = champ && champ.score1 > champ.score2 ? champ.team1 : (champ && champ.score2 > champ.score1 ? champ.team2 : null);
+    if (champWin) lines.push("Champions: " + teamName(champWin));
+    ranking.slice(0, opts.topCount || 6).forEach((s, i) => {
+      lines.push((i + 1) + ". " + s.name);
+    });
+    footer = playerCount() + " players · " + effectiveCourtCountForFormat(state.format, state.courtCount) + " courts";
+  }
+  return { type: type || "podium", title, lines, footer };
+}
+
+function renderShareCardSvg(model) {
+  const width = 1080, height = 1350;
+  const lines = (model.lines || []).slice(0, 16);
+  const bg = "#111827", panel = "#1f2937", text = "#f9fafb", muted = "#cbd5e1", gold = "#fbbf24";
+  const lineNodes = lines.map((line, i) => {
+    const size = i === 0 && model.type !== "podium" ? 48 : 38;
+    return '<text x="96" y="' + (338 + i * 64) + '" font-size="' + size + '" font-weight="' + (i === 0 ? "800" : "600") + '" fill="' + text + '">' +
+      shareCardEscape(line).slice(0, 76) + '</text>';
+  }).join("");
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">' +
+    '<rect width="1080" height="1350" rx="0" fill="' + bg + '"/>' +
+    '<rect x="54" y="54" width="972" height="1242" rx="36" fill="' + panel + '" stroke="' + gold + '" stroke-width="6"/>' +
+    '<text x="96" y="150" font-size="34" font-weight="800" fill="' + gold + '">RUMBLE PICKLEBALL</text>' +
+    '<text x="96" y="238" font-size="66" font-weight="900" fill="' + text + '">' + shareCardEscape(model.title).slice(0, 36) + '</text>' +
+    lineNodes +
+    '<text x="96" y="1228" font-size="30" font-weight="700" fill="' + muted + '">' + shareCardEscape(model.footer || "Rumble").slice(0, 72) + '</text>' +
+    '</svg>';
+}
+
+function shareCardFileName(model, ext) {
+  return "rumble-" + (model.type || "card") + "-" + Date.now() + "." + ext;
+}
+
+function downloadShareCard(model, format) {
+  const svg = renderShareCardSvg(model);
+  if (format === "png") {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1080; canvas.height = 1350;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(img.src);
+      canvas.toBlob(blob => downloadBlob(blob, shareCardFileName(model, "png")), "image/png");
+    };
+    img.src = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  } else {
+    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), shareCardFileName(model, "svg"));
+  }
+}
+
+function downloadBlob(blob, name) {
+  if (!blob) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+}
+
+function copyShareCardImage(model) {
+  if (!navigator.clipboard || !window.ClipboardItem) {
+    showToast("Image copy is not available here — download instead.");
+    return;
+  }
+  const svg = renderShareCardSvg(model);
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080; canvas.height = 1350;
+    canvas.getContext("2d").drawImage(img, 0, 0);
+    URL.revokeObjectURL(img.src);
+    canvas.toBlob(blob => {
+      navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+        .then(() => showToast("Share card copied"))
+        .catch(() => showToast("Copy failed — download instead."));
+    }, "image/png");
+  };
+  img.src = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+}
+
+function formatNameForSnapshot(format) {
+  return ({ rr: "Round Robin", stack: "Stack", king: "King", gauntlet: "Gauntlet", crown: "Crown" })[format] || "Round Robin";
+}
+
+function buildTournamentSnapshot(kind, opts) {
+  opts = opts || {};
+  const now = opts.now || Date.now();
+  const through = state.phase === "done" || state.phase === "finals" ? totalRegularRounds() : Math.max(0, state.currentRound || 0);
+  const final = state.phase === "done";
+  const ranking = state.format === "crown"
+    ? (final ? finalRankingCrown() : crownLeaderboard())
+    : (final ? finalRanking() : rankPlayersForFormat(through));
+  const stats = state.format === "stack" ? computeStackStats(through)
+    : state.format === "king" ? computeKingStats(through)
+      : state.format === "crown" ? crownPlayerStats()
+        : computeStats(through, final);
+  const bySlot = new Map(stats.map(s => [s.slot, s]));
+  const round = state.rounds[(state.currentRound || 1) - 1];
+  const courts = gamesOf(round).map(g => ({
+    court: g.court || 1,
+    team1: (g.team1 || []).map(nameOf),
+    team2: (g.team2 || []).map(nameOf),
+    score1: Number.isInteger(g.score1) ? g.score1 : null,
+    score2: Number.isInteger(g.score2) ? g.score2 : null
+  }));
+  const finals = state.finals ? finalTiers().map(g => ({
+    name: g.name || "Final",
+    court: g.court || 1,
+    team1: (g.team1 || []).map(nameOf),
+    team2: (g.team2 || []).map(nameOf),
+    score1: Number.isInteger(g.score1) ? g.score1 : null,
+    score2: Number.isInteger(g.score2) ? g.score2 : null
+  })) : [];
+  const podium = ranking.slice(0, 3).map((s, i) => ({ rank: i + 1, name: s.name || nameOf(s.slot) }));
+  return {
+    v: 1,
+    createdAt: now,
+    phase: state.phase,
+    format: state.format,
+    title: "Rumble Pickleball",
+    summary: formatNameForSnapshot(state.format) + " · " + playerCount() + " players · " +
+      effectiveCourtCountForFormat(state.format, state.courtCount) + " courts",
+    standings: ranking.map((s, i) => {
+      const st = bySlot.get(s.slot) || s;
+      return {
+        rank: i + 1,
+        name: s.name || nameOf(s.slot),
+        gp: st.gp || 0,
+        score: Number.isFinite(st.avgPoints) ? st.avgPoints.toFixed(1)
+          : Number.isFinite(st.stackRate) ? st.stackRate.toFixed(1)
+            : Number.isFinite(st.kingRate) ? st.kingRate.toFixed(1)
+              : Number.isFinite(st.matchPoints) ? st.matchPoints.toFixed(1) : ""
+      };
+    }),
+    currentRound: state.currentRound || 0,
+    courts,
+    byes: byesOf(round).map(nameOf),
+    finals,
+    podium,
+    kind: kind || "snapshot"
+  };
+}
+
+function encodeSnapshotHash(payload) {
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(json);
+  let bin = "";
+  bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeSnapshotHash(hash) {
+  const clean = String(hash || "").replace(/^#?snapshot=/, "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = clean + "=".repeat((4 - clean.length % 4) % 4);
+  const bin = atob(padded);
+  const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function snapshotUrl(payload) {
+  const base = location.origin + location.pathname;
+  return base + "#snapshot=" + encodeSnapshotHash(payload);
+}
+
+const QR_M_TABLE = [
+  null,
+  { total: 26, data: 16, ecc: 10, blocks: 1, align: [] },
+  { total: 44, data: 28, ecc: 16, blocks: 1, align: [6, 18] },
+  { total: 70, data: 44, ecc: 26, blocks: 1, align: [6, 22] },
+  { total: 100, data: 64, ecc: 18, blocks: 2, align: [6, 26] },
+  { total: 134, data: 86, ecc: 24, blocks: 2, align: [6, 30] },
+  { total: 172, data: 108, ecc: 16, blocks: 4, align: [6, 34] },
+  { total: 196, data: 124, ecc: 18, blocks: 4, align: [6, 22, 38] },
+];
+
+let _qrExp = null, _qrLog = null;
+function qrInitGf() {
+  if (_qrExp) return;
+  _qrExp = Array(512).fill(0);
+  _qrLog = Array(256).fill(0);
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    _qrExp[i] = x;
+    _qrLog[x] = i;
+    x <<= 1;
+    if (x & 0x100) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i++) _qrExp[i] = _qrExp[i - 255];
+}
+function qrMul(a, b) {
+  qrInitGf();
+  if (!a || !b) return 0;
+  return _qrExp[_qrLog[a] + _qrLog[b]];
+}
+function qrRsGenerator(degree) {
+  let poly = [1];
+  for (let i = 0; i < degree; i++) {
+    const next = Array(poly.length + 1).fill(0);
+    for (let j = 0; j < poly.length; j++) {
+      next[j] ^= poly[j];
+      next[j + 1] ^= qrMul(poly[j], _qrExp[i]);
+    }
+    poly = next;
+  }
+  return poly;
+}
+function qrRsRemainder(data, degree) {
+  const gen = qrRsGenerator(degree);
+  const res = data.concat(Array(degree).fill(0));
+  for (let i = 0; i < data.length; i++) {
+    const coef = res[i];
+    if (!coef) continue;
+    for (let j = 0; j < gen.length; j++) res[i + j] ^= qrMul(gen[j], coef);
+  }
+  return res.slice(data.length);
+}
+function qrBitsForText(text, dataCodewords) {
+  const bytes = Array.from(new TextEncoder().encode(text));
+  const bits = [];
+  const push = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  push(0x4, 4);
+  push(bytes.length, 8);
+  bytes.forEach(b => push(b, 8));
+  const max = dataCodewords * 8;
+  for (let i = 0; i < 4 && bits.length < max; i++) bits.push(0);
+  while (bits.length % 8) bits.push(0);
+  const codewords = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let b = 0;
+    for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    codewords.push(b);
+  }
+  for (let pad = 0; codewords.length < dataCodewords; pad++) codewords.push(pad % 2 ? 0x11 : 0xec);
+  return codewords;
+}
+function qrFormatBits() {
+  const data = 0; // M error correction, mask 0
+  let bits = data << 10;
+  for (let i = 14; i >= 10; i--) {
+    if ((bits >>> i) & 1) bits ^= 0x537 << (i - 10);
+  }
+  return ((data << 10) | bits) ^ 0x5412;
+}
+function qrMatrixForText(text) {
+  const bytes = Array.from(new TextEncoder().encode(text));
+  let version = 0, cfg = null;
+  for (let v = 1; v < QR_M_TABLE.length; v++) {
+    const c = QR_M_TABLE[v];
+    if (bytes.length + 2 <= c.data) { version = v; cfg = c; break; }
+  }
+  if (!cfg) return { error: "too_large" };
+  qrInitGf();
+  const size = 17 + 4 * version;
+  const m = Array.from({ length: size }, () => Array(size).fill(false));
+  const reserved = Array.from({ length: size }, () => Array(size).fill(false));
+  const set = (r, c, val, res = true) => {
+    if (r < 0 || c < 0 || r >= size || c >= size) return;
+    m[r][c] = !!val;
+    if (res) reserved[r][c] = true;
+  };
+  const finder = (r, c) => {
+    for (let y = -1; y <= 7; y++) for (let x = -1; x <= 7; x++) {
+      const rr = r + y, cc = c + x;
+      const dark = y >= 0 && y <= 6 && x >= 0 && x <= 6 &&
+        (y === 0 || y === 6 || x === 0 || x === 6 || (y >= 2 && y <= 4 && x >= 2 && x <= 4));
+      set(rr, cc, dark);
+    }
+  };
+  finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+  for (let i = 8; i < size - 8; i++) {
+    set(6, i, i % 2 === 0);
+    set(i, 6, i % 2 === 0);
+  }
+  const overlapsFinder = (r, c) => (r <= 8 && c <= 8) || (r <= 8 && c >= size - 9) || (r >= size - 9 && c <= 8);
+  cfg.align.forEach(r => cfg.align.forEach(c => {
+    if (overlapsFinder(r, c)) return;
+    for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) {
+      set(r + y, c + x, Math.max(Math.abs(y), Math.abs(x)) !== 1);
+    }
+  }));
+  for (let i = 0; i <= 8; i++) { set(8, i, false); set(i, 8, false); }
+  for (let i = size - 8; i < size; i++) { set(8, i, false); set(i, 8, false); }
+  set(4 * version + 9, 8, true);
+
+  const data = qrBitsForText(text, cfg.data);
+  const blockLen = cfg.data / cfg.blocks;
+  const blocks = [];
+  for (let i = 0; i < cfg.blocks; i++) {
+    const block = data.slice(i * blockLen, (i + 1) * blockLen);
+    blocks.push({ data: block, ecc: qrRsRemainder(block, cfg.ecc) });
+  }
+  const codewords = [];
+  for (let i = 0; i < blockLen; i++) blocks.forEach(b => codewords.push(b.data[i]));
+  for (let i = 0; i < cfg.ecc; i++) blocks.forEach(b => codewords.push(b.ecc[i]));
+  const bits = [];
+  codewords.forEach(b => { for (let i = 7; i >= 0; i--) bits.push((b >>> i) & 1); });
+  let bit = 0, upward = true;
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col--;
+    for (let i = 0; i < size; i++) {
+      const row = upward ? size - 1 - i : i;
+      for (let c = col; c >= col - 1; c--) {
+        if (reserved[row][c]) continue;
+        let v = bits[bit++] || 0;
+        if ((row + c) % 2 === 0) v ^= 1;
+        set(row, c, v, true);
+      }
+    }
+    upward = !upward;
+  }
+  const fmt = qrFormatBits();
+  const fbit = i => ((fmt >>> i) & 1) === 1;
+  for (let i = 0; i < 6; i++) set(8, i, fbit(i));
+  set(8, 7, fbit(6)); set(8, 8, fbit(7)); set(7, 8, fbit(8));
+  for (let i = 9; i < 15; i++) set(14 - i, 8, fbit(i));
+  for (let i = 0; i < 8; i++) set(size - 1 - i, 8, fbit(i));
+  for (let i = 8; i < 15; i++) set(8, size - 15 + i, fbit(i));
+  return m;
+}
+
+function renderQrSvg(matrix) {
+  if (!Array.isArray(matrix)) return "";
+  const scale = 8, quiet = 4, size = matrix.length + quiet * 2;
+  const rects = [];
+  matrix.forEach((row, r) => row.forEach((dark, c) => {
+    if (dark) rects.push('<rect x="' + ((c + quiet) * scale) + '" y="' + ((r + quiet) * scale) + '" width="' + scale + '" height="' + scale + '"/>');
+  }));
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (size * scale) + '" height="' + (size * scale) + '" viewBox="0 0 ' + (size * scale) + ' ' + (size * scale) + '">' +
+    '<rect width="100%" height="100%" fill="#fff"/><g fill="#000">' + rects.join("") + '</g></svg>';
+}
+
+function isSnapshotRoute() {
+  return typeof location !== "undefined" && location.hash && location.hash.indexOf("#snapshot=") === 0;
+}
+
+function isDisplayMode() {
+  return typeof location !== "undefined" && location.search.indexOf("display") !== -1;
+}
+
+function displayModeUrl() {
+  return location.href.replace(/[?#].*$/, "") + "?display";
+}
+
+function displayScoreText(g) {
+  const s1 = g.score1 == null ? "–" : g.score1;
+  const s2 = g.score2 == null ? "–" : g.score2;
+  return s1 + "-" + s2;
+}
+
+function displayMatchLine(g) {
+  return {
+    label: (g.court ? "Court " + g.court + ": " : "") + (g.team1 || []).join(" & ") + " vs " + (g.team2 || []).join(" & "),
+    value: displayScoreText(g)
+  };
+}
+
+function displayModeModel(snapshot) {
+  const phase = snapshot.phase || "setup";
+  const panels = [];
+  let status = "Waiting to start";
+  if (phase === "playing") status = "Round " + (snapshot.currentRound || 1);
+  else if (phase === "finals") status = "Finals";
+  else if (phase === "crown") status = "Crown Match";
+  else if (phase === "done") status = "Final Results";
+
+  if (phase === "setup") {
+    panels.push({
+      title: "Event",
+      rows: [
+        { label: "Format", value: formatNameForSnapshot(snapshot.format) },
+        { label: "Field", value: snapshot.summary || "" },
+        { label: "Status", value: "Waiting to start" }
+      ]
+    });
+  } else if (phase === "finals" && snapshot.finals && snapshot.finals.length) {
+    panels.push({
+      title: "Finals",
+      rows: snapshot.finals.map(g => ({
+        label: (g.name || "Final") + (g.court ? " · Court " + g.court : ""),
+        value: (g.team1 || []).join(" & ") + " vs " + (g.team2 || []).join(" & ") + " · " + displayScoreText(g)
+      }))
+    });
+  } else if (phase === "done") {
+    panels.push({
+      title: "Podium",
+      rows: (snapshot.podium || []).map(p => ({ label: "#" + p.rank, value: p.name }))
+    });
+  } else if (snapshot.courts && snapshot.courts.length) {
+    panels.push({ title: "Courts", rows: snapshot.courts.map(displayMatchLine) });
+  }
+
+  if (snapshot.byes && snapshot.byes.length) {
+    panels.push({ title: "Sitting This Round", rows: snapshot.byes.map(name => ({ label: name, value: "Bye" })) });
+  }
+  panels.push({
+    title: phase === "done" ? "Final Standings" : "Top Standings",
+    rows: (snapshot.standings || []).slice(0, 8).map(s => ({
+      label: "#" + s.rank + " " + s.name,
+      value: s.gp ? "GP " + s.gp + (s.score ? " · " + s.score : "") : (s.score || "")
+    }))
+  });
+  return {
+    title: snapshot.title || "Rumble Pickleball",
+    summary: snapshot.summary || "",
+    status,
+    updatedAt: snapshot.createdAt || Date.now(),
+    panels
+  };
+}
+
+function renderDisplayMode(model) {
+  const shell = el("div", { class: "display-shell" });
+  const top = el("div", { class: "display-top" });
+  const titleWrap = el("div");
+  titleWrap.appendChild(el("div", { class: "display-title" }, model.title));
+  if (model.summary) titleWrap.appendChild(el("div", { class: "display-meta" }, model.summary));
+  top.appendChild(titleWrap);
+  top.appendChild(el("div", null,
+    el("div", { class: "display-status" }, model.status),
+    el("div", { class: "display-meta" }, "Live from this device · " + new Date(model.updatedAt).toLocaleTimeString())));
+  shell.appendChild(top);
+
+  const grid = el("div", { class: "display-grid" });
+  (model.panels || []).forEach(panel => {
+    const card = el("section", { class: "display-panel" });
+    card.appendChild(el("h2", null, panel.title));
+    (panel.rows || []).forEach(row => {
+      card.appendChild(el("div", { class: "display-line" },
+        el("strong", null, row.label),
+        el("span", { class: "display-score" }, row.value || "")));
+    });
+    grid.appendChild(card);
+  });
+  shell.appendChild(grid);
+  return shell;
+}
+
+function renderSnapshotView(payload) {
+  const wrap = el("div");
+  const card = el("div", { class: "card" });
+  const ts = payload.createdAt ? new Date(payload.createdAt).toLocaleString() : "";
+  card.appendChild(el("h2", { style: "margin:0 0 6px;" }, payload.title || "Rumble Snapshot"));
+  card.appendChild(el("p", { class: "muted", style: "margin:0 0 12px;" },
+    "Static snapshot" + (ts ? " · " + ts : "")));
+  card.appendChild(el("p", { style: "margin:0;" }, payload.summary || ""));
+  wrap.appendChild(card);
+  if (payload.courts && payload.courts.length) {
+    const courts = el("div", { class: "card" });
+    courts.appendChild(el("h3", { style: "margin-top:0;" }, "Courts"));
+    payload.courts.forEach(g => {
+      const score = (g.score1 == null ? "–" : g.score1) + "-" + (g.score2 == null ? "–" : g.score2);
+      courts.appendChild(el("div", { style: "margin:8px 0;" },
+        "Court " + g.court + ": " + g.team1.join(" & ") + " vs " + g.team2.join(" & ") + " · " + score));
+    });
+    if (payload.byes && payload.byes.length) courts.appendChild(el("p", { class: "muted" }, "Sitting: " + payload.byes.join(", ")));
+    wrap.appendChild(courts);
+  }
+  if (payload.finals && payload.finals.length) {
+    const finals = el("div", { class: "card" });
+    finals.appendChild(el("h3", { style: "margin-top:0;" }, "Finals"));
+    payload.finals.forEach(g => {
+      const score = (g.score1 == null ? "–" : g.score1) + "-" + (g.score2 == null ? "–" : g.score2);
+      finals.appendChild(el("div", { style: "margin:8px 0;" },
+        g.name + ": " + g.team1.join(" & ") + " vs " + g.team2.join(" & ") + " · " + score));
+    });
+    wrap.appendChild(finals);
+  }
+  const standings = el("div", { class: "card" });
+  standings.appendChild(el("h3", { style: "margin-top:0;" }, "Standings"));
+  (payload.standings || []).forEach(s => {
+    standings.appendChild(el("div", { style: "display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:8px 0;" },
+      el("span", null, s.rank + ". " + s.name),
+      el("span", { class: "muted" }, s.gp ? "GP " + s.gp + (s.score ? " · " + s.score : "") : (s.score || ""))));
+  });
+  wrap.appendChild(standings);
+  return wrap;
+}
+
 // Personalized recap for the player in `slot`. mode = "final" | { throughRound: N }.
 // State-dependent: reads slots/finals/stats. Final-mode numbers come from
 // computeStats(total, true) + finalRanking() order, matching the done screen.
@@ -5570,13 +6552,13 @@ function buildResultsMessage(slot, mode) {
   const order = (isFinal ? finalRanking() : rankPlayers(through)).map(s => s.slot);
   const stats = computeStats(through, isFinal);
   const bySlot = {}; stats.forEach(s => { bySlot[s.slot] = s; });
-  const me = bySlot[slot];
-  const pos = order.indexOf(slot) + 1;
+  const recap = buildPersonalRecap(slot, { final: isFinal, throughRound: through });
   const sign = d => (d > 0 ? "+" : "") + d;
   const lines = [];
-  const youLine = "You: #" + pos + " of " + order.length +
-    " (GP " + me.gp + ", " + me.avgPoints.toFixed(1) + " pts/game, " +
-    me.winRate.toFixed(1) + " W/game, " + sign(me.avgDiff.toFixed(1)) + " diff/game)";
+  const youLine = "You: #" + recap.rank + " of " + recap.fieldSize +
+    " (GP " + recap.gp + ", " + recap.avgPoints.toFixed(1) + " pts/game, " +
+    (recap.wins / Math.max(1, recap.gp)).toFixed(1) + " W/game, " +
+    sign(recap.avgDiff.toFixed(1)) + " diff/game)";
   const board = order.map((s, i) => {
     const st = bySlot[s];
     return (i + 1) + ". " + st.name + " (GP " + st.gp + ", " +
@@ -5625,6 +6607,108 @@ function gamesOf(r) {
   return [];
 }
 function byesOf(r) { return r && Array.isArray(r.byes) ? r.byes : []; }
+function byePolicyText() {
+  if (state.format === "gauntlet") return "Gauntlet assigns byes with the rotation policy before building rank blocks for the players who play.";
+  if (state.format === "stack" || state.format === "king") return "Ladder formats balance byes first, then use the remaining players to fill courts by the format's movement rules.";
+  return "Round Robin spreads byes across eligible active players before pairing the courts for the round.";
+}
+function finalsTierForSlot(slot) {
+  for (const tier of finalTiers()) {
+    if ([...(tier.team1 || []), ...(tier.team2 || [])].includes(slot)) return tier.name || "Final";
+  }
+  if ((state.finals?.unseated || []).includes(slot)) return "Unseated";
+  return "Not seated";
+}
+function buildFairnessExplanation(type, opts) {
+  opts = opts || {};
+  if (type === "bye") {
+    const slots = opts.slots || (opts.slot ? [opts.slot] : []);
+    const roundNum = opts.round || state.currentRound || 1;
+    const names = slots.map(nameOf);
+    const facts = [];
+    slots.forEach(slot => {
+      const prior = byeStatsFor(slot, { round: roundNum, rounds: state.rounds, players: state.players });
+      const round = (state.rounds || []).find(r => (r.round || 0) === roundNum);
+      const sittingNow = byesOf(round).includes(slot);
+      const totalByes = prior.byeCount + (sittingNow ? 1 : 0);
+      facts.push(nameOf(slot) + ": " + totalByes + " bye" + (totalByes === 1 ? "" : "s") + " through Round " + roundNum);
+      facts.push(nameOf(slot) + ": eligible since Round " + (playerForBye(slot).eligibleFromRound || 1));
+      facts.push(nameOf(slot) + ": last prior bye " + (prior.lastByeRound === -Infinity ? "none" : "Round " + prior.lastByeRound));
+    });
+    facts.push(byePolicyText());
+    return {
+      title: slots.length === 1 ? names[0] + " is sitting" : "Why these players are sitting",
+      body: (names.join(", ") || "This player") + " is sitting this round because the schedule has more active players than available court seats. Rumble uses deterministic bye rotation to keep games played balanced.",
+      facts
+    };
+  }
+  if (type === "movement") {
+    const slot = opts.slot;
+    const previousRank = opts.previousRank || ((state.previousRanks || []).indexOf(slot) + 1);
+    const currentRank = opts.currentRank || 0;
+    const name = nameOf(slot);
+    const diff = previousRank && currentRank ? previousRank - currentRank : 0;
+    const direction = diff > 0 ? "climbed" : (diff < 0 ? "dropped" : "stayed");
+    const format = formatNameForSnapshot(state.format);
+    return {
+      title: name + " " + direction,
+      body: name + " " + direction + " because " + format + " updates court/rank position from the completed round results. When the exact allocator path is not stored, this explanation states the deterministic rule that applies.",
+      facts: [
+        previousRank ? "Previous rank: #" + previousRank : "Previous rank unavailable",
+        currentRank ? "Current rank: #" + currentRank : "Current rank unavailable",
+        "Byes do not create artificial movement; rankings can still change when averages or format scores change."
+      ]
+    };
+  }
+  if (type === "finals") {
+    const slot = opts.slot;
+    const seed = opts.seed || (slot ? seedRankBySlot().get(slot) : null);
+    const tier = opts.tier || (slot ? finalsTierForSlot(slot) : "Finals");
+    const name = slot ? nameOf(slot) : "This player";
+    return {
+      title: name + " finals placement",
+      body: name + " is seed #" + (seed || "?") + " and is placed in " + tier + ". Finals seat one four-player tier per active court by season seed, then pair #1+#4 against #2+#3 inside each tier.",
+      facts: [
+        seed ? "Season seed: #" + seed : "Season seed unavailable",
+        "Tier: " + tier,
+        "Players beyond the seated court tiers remain unseated by season rank."
+      ]
+    };
+  }
+  return {
+    title: "How Rumble decided this",
+    body: "This explanation is based on the deterministic tournament rules stored in the current event.",
+    facts: []
+  };
+}
+function openFairnessExplanationModal(type, opts) {
+  const exp = buildFairnessExplanation(type, opts || {});
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, exp.title));
+  modal.appendChild(el("p", { class: "muted", style: "margin-top:0;" }, exp.body));
+  if (exp.facts && exp.facts.length) {
+    const ul = el("ul", { style: "padding-left:20px;margin:0 0 14px;" });
+    exp.facts.forEach(f => ul.appendChild(el("li", null, f)));
+    modal.appendChild(ul);
+  }
+  modal.appendChild(el("button", { style: "width:100%;", onclick: close }, "Close"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+function whyButton(type, opts) {
+  return el("button", {
+    class: "why-btn",
+    title: "Explain this decision",
+    onclick: e => {
+      e.preventDefault();
+      e.stopPropagation();
+      openFairnessExplanationModal(type, opts);
+    },
+  }, "Why?");
+}
 function playerCount() {
   return Array.isArray(state.players) ? state.players.length : ((state.slots || []).filter(Boolean).length || 0);
 }
@@ -6380,6 +7464,22 @@ function render() {
   document.querySelectorAll(".modal-bg").forEach(n => n.remove());
   const app = document.getElementById("app");
   app.innerHTML = "";
+  app.classList.toggle("display-app", isDisplayMode());
+  if (isSnapshotRoute()) {
+    try {
+      app.appendChild(renderSnapshotView(decodeSnapshotHash(location.hash)));
+    } catch (e) {
+      app.appendChild(el("div", { class: "card" },
+        el("h2", null, "Snapshot unavailable"),
+        el("p", { class: "muted" }, "This snapshot link could not be decoded.")));
+    }
+    return;
+  }
+  if (isDisplayMode()) {
+    state = readDisplayState() || newState();
+    app.appendChild(renderDisplayMode(displayModeModel(buildTournamentSnapshot("live"))));
+    return;
+  }
   app.appendChild(renderHeader());
   if (state.phase === "setup")        app.appendChild(renderSetup());
   else if (state.phase === "playing") app.appendChild(renderPlaying());
@@ -6469,9 +7569,21 @@ function renderHeader() {
   const header = el("header", { class: "top" });
   header.appendChild(el("div", { class: "title" }, "🏓 Rumble Pickleball"));
   header.appendChild(el("div", { class: "progress" }, progressText));
+  if (state.phase !== "setup" || (Array.isArray(state.eventLog) && state.eventLog.length)) {
+    header.appendChild(el("button", { class: "icon-btn", onclick: openEventLogModal, "aria-label": "Event log" }, "☰"));
+  }
   header.appendChild(el("button", { class: "icon-btn", onclick: openSettings, "aria-label": "Settings" }, "⚙"));
   const strip = timeBudgetStripEl();
   if (strip) header.appendChild(strip);
+  if (Array.isArray(state.undoStack) && state.undoStack.length) {
+    const undo = state.undoStack[0];
+    const chip = el("button", { class: "undo-chip", title: undo.label || "Undo last event" }, "↶ Undo");
+    chip.addEventListener("click", function() {
+      const res = undoLastEvent();
+      showToast(res.ok ? "Undid last event" : res.error);
+    });
+    header.appendChild(chip);
+  }
   if (_undoChipAdjIdx >= 0 &&
       state.timeBudget &&
       Array.isArray(state.timeBudget.adjustments) &&
@@ -6514,6 +7626,99 @@ function updateStartState() {
     hint.textContent = reason;
     hint.style.display = reason ? "" : "none";
   }
+}
+
+function setupRoundCountForSummary(players, activeCourts) {
+  if (state.format === "rr") return players === 8 && activeCourts === 2 ? 7 : Math.max(4, Math.min(12, parseInt(state.rrRounds, 10) || 7));
+  if (state.format === "stack") return state.stackRounds;
+  if (state.format === "king") return state.kingRounds;
+  if (state.format === "gauntlet") return state.gauntletRounds;
+  return 3;
+}
+
+function preStartSummaryModel() {
+  const names = setupNames();
+  const validation = validateSetupConfig(state.format, names, state.courtCount);
+  const players = validation.playerCount || names.length;
+  const configuredCourts = state.courtCount;
+  const effectiveCourts = validation.effectiveCourtCount || effectiveCourtCountForFormat(state.format, configuredCourts);
+  const shape = roundShapeFor(players, effectiveCourts);
+  const activeCourts = state.format === "crown" ? 1 : shape.activeCourts;
+  const rounds = setupRoundCountForSummary(players, activeCourts);
+  const cfg = state.timeBudget && state.timeBudget.enabled && state.timeBudget.plannedConfig
+    ? state.timeBudget.plannedConfig : null;
+  const scoringSystem = cfg ? cfg.scoring : state.scoringSystem;
+  const winScore = cfg ? cfg.target : state.winScore;
+  const winBy = cfg ? cfg.winBy : state.winBy;
+  const scoring = cfg && cfg.preset
+    ? cfg.preset + " preset"
+    : (scoringSystem === "rally" ? "Rally" : "Side-out") + " to " + winScore + ", win by " + winBy;
+  let estimatedDuration = "";
+  if (state.timeBudget && state.timeBudget.enabled) {
+    const readout = formatTimeBudgetReadout(cfg, state.timeBudget.minutes, null);
+    estimatedDuration = readout.likelyDone ? readout.willPlay + " · " + readout.likelyDone : readout.willPlay;
+  }
+  const tierCount = state.format === "crown" ? 0 : Math.min(activeCourts, Math.floor(players / 4));
+  const unseated = state.format === "crown" ? 0 : Math.max(0, players - tierCount * 4);
+  const finalsStyle = state.format === "crown"
+    ? "Crown Match after 3 themed rounds"
+    : tierCount + " finals tier" + (tierCount === 1 ? "" : "s") + (unseated ? " · " + unseated + " unseated by seed" : "");
+  const phoneCount = (state.rawPhones || []).slice(0, players).filter(isValidPhone).length;
+  const warnings = [];
+  if (!validation.ok) warnings.push(validation.error || "Check the player list.");
+  if (shape.byesNeeded > players / 3) warnings.push("More than one third of the field sits each round.");
+  if (state.timeBudget && state.timeBudget.enabled && !cfg) warnings.push("Time budget needs a playable scoring plan.");
+  return {
+    formatLabel: formatNameForSnapshot(state.format),
+    players,
+    configuredCourts,
+    activeCourts,
+    byesPerRound: state.format === "crown" ? 0 : shape.byesNeeded,
+    rounds,
+    scoring,
+    estimatedDuration,
+    finalsStyle,
+    phoneCount,
+    nameValidation: validation.ok ? "Names ready" : (validation.error || "Check names"),
+    warnings
+  };
+}
+
+function openPreStartSummary() {
+  if (!canStart()) return;
+  const model = preStartSummaryModel();
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Review & Start"));
+  const rows = [
+    ["Format", model.formatLabel],
+    ["Players", model.players + " · " + model.nameValidation],
+    ["Courts", model.configuredCourts + " configured · " + model.activeCourts + " active"],
+    ["Byes", model.byesPerRound ? model.byesPerRound + " per round" : "None"],
+    ["Rounds", "" + model.rounds],
+    ["Scoring", model.scoring],
+    ["Finals", model.finalsStyle],
+    ["Phones", model.phoneCount + " saved for text results"],
+  ];
+  if (model.estimatedDuration) rows.splice(6, 0, ["Estimate", model.estimatedDuration]);
+  rows.forEach(([label, value]) => {
+    modal.appendChild(el("div", { class: "settings-row" },
+      el("label", null, label),
+      el("span", { style: "text-align:right;" }, value)));
+  });
+  if (model.warnings.length) {
+    const warn = el("div", { class: "rules", style: "margin:10px 0;padding:10px;" });
+    model.warnings.forEach(w => warn.appendChild(el("div", null, "⚠ " + w)));
+    modal.appendChild(warn);
+  }
+  const startBtn = el("button", { class: "primary", style: "width:100%;margin-top:8px;" }, "Start tournament");
+  startBtn.addEventListener("click", () => { close(); startTournament(); });
+  modal.appendChild(startBtn);
+  modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Back to setup"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
 }
 
 const RULES_RR = [
@@ -7065,6 +8270,168 @@ function showConfirm(message, onConfirm, opts) {
   mountModal(bg, modal);
 }
 
+function openEventLogModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Event Log"));
+  const events = Array.isArray(state.eventLog) ? state.eventLog : [];
+  const undo = Array.isArray(state.undoStack) && state.undoStack.length ? state.undoStack[0] : null;
+  if (!events.length) {
+    modal.appendChild(el("p", { class: "muted" }, "No tournament events yet."));
+  } else {
+    events.slice(0, 30).forEach((entry, idx) => {
+      const row = el("div", {
+        style: "padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;"
+      });
+      const when = entry.ts ? new Date(entry.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+      row.appendChild(el("div", { style: "flex:1;min-width:0;" },
+        el("div", { style: "font-weight:700;" }, entry.label),
+        el("div", { class: "muted", style: "font-size:12px;margin-top:2px;" },
+          (entry.kind || "event") + (when ? " · " + when : "") + (entry.detail ? " · " + entry.detail : ""))));
+      if (idx === 0 && undo && entry.undoId === undo.id) {
+        row.appendChild(el("button", {
+          class: "ghost",
+          style: "min-height:36px;padding:0 12px;",
+          onclick: () => {
+            close();
+            const res = undoLastEvent();
+            showToast(res.ok ? "Undid last event" : res.error);
+          }
+        }, "Undo"));
+      }
+      modal.appendChild(row);
+    });
+  }
+  modal.appendChild(el("button", { style: "width:100%;margin-top:12px;", onclick: close }, "Close"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+
+function openShareCardsModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Share Cards"));
+  modal.appendChild(el("p", { class: "muted", style: "margin-top:0;" },
+    "Generate a static image from the current tournament state."));
+
+  const typeRow = el("div", { class: "settings-row" });
+  typeRow.appendChild(el("label", null, "Card"));
+  const typeSelect = el("select");
+  [["podium", "Final Podium"], ["round", "Round Recap"], ["player", "Player Recap"]].forEach(([value, label]) => {
+    typeSelect.appendChild(el("option", { value }, label));
+  });
+  typeRow.appendChild(typeSelect);
+  modal.appendChild(typeRow);
+
+  const roundRow = el("div", { class: "settings-row" });
+  roundRow.appendChild(el("label", null, "Round"));
+  const roundSelect = el("select");
+  const roundCount = Math.max(1, (state.rounds || []).length);
+  for (let i = 1; i <= roundCount; i++) roundSelect.appendChild(el("option", { value: String(i) }, "Round " + i));
+  roundSelect.value = String(Math.min(state.currentRound || 1, roundCount));
+  roundRow.appendChild(roundSelect);
+  modal.appendChild(roundRow);
+
+  const playerRow = el("div", { class: "settings-row" });
+  playerRow.appendChild(el("label", null, "Player"));
+  const playerSelect = el("select");
+  (state.players || []).forEach(p => {
+    if (p && p.name) playerSelect.appendChild(el("option", { value: String(p.slot) }, p.name));
+  });
+  if (!playerSelect.children.length) {
+    (state.slots || []).forEach((name, i) => {
+      if (name) playerSelect.appendChild(el("option", { value: String(i + 1) }, name));
+    });
+  }
+  playerRow.appendChild(playerSelect);
+  modal.appendChild(playerRow);
+
+  const preview = el("div", { class: "rules", style: "margin:10px 0 14px;padding:10px;" });
+  modal.appendChild(preview);
+
+  const currentModel = () => buildShareCardModel(typeSelect.value, {
+    round: parseInt(roundSelect.value, 10) || state.currentRound || 1,
+    slot: parseInt(playerSelect.value, 10) || 1,
+  });
+  const refresh = () => {
+    roundRow.style.display = typeSelect.value === "round" ? "" : "none";
+    playerRow.style.display = typeSelect.value === "player" ? "" : "none";
+    const model = currentModel();
+    preview.textContent = model.title + "\n" + (model.lines || []).slice(0, 5).join("\n");
+  };
+  [typeSelect, roundSelect, playerSelect].forEach(sel => sel.addEventListener("change", refresh));
+  refresh();
+
+  const pngBtn = el("button", { class: "primary", style: "width:100%;margin-bottom:8px;" }, "Download PNG");
+  pngBtn.addEventListener("click", () => downloadShareCard(currentModel(), "png"));
+  const svgBtn = el("button", { style: "width:100%;margin-bottom:8px;" }, "Download SVG");
+  svgBtn.addEventListener("click", () => downloadShareCard(currentModel(), "svg"));
+  const copyBtn = el("button", { style: "width:100%;margin-bottom:8px;" }, "Copy image");
+  copyBtn.addEventListener("click", () => copyShareCardImage(currentModel()));
+  const qrBtn = el("button", { style: "width:100%;margin-bottom:8px;" }, "QR Snapshot");
+  qrBtn.addEventListener("click", () => openQrSnapshotModal());
+  const closeBtn = el("button", { class: "ghost", style: "width:100%;", onclick: close }, "Close");
+  modal.appendChild(pngBtn);
+  modal.appendChild(svgBtn);
+  modal.appendChild(copyBtn);
+  modal.appendChild(qrBtn);
+  modal.appendChild(closeBtn);
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+
+function openQrSnapshotModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "QR Snapshot"));
+  const payload = buildTournamentSnapshot("snapshot");
+  const url = snapshotUrl(payload);
+  const matrix = qrMatrixForText(url);
+  if (Array.isArray(matrix)) {
+    const qr = el("div", { style: "background:#fff;padding:12px;border-radius:8px;display:flex;justify-content:center;margin:10px 0;" });
+    qr.innerHTML = renderQrSvg(matrix);
+    modal.appendChild(qr);
+    modal.appendChild(el("p", { class: "muted" }, "Players can scan this static snapshot. It does not live update."));
+  } else {
+    modal.appendChild(el("p", { class: "muted" },
+      "This snapshot is too large for the built-in QR encoder. Use Copy link instead."));
+  }
+  const linkBox = el("textarea", {
+    readonly: "readonly",
+    style: "width:100%;min-height:84px;border-radius:8px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px;font-family:inherit;font-size:12px;"
+  }, url);
+  modal.appendChild(linkBox);
+  const copyBtn = el("button", { class: "primary", style: "width:100%;margin:10px 0 8px;" }, "Copy link");
+  copyBtn.addEventListener("click", () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => showToast("Snapshot link copied"));
+    } else {
+      linkBox.focus();
+      linkBox.select();
+      try { document.execCommand("copy"); showToast("Snapshot link copied"); } catch (e) {}
+    }
+  });
+  modal.appendChild(copyBtn);
+  modal.appendChild(el("button", { style: "width:100%;", onclick: close }, "Close"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+
+function renderShareCardsButtonCard() {
+  const card = el("div", { class: "card" });
+  card.appendChild(el("button", { class: "primary", style: "width:100%;", onclick: openShareCardsModal },
+    "Share Cards"));
+  card.appendChild(el("button", { class: "secondary", style: "width:100%;margin-top:8px;", onclick: openQrSnapshotModal },
+    "QR Snapshot"));
+  return card;
+}
+
 function renderTimeBudgetBlock() {
   const enabled = !!(state.timeBudget && state.timeBudget.enabled);
 
@@ -7342,7 +8709,7 @@ function renderTimeBudgetBlock() {
     id: "start-btn",
     class: "primary",
     style: "width: 100%;",
-    onclick: () => { if (canStart()) startTournament(); }
+    onclick: () => { if (canStart()) openPreStartSummary(); }
   }, "Start Tournament");
   startBtn.disabled = !canStart();
 
@@ -7843,8 +9210,16 @@ function renderCrownPlaying() {
       disabled: !matchComplete,
       onclick: () => {
         if (!isCrownMatchComplete(state.crownMatches[state.currentMatch])) return;
+        const beforeState = stateSnapshotForUndo();
+        const nextMatch = state.currentMatch + 2;
         maybeTightenCrownPreset(state.currentMatch);
         state.currentMatch++;
+        recordEvent({
+          kind: "advance",
+          label: "Advanced to Crown Match " + nextMatch,
+          beforeState,
+          reversible: true,
+        });
         save();
         render();
       }
@@ -7858,7 +9233,14 @@ function renderCrownPlaying() {
       disabled: !state.crownMatches.every(isCrownMatchComplete),
       onclick: () => {
         if (!state.crownMatches.every(isCrownMatchComplete)) return;
+        const beforeState = stateSnapshotForUndo();
         buildCrownMatch();
+        recordEvent({
+          kind: "finals",
+          label: mutationEventLabel("buildCrown", {}),
+          beforeState,
+          reversible: true,
+        });
         render();
       }
     }, "Advance to Crown Match →");
@@ -7947,7 +9329,15 @@ function renderCrownPhaseScreen() {
     style: "width:100%;margin-bottom:8px;",
     onclick: () => {
       if (!isCrownMatchComplete(state.crownFinal)) return;
-      state.phase = "done"; save(); render();
+      const beforeState = stateSnapshotForUndo();
+      state.phase = "done";
+      recordEvent({
+        kind: "finals",
+        label: mutationEventLabel("finish", {}),
+        beforeState,
+        reversible: true,
+      });
+      save(); render();
     }
   }, "👑 Crown Champions");
   finishBtn.disabled = !matchComplete;
@@ -8105,6 +9495,7 @@ function renderDoneScreenCrown() {
   wrap.appendChild(card);
 
   wrap.appendChild(renderPodiumCrown(ranking));
+  wrap.appendChild(renderShareCardsButtonCard());
   wrap.appendChild(renderAwardsStrip());
 
   const standings = el("div", { class: "card", style: "margin-top:14px;" });
@@ -8182,7 +9573,8 @@ function renderPlaying() {
   const roundByes = byesOf(round);
   if (roundByes.length) {
     wrap.appendChild(el("div", { class: "bye-banner" },
-      "☕ Sitting this round: " + roundByes.map(nameOf).join(", ") + " — back next round."));
+      "☕ Sitting this round: " + roundByes.map(nameOf).join(", ") + " — back next round.",
+      whyButton("bye", { slots: roundByes.slice(), round: round.round || state.currentRound })));
   }
   wrap.appendChild(renderRoundCourts(round, false, refreshes));
 
@@ -8210,6 +9602,7 @@ function renderPlaying() {
       onclick: () => {
         if (isIncremental) {
           if (!isRoundDecided(round)) return;
+          const beforeState = stateSnapshotForUndo();
           // Build the next round if it doesn't already exist (e.g. user went
           // back, then advanced again — keep the existing pairing). previousRanks
           // is snapshotted only on first-time advance so backward navigation
@@ -8230,12 +9623,25 @@ function renderPlaying() {
             }
           }
           state.currentRound++;
+          recordEvent({
+            kind: "advance",
+            label: mutationEventLabel("advance", { round: state.currentRound }),
+            beforeState,
+            reversible: true,
+          });
           save();
           render();
           if (toastMsg) showToast(toastMsg);
         } else {
           if (!isRoundDecided(round)) return;
+          const beforeState = stateSnapshotForUndo();
           state.currentRound++;
+          recordEvent({
+            kind: "advance",
+            label: mutationEventLabel("advance", { round: state.currentRound }),
+            beforeState,
+            reversible: true,
+          });
           save();
           render();
         }
@@ -8248,7 +9654,17 @@ function renderPlaying() {
       onclick: () => {
         // Re-evaluate at click time — score inputs may have decided the
         // round since this button was rendered.
-        if (allRoundsDecided()) { buildFinals(); render(); }
+        if (allRoundsDecided()) {
+          const beforeState = stateSnapshotForUndo();
+          buildFinals();
+          recordEvent({
+            kind: "finals",
+            label: mutationEventLabel("buildFinals", { round: totalRegularRounds() }),
+            beforeState,
+            reversible: true,
+          });
+          render();
+        }
       }
     }, "Build Finals →");
     primaryBtn.disabled = !allRoundsAdvanceable;
@@ -8443,11 +9859,19 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
     value: Number.isInteger(game[scoreKey]) ? String(game[scoreKey]) : "",
     "aria-label": "Score for " + nameOf(team[0]) + " and " + nameOf(team[1]),
   });
+  let scoreSession = null;
+  input.addEventListener("focus", () => {
+    scoreSession = { before: scorePairForEvent(game), beforeState: stateSnapshotForUndo() };
+  });
   // Normalize the displayed value to the recorded integer on blur, so a stray
   // "-5"/"7.5" left in the field (rejected or truncated when parsed) doesn't
   // linger visually out of sync with the recorded score.
   input.addEventListener("blur", () => {
     input.value = Number.isInteger(game[scoreKey]) ? String(game[scoreKey]) : "";
+    if (scoreSession) {
+      recordScoreChange(game, scoreSession.before, scoreSession.beforeState);
+      scoreSession = null;
+    }
   });
   input.addEventListener("input", () => {
     const v = input.value.trim();
@@ -8521,10 +9945,13 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
       title: "Fill " + quickFillTarget + " pts for this team — still enter the other score",
     }, "× " + quickFillTarget);
     pill.addEventListener("click", () => {
+      const beforeState = stateSnapshotForUndo();
+      const before = scorePairForEvent(game);
       game[scoreKey] = quickFillTarget;
       // Reflect the value into this team's own input — refreshes don't re-render
       // the court cards, so without this the box stayed blank after a tap.
       input.value = String(quickFillTarget);
+      recordScoreChange(game, before, beforeState);
       save();
       refreshes.forEach(fn => fn());
       // Focus the opponent's input so the user can type the loser's score.
@@ -8567,9 +9994,12 @@ function trajectorySpan(slot, currentIdx) {
   const prevIdx = prev.indexOf(slot);
   if (prevIdx < 0) return null;
   const diff = prevIdx - currentIdx;
-  if (diff > 0)  return el("span", { class: "rank-trajectory up",   title: "Up " + diff }, "▲" + diff);
-  if (diff < 0)  return el("span", { class: "rank-trajectory down", title: "Down " + (-diff) }, "▼" + (-diff));
-  return el("span", { class: "rank-trajectory same", title: "No change" }, "—");
+  const wrap = el("span", { class: "rank-trajectory-wrap" });
+  if (diff > 0) wrap.appendChild(el("span", { class: "rank-trajectory up", title: "Up " + diff }, "▲" + diff));
+  else if (diff < 0) wrap.appendChild(el("span", { class: "rank-trajectory down", title: "Down " + (-diff) }, "▼" + (-diff)));
+  else wrap.appendChild(el("span", { class: "rank-trajectory same", title: "No change" }, "—"));
+  wrap.appendChild(whyButton("movement", { slot, previousRank: prevIdx + 1, currentRank: currentIdx + 1 }));
+  return wrap;
 }
 
 function renderKingStandingsCard(throughRound, opts) {
@@ -8804,6 +10234,7 @@ function renderFinalsScreen() {
       el("span", { class: "seed-rank" }, "#" + (i + 1)),
       el("span", null, s.name),
       el("span", { class: "seed-meta" }, meta),
+      whyButton("finals", { slot: s.slot, seed: i + 1, tier: finalsTierForSlot(s.slot) }),
     ));
   });
   seedsCard.appendChild(grid);
@@ -8821,7 +10252,14 @@ function renderFinalsScreen() {
     style: "width: 100%; margin-bottom: 8px;",
     onclick: () => {
       if (finalsReady()) {
+        const beforeState = stateSnapshotForUndo();
         state.phase = "done";
+        recordEvent({
+          kind: "finals",
+          label: mutationEventLabel("finish", {}),
+          beforeState,
+          reversible: true,
+        });
         save();
         render();
       }
@@ -9536,6 +10974,16 @@ function renderTextResultsCard(mode) {
   const card = el("div", { class: "card" });
   card.appendChild(el("h3", { style: "margin:0 0 10px;" },
     mode === "final" ? "📱 Text results" : "📱 Text standings"));
+  card.appendChild(el("button", {
+    class: "secondary",
+    style: "width:100%;margin:0 0 10px;",
+    onclick: openShareCardsModal,
+  }, "Share Cards"));
+  card.appendChild(el("button", {
+    class: "secondary",
+    style: "width:100%;margin:0 0 10px;",
+    onclick: openQrSnapshotModal,
+  }, "QR Snapshot"));
   if (!textResultsSupported()) {
     card.appendChild(el("p", { class: "muted", style: "margin:0;" },
       "Texting results isn't available for this format yet."));
@@ -9612,6 +11060,7 @@ function renderDoneScreen() {
   // texting (RR/Gauntlet) get the card — others skip it rather than show a
   // dead "not available" placeholder.
   if (textResultsSupported()) wrap.appendChild(renderTextResultsCard("final"));
+  else wrap.appendChild(renderShareCardsButtonCard());
   // Awards collapsed by default to shorten the results scroll — champions and
   // podium carry the celebration; tap to explore the full awards.
   const awardsDetails = el("details", { class: "history" });
@@ -9919,6 +11368,11 @@ function openSettings() {
     onclick: () => { close(); openHowItWorksModal(); },
   }, "How this works"));
 
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-bottom: 12px;",
+    onclick: () => { window.open(displayModeUrl(), "_blank", "noopener"); },
+  }, "TV / Projector Mode"));
+
   if (state.phase !== "setup") {
     modal.appendChild(el("button", {
       style: "width: 100%; margin-bottom: 12px;",
@@ -10006,8 +11460,17 @@ function openSettings() {
         courtSelect.appendChild(opt);
       });
       courtSelect.addEventListener("change", () => {
+        const beforeState = stateSnapshotForUndo();
         const result = changeCourtCountMidEvent(parseInt(courtSelect.value, 10));
         if (!result || !result.ok) courtSelect.value = String(state.courtCount);
+        if (result && result.ok && result.changed) {
+          recordEvent({
+            kind: "courtCount",
+            label: mutationEventLabel("courtCount", { courts: state.courtCount }),
+            beforeState,
+            reversible: true,
+          });
+        }
         applyRosterResult(result, "Courts updated for Round " + nextRosterRound() + ".");
       });
       courtRow.appendChild(courtSelect);
@@ -10038,7 +11501,18 @@ function openSettings() {
           title: activeTotal <= 4 ? "At least 4 active players are required." : "",
         }, "Leave");
         leaveBtn.addEventListener("click", () => {
-          applyRosterResult(markPlayerLeft(p.slot), (p.name || "Player") + " leaves after Round " + (parseInt(state.currentRound, 10) || 1) + ".");
+          const beforeState = stateSnapshotForUndo();
+          const round = parseInt(state.currentRound, 10) || 1;
+          const result = markPlayerLeft(p.slot);
+          if (result && result.ok) {
+            recordEvent({
+              kind: "roster",
+              label: mutationEventLabel("rosterLeave", { name: p.name || "Player", round }),
+              beforeState,
+              reversible: true,
+            });
+          }
+          applyRosterResult(result, (p.name || "Player") + " leaves after Round " + round + ".");
         });
         row.appendChild(leaveBtn);
         activeList.appendChild(row);
@@ -10060,7 +11534,17 @@ function openSettings() {
             title: activeTotal >= 24 ? "Active player cap is 24." : "",
           }, "Return");
           returnBtn.addEventListener("click", () => {
-            applyRosterResult(returnMidEventPlayer(p.slot), (p.name || "Player") + " returns in Round " + nextRosterRound() + ".");
+            const beforeState = stateSnapshotForUndo();
+            const result = returnMidEventPlayer(p.slot);
+            if (result && result.ok) {
+              recordEvent({
+                kind: "roster",
+                label: mutationEventLabel("rosterReturn", { name: p.name || "Player", round: nextRosterRound() }),
+                beforeState,
+                reversible: true,
+              });
+            }
+            applyRosterResult(result, (p.name || "Player") + " returns in Round " + nextRosterRound() + ".");
           });
           row.appendChild(returnBtn);
           leftList.appendChild(row);
@@ -10091,7 +11575,18 @@ function openSettings() {
         title: activeTotal >= 24 ? "Active player cap is 24." : "",
       }, "Add");
       addBtn.addEventListener("click", () => {
-        applyRosterResult(addMidEventPlayer(nameInput.value, phoneInput.value), "Player added for Round " + nextRosterRound() + ".");
+        const beforeState = stateSnapshotForUndo();
+        const cleanName = (nameInput.value || "").trim();
+        const result = addMidEventPlayer(nameInput.value, phoneInput.value);
+        if (result && result.ok) {
+          recordEvent({
+            kind: "roster",
+            label: mutationEventLabel("rosterAdd", { name: cleanName || "Player" }),
+            beforeState,
+            reversible: true,
+          });
+        }
+        applyRosterResult(result, "Player added for Round " + nextRosterRound() + ".");
       });
       nameInput.addEventListener("keydown", e => { if (e.key === "Enter") addBtn.click(); });
       phoneInput.addEventListener("keydown", e => { if (e.key === "Enter") addBtn.click(); });
@@ -10663,7 +12158,29 @@ setInterval(() => {
   state.timeBudget.lastSeenAt = now;
 }, 1000);
 
+function setupDisplayModeRefresh() {
+  if (!isDisplayMode() || displayRefreshStarted) return;
+  displayRefreshStarted = true;
+  displayLastSaved = localStorage.getItem(STORAGE_KEY);
+  const refreshIfChanged = raw => {
+    const nextRaw = raw === undefined ? localStorage.getItem(STORAGE_KEY) : raw;
+    if (nextRaw === displayLastSaved) return;
+    displayLastSaved = nextRaw;
+    state = readDisplayState() || newState();
+    render();
+  };
+  setInterval(() => refreshIfChanged(), 2000);
+  window.addEventListener("storage", e => {
+    if (e.key === STORAGE_KEY) refreshIfChanged(e.newValue);
+  });
+}
+
+setupDisplayModeRefresh();
 render();
+window.addEventListener("hashchange", () => {
+  if (!isSnapshotRoute()) state = load() || newState();
+  render();
+});
 
 // ---------- PWA: service worker registration + update chip ----------
 // Register on secure contexts: https in production, and localhost/127.0.0.1 for

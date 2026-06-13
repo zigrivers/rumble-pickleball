@@ -45,7 +45,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   In `runSelfTests()`, add:
 
@@ -83,13 +83,13 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Open `index.html?test`.
 
   Expected: failures increase because the event/undo helpers do not exist.
 
-- [ ] **Step 3: Implement state defaults and helpers**
+- [x] **Step 3: Implement state defaults and helpers**
 
   Add defaults:
 
@@ -164,15 +164,15 @@
   }
   ```
 
-- [ ] **Step 4: Add Event Log UI**
+- [x] **Step 4: Add Event Log UI**
 
   Add `openEventLogModal()` and a compact Undo chip near the header when `state.undoStack.length > 0`. The modal lists `state.eventLog` entries newest first and shows an Undo button for the newest reversible event only.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually open the Event Log with no events, with one event, and after undo.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
@@ -186,7 +186,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 2 - event labels
@@ -203,11 +203,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because label helpers do not exist.
 
-- [ ] **Step 3: Implement label helpers**
+- [x] **Step 3: Implement label helpers**
 
   Add:
 
@@ -230,7 +230,7 @@
   }
   ```
 
-- [ ] **Step 4: Wire mutation events**
+- [x] **Step 4: Wire mutation events**
 
   Record events around:
 
@@ -246,11 +246,11 @@
 
   Capture `const before = stateSnapshotForUndo()` immediately before the mutation and call `recordEvent()` after successful mutation.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually verify score edit undo, round advance undo, finals build undo, roster add undo, leave undo, return undo, and court-count undo.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
@@ -264,7 +264,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 3 - personal recaps
@@ -293,11 +293,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because `buildPersonalRecap` does not exist.
 
-- [ ] **Step 3: Implement recap helper**
+- [x] **Step 3: Implement recap helper**
 
   Add `buildPersonalRecap(slot, opts)` near `buildResultsMessage()`. It returns:
 
@@ -311,15 +311,15 @@
 
   Use `computeStats()`, `rankPlayersForFormat()` or `finalRanking()`, `gamesOf()`, and `byesOf()`.
 
-- [ ] **Step 4: Reuse recap in text results**
+- [x] **Step 4: Reuse recap in text results**
 
   Update `buildResultsMessage()` to build its "You:" line from `buildPersonalRecap()` while preserving the current message structure and phone/text behavior.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually verify final text results and mid-event text standings for RR and Gauntlet.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
@@ -333,7 +333,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 4 - share card models
@@ -351,11 +351,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because share-card helpers do not exist.
 
-- [ ] **Step 3: Implement card model and SVG renderer**
+- [x] **Step 3: Implement card model and SVG renderer**
 
   Add:
 
@@ -365,15 +365,15 @@
 
   Supported `type` values are `"podium"`, `"round"`, and `"player"`. SVG size is `1080 x 1350`. Use escaped text only; do not inject raw HTML into SVG.
 
-- [ ] **Step 4: Add Share Cards UI**
+- [x] **Step 4: Add Share Cards UI**
 
   Add a Share Cards button on the done screen and in the mid-event text results card. The modal lets the organizer choose Final Podium, Round Recap, or Player Recap and then download PNG, download SVG, or copy image when `navigator.clipboard.write()` supports it.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually generate each card type, inspect the downloaded SVG/PNG, and verify fallback when clipboard image copy is unavailable.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
@@ -387,7 +387,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 5 - snapshots and QR
@@ -414,11 +414,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because snapshot and QR helpers do not exist.
 
-- [ ] **Step 3: Implement snapshot helpers**
+- [x] **Step 3: Implement snapshot helpers**
 
   Add:
 
@@ -429,22 +429,22 @@
 
   Encode compact JSON with base64url. Snapshot payload must include only read-only display data, not phone numbers, event log entries, undo snapshots, or localStorage internals.
 
-- [ ] **Step 4: Implement no-dependency QR helper**
+- [x] **Step 4: Implement no-dependency QR helper**
 
   Add `qrMatrixForText(text)` and `renderQrSvg(matrix)`. Use byte-mode QR with medium error correction and support versions large enough for the snapshot URLs produced by `buildTournamentSnapshot("snapshot")`. If text is too large, return `{ error: "too_large" }` and show copy-link fallback.
 
-- [ ] **Step 5: Add QR Snapshot UI and route**
+- [x] **Step 5: Add QR Snapshot UI and route**
 
   Add a QR Snapshot button in the text/results/share modal surfaces. Add route handling before normal `render()` dispatch:
 
   - if `location.hash` starts with `#snapshot=`, decode and render a read-only snapshot view
   - otherwise render the normal app
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
   Run `?test` and `?simulate`. Manually create a QR snapshot from playing, finals, and done phases; open the copied snapshot URL in a new tab; verify it does not read or mutate localStorage.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
   ```bash
   git add index.html
@@ -458,7 +458,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 6 - display mode
@@ -471,11 +471,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because display helpers do not exist.
 
-- [ ] **Step 3: Implement display route and model**
+- [x] **Step 3: Implement display route and model**
 
   Add:
 
@@ -487,19 +487,19 @@
 
   Add `displayModeModel(snapshot)` and `renderDisplayMode(model)`.
 
-- [ ] **Step 4: Wire read-only display rendering**
+- [x] **Step 4: Wire read-only display rendering**
 
   In `render()`, if `isDisplayMode()` is true, load state from localStorage, build `buildTournamentSnapshot("live")`, and render display mode only. Poll `load()` every two seconds and re-render if the saved JSON changed. Also listen for `storage` events.
 
-- [ ] **Step 5: Add organizer entry point**
+- [x] **Step 5: Add organizer entry point**
 
   Add a Display / Projector button in Settings or results surfaces that opens `index.html?display` in a new tab/window. Do not show score inputs, Settings, reset, roster controls, or text buttons in display mode.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
   Run `?test` and `?simulate`. Manually verify display mode for setup, playing, finals, done, 1920x1080, and mobile portrait. In a second browser tab, enter a score in the normal app and verify display updates.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
   ```bash
   git add index.html
@@ -513,7 +513,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 7 - fairness explainers
@@ -536,11 +536,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because `buildFairnessExplanation` does not exist.
 
-- [ ] **Step 3: Implement explanation helpers**
+- [x] **Step 3: Implement explanation helpers**
 
   Add `buildFairnessExplanation(type, opts)` returning:
 
@@ -550,7 +550,7 @@
 
   Implement `type` values `"bye"`, `"movement"`, and `"finals"` using existing state helpers.
 
-- [ ] **Step 4: Add UI entry points**
+- [x] **Step 4: Add UI entry points**
 
   Add small `Why?` buttons:
 
@@ -560,11 +560,11 @@
 
   Each opens a modal with the explanation title, body, facts, and Close button.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually verify RR byes, Stack movement, King movement, Gauntlet byes, finals tier placement, and unseated finals explanations.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
@@ -578,7 +578,7 @@
 **Files:**
 - Modify: `index.html`
 
-- [ ] **Step 1: Add failing self-tests**
+- [x] **Step 1: Add failing self-tests**
 
   ```js
   // Player-facing/trust Task 8 - pre-start summary
@@ -600,11 +600,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
   Expected: failures increase because `preStartSummaryModel` does not exist.
 
-- [ ] **Step 3: Implement summary model**
+- [x] **Step 3: Implement summary model**
 
   Add `preStartSummaryModel()` near setup validation helpers. Include:
 
@@ -615,15 +615,15 @@
   }
   ```
 
-- [ ] **Step 4: Add Review & Start modal**
+- [x] **Step 4: Add Review & Start modal**
 
   Change the setup Start button handler from direct `startTournament()` to `openPreStartSummary()`. The modal calls `startTournament()` only after the organizer confirms. If `canStart()` is false, keep the existing disabled behavior and hint.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
   Run `?test` and `?simulate`. Manually verify 8/2 RR, 13/3 RR, Crown, bye-heavy 24/2, time-budget enabled, and duplicate-name blocking.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add index.html
@@ -638,7 +638,7 @@
 - Modify: `index.html`
 - Modify: `guide.html`
 
-- [ ] **Step 1: Add guide copy**
+- [x] **Step 1: Add guide copy**
 
   Update `guide.html` with short mentions of:
 
@@ -648,7 +648,7 @@
   - Why? fairness explainers
   - Review & Start summary
 
-- [ ] **Step 2: Add final smoke assertions**
+- [x] **Step 2: Add final smoke assertions**
 
   Add a small `runSelfTests()` block that asserts the route helpers and major model builders exist:
 
@@ -668,7 +668,7 @@
   }
   ```
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
   Run:
 
@@ -686,7 +686,7 @@
   - undo works for score, advance, and roster changes
   - fairness explainers render for bye, movement, and finals cases
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
   ```bash
   git add index.html guide.html
@@ -695,14 +695,14 @@
 
 ## Final Acceptance Checklist
 
-- [ ] TV / Projector mode is read-only and shows current tournament state.
-- [ ] Shareable result cards generate final podium, round recap, and player recap outputs.
-- [ ] QR Snapshot creates static snapshot links and renders snapshot views without localStorage.
-- [ ] Personal player recaps support all formats and degrade gracefully when data is missing.
-- [ ] Event Log records score, round, finals, roster, court, and finish mutations.
-- [ ] Undo restores the prior tournament state for recent reversible events.
-- [ ] Fairness explainers cover byes, movement, finals tiers, and unseated players.
-- [ ] Pre-start summary appears before start and does not weaken existing validation.
-- [ ] 8-player/2-court Round Robin behavior is unchanged.
-- [ ] `index.html?test` ends with exactly 1 failure.
-- [ ] `index.html?simulate` ends with 0 failures.
+- [x] TV / Projector mode is read-only and shows current tournament state.
+- [x] Shareable result cards generate final podium, round recap, and player recap outputs.
+- [x] QR Snapshot creates static snapshot links and renders snapshot views without localStorage.
+- [x] Personal player recaps support all formats and degrade gracefully when data is missing.
+- [x] Event Log records score, round, finals, roster, court, and finish mutations.
+- [x] Undo restores the prior tournament state for recent reversible events.
+- [x] Fairness explainers cover byes, movement, finals tiers, and unseated players.
+- [x] Pre-start summary appears before start and does not weaken existing validation.
+- [x] 8-player/2-court Round Robin behavior is unchanged.
+- [x] `index.html?test` ends with exactly 1 failure.
+- [x] `index.html?simulate` ends with 0 failures.
