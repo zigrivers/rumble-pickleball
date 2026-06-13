@@ -3412,9 +3412,10 @@ function runSelfTests() {
     console.assert(msg.includes("🥇 ") && msg.includes("🥈 "), "final: champion lines present");
     console.assert(msg.includes("Final standings:"), "final: heading present");
     const bySlot = {}; stats.forEach(s => bySlot[s.slot] = s);
+    const amBySlot = {}; computeMarginStats(totalRegularRounds()).forEach(s => { amBySlot[s.slot] = s.adjScore; });
     const ok = order.every((s, i) => msg.includes((i+1) + ". " + bySlot[s].name + " (GP " +
-      bySlot[s].gp + ", " + bySlot[s].avgPoints.toFixed(1) + " pts/game)"));
-    console.assert(ok, "final: leaderboard numbers match computeStats(total,true)");
+      bySlot[s].gp + ", " + amBySlot[s].toFixed(1) + " AM)"));
+    console.assert(ok, "final: leaderboard numbers match Adjusted Margin");
     const mid = buildResultsMessage(order[0], { throughRound: 3 });
     console.assert(mid.includes("standings through 3 rounds"), "mid: interim header", mid);
     console.assert(!mid.includes("🥇"), "mid: no champion line");
@@ -6304,6 +6305,10 @@ function buildTournamentSnapshot(kind, opts) {
       : state.format === "crown" ? crownPlayerStats()
         : computeStats(through, final);
   const bySlot = new Map(stats.map(s => [s.slot, s]));
+  // RR/Gauntlet rank by Adjusted Margin, so show AM (regular rounds) as the score.
+  const marginBySlot = (state.format === "rr" || state.format === "gauntlet")
+    ? new Map(computeMarginStats(through).map(s => [s.slot, s.adjScore]))
+    : new Map();
   const round = state.rounds[(state.currentRound || 1) - 1];
   const courts = gamesOf(round).map(g => ({
     court: g.court || 1,
@@ -6335,7 +6340,7 @@ function buildTournamentSnapshot(kind, opts) {
         rank: i + 1,
         name: s.name || nameOf(s.slot),
         gp: st.gp || 0,
-        score: Number.isFinite(st.avgPoints) ? st.avgPoints.toFixed(1)
+        score: marginBySlot.has(s.slot) ? marginBySlot.get(s.slot).toFixed(1)
           : Number.isFinite(st.stackRate) ? st.stackRate.toFixed(1)
             : Number.isFinite(st.kingRate) ? st.kingRate.toFixed(1)
               : Number.isFinite(st.matchPoints) ? st.matchPoints.toFixed(1) : ""
@@ -6694,17 +6699,18 @@ function buildResultsMessage(slot, mode) {
   const order = (isFinal ? finalRanking() : rankPlayers(through)).map(s => s.slot);
   const stats = computeStats(through, isFinal);
   const bySlot = {}; stats.forEach(s => { bySlot[s.slot] = s; });
+  const amBySlot = {}; computeMarginStats(through).forEach(s => { amBySlot[s.slot] = s.adjScore; });
   const recap = buildPersonalRecap(slot, { final: isFinal, throughRound: through });
   const sign = d => (d > 0 ? "+" : "") + d;
   const lines = [];
   const youLine = "You: #" + recap.rank + " of " + recap.fieldSize +
-    " (GP " + recap.gp + ", " + recap.avgPoints.toFixed(1) + " pts/game, " +
+    " (GP " + recap.gp + ", " + amBySlot[slot].toFixed(1) + " AM, " +
     (recap.wins / Math.max(1, recap.gp)).toFixed(1) + " W/game, " +
     sign(recap.avgDiff.toFixed(1)) + " diff/game)";
   const board = order.map((s, i) => {
     const st = bySlot[s];
     return (i + 1) + ". " + st.name + " (GP " + st.gp + ", " +
-      st.avgPoints.toFixed(1) + " pts/game)";
+      amBySlot[s].toFixed(1) + " AM)";
   });
   if (isFinal) {
     lines.push("🏓 Rumble Pickleball — tonight's results", "", youLine, "");
