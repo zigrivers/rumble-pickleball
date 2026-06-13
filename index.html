@@ -10438,7 +10438,7 @@ function renderFinalsScreen() {
       ? s.stackRate.toFixed(1) + " SS/G · GP " + s.gp
       : isKing
         ? s.kingRate.toFixed(1) + " KS/G · GP " + s.gp
-        : s.avgPoints.toFixed(1) + " pts/G · GP " + s.gp;
+        : s.adjScore.toFixed(1) + " AM · GP " + s.gp;
     grid.appendChild(el("div", { class: "seed-row" },
       el("span", { class: "seed-rank" }, "#" + (i + 1)),
       el("span", null, s.name),
@@ -10504,8 +10504,8 @@ function renderPodium(ranking) {
     const ks = computeKingStats(state.rounds.length);
     labelBySlot = new Map(ks.map(s => [s.slot, s.kingRate.toFixed(1) + " KS/G"]));
   } else {
-    const stats = computeStats(totalRegularRounds(), true);
-    labelBySlot = new Map(stats.map(s => [s.slot, s.avgPoints.toFixed(1) + " pts/G"]));
+    const stats = computeMarginStats(totalRegularRounds());
+    labelBySlot = new Map(stats.map(s => [s.slot, s.adjScore.toFixed(1) + " AM"]));
   }
   const order = ["silver", "gold", "bronze"]; // visual left/center/right
   const ranks = [ranking[1], ranking[0], ranking[2]]; // map to visual order
