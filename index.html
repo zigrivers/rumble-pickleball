@@ -4054,6 +4054,20 @@ function runSelfTests() {
     state = savedState;
   }
 
+  // Accessibility/product Task 7 - smart setup assistant
+  {
+    console.assert(typeof recommendSetups === "function", "recommendSetups exists");
+    const social = recommendSetups({ players: 8, courts: 2, minutes: 90, goal: "social" });
+    console.assert(social[0].format === "rr" && social[0].tradeoffs.length > 0,
+      "social recommendation prefers RR with tradeoffs", social);
+    const competitive = recommendSetups({ players: 12, courts: 3, minutes: 90, goal: "competitive" });
+    console.assert(["stack", "king", "gauntlet"].includes(competitive[0].format),
+      "competitive recommendation prefers movement/ranked format", competitive);
+    const fastest = recommendSetups({ players: 16, courts: 2, minutes: 45, goal: "fastest" });
+    console.assert(fastest[0].timeBudget.enabled === true && fastest[0].warnings.length >= 1,
+      "fastest recommendation uses time budget and warnings", fastest);
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -8325,6 +8339,162 @@ function applyTournamentTemplate(id) {
   return { ok: true };
 }
 
+// -------- Smart Setup Assistant (Task 7) --------
+function setupRoundCountFor(format, players, courts, goal) {
+  if (format === "rr") return players === 8 && courts === 2 ? 7 : (goal === "fastest" ? 4 : 6);
+  if (format === "stack") return goal === "fastest" ? 4 : 8;
+  if (format === "king" || format === "gauntlet") return goal === "fastest" ? 6 : 8;
+  return 3;
+}
+
+function recommendationFor(format, title, ctx, tradeoffs) {
+  const rounds = setupRoundCountFor(format, ctx.players, ctx.courts, ctx.goal);
+  const shape = roundShapeFor(ctx.players, effectiveCourtCountForFormat(format, ctx.courts));
+  const warnings = [];
+  if (shape.byesNeeded > ctx.players / 3) warnings.push("More than one third of players sit each round.");
+  if (ctx.minutes < 60) warnings.push("Short event: use rally scoring or fewer rounds.");
+  return {
+    id: format + "-" + ctx.goal + "-" + ctx.minutes,
+    title,
+    format,
+    courtCount: ctx.courts,
+    rounds,
+    timeBudget: { enabled: true, minutes: ctx.minutes },
+    scoring: ctx.goal === "fastest"
+      ? { target: 7, winBy: 1, system: "rally" }
+      : { target: 11, winBy: 2, system: "sideout" },
+    tradeoffs: tradeoffs.concat(shape.byesNeeded ? [shape.byesNeeded + " sitting each round"] : ["everyone plays each round"]),
+    warnings,
+  };
+}
+
+function recommendSetups({ players, courts, minutes, goal }) {
+  const ctx = {
+    players: clampSetupRosterCount(players),
+    courts: effectiveCourtCountForFormat("rr", courts),
+    minutes: parseInt(minutes, 10) || 90,
+    goal: goal || "balanced",
+  };
+  const recs = [];
+  if (ctx.goal === "competitive") {
+    recs.push(recommendationFor("stack", "Competitive Ladder", ctx, ["court movement rewards winning"]));
+    recs.push(recommendationFor("king", "King of the Court", ctx, ["clear top-court pressure"]));
+    recs.push(recommendationFor("gauntlet", "Ranked Gauntlet", ctx, ["re-ranks after every round"]));
+  } else if (ctx.goal === "fastest") {
+    recs.push(recommendationFor("rr", "Fast Mixer", ctx, ["few rounds", "fast rally scoring"]));
+    recs.push(recommendationFor("stack", "Fast Ladder", ctx, ["movement format", "shorter scoring"]));
+  } else {
+    recs.push(recommendationFor("rr", ctx.goal === "social" ? "Social Mixer" : "Round Robin Mixer", ctx,
+      ["best partner variety", "easy to explain"]));
+    recs.push(recommendationFor("king", "Light Competitive Option", ctx, ["movement without complex standings"]));
+  }
+  return recs;
+}
+
+function applySetupRecommendation(rec) {
+  state.format = rec.format;
+  state.courtCount = rec.courtCount;
+  if (rec.format === "rr") state.rrRounds = rec.rounds;
+  if (rec.format === "stack") state.stackRounds = rec.rounds;
+  if (rec.format === "king") state.kingRounds = rec.rounds;
+  if (rec.format === "gauntlet") state.gauntletRounds = rec.rounds;
+  state.timeBudget.enabled = !!rec.timeBudget.enabled;
+  state.timeBudget.minutes = rec.timeBudget.minutes;
+  state.winScore = rec.scoring.target;
+  state.winBy = rec.scoring.winBy;
+  state.scoringSystem = rec.scoring.system;
+  state.lastAppliedTemplate = null;
+  state.setupAssistant.goal = state.setupAssistant.goal || "balanced";
+  save();
+  return { ok: true };
+}
+
+function setupRecommendationSummary(rec) {
+  return rec.title + ": " + rec.rounds + " rounds, " + rec.courtCount + " court" +
+    (rec.courtCount === 1 ? "" : "s") + ", " + rec.scoring.system + " to " + rec.scoring.target + ".";
+}
+
+function openSetupAssistant() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+
+  modal.appendChild(el("h3", { style: "margin:0 0 12px;" }, "Setup Assistant"));
+
+  // Inputs row
+  const row1 = el("div", { class: "settings-row" });
+  row1.appendChild(el("label", null, "Players"));
+  const playersInput = el("input", { type: "number", min: 4, max: 24, value: setupRosterCount(), style: "width:60px;" });
+  row1.appendChild(playersInput);
+  modal.appendChild(row1);
+
+  const row2 = el("div", { class: "settings-row" });
+  row2.appendChild(el("label", null, "Courts"));
+  const courtsInput = el("input", { type: "number", min: 1, max: 6, value: state.courtCount, style: "width:60px;" });
+  row2.appendChild(courtsInput);
+  modal.appendChild(row2);
+
+  const row3 = el("div", { class: "settings-row" });
+  row3.appendChild(el("label", null, "Minutes"));
+  const minutesInput = el("input", { type: "number", min: 20, max: 240, value: state.setupAssistant.minutes, style: "width:60px;" });
+  row3.appendChild(minutesInput);
+  modal.appendChild(row3);
+
+  const row4 = el("div", { class: "settings-row" });
+  row4.appendChild(el("label", null, "Goal"));
+  const goalSelect = el("select", { style: "flex:1;" });
+  [["social", "Social — partner variety"], ["balanced", "Balanced"], ["competitive", "Competitive"], ["fastest", "Fastest"]].forEach(([val, label]) => {
+    const opt = el("option", { value: val }, label);
+    if (val === state.setupAssistant.goal) opt.selected = true;
+    goalSelect.appendChild(opt);
+  });
+  row4.appendChild(goalSelect);
+  modal.appendChild(row4);
+
+  const recsContainer = el("div", { style: "margin-top:12px;" });
+  modal.appendChild(recsContainer);
+
+  const getBtn = el("button", { class: "primary", style: "width:100%;margin-top:8px;" }, "Get recommendations");
+  getBtn.addEventListener("click", () => {
+    const players = parseInt(playersInput.value, 10) || setupRosterCount();
+    const courts = parseInt(courtsInput.value, 10) || state.courtCount;
+    const minutes = parseInt(minutesInput.value, 10) || 90;
+    const goal = goalSelect.value;
+    state.setupAssistant.goal = goal;
+    state.setupAssistant.minutes = minutes;
+    save();
+
+    const recs = recommendSetups({ players, courts, minutes, goal });
+    recsContainer.innerHTML = "";
+    recs.forEach(rec => {
+      const card = el("div", { class: "card", style: "margin-bottom:10px;padding:10px;" });
+      card.appendChild(el("div", { style: "font-weight:700;margin-bottom:4px;" }, rec.title));
+      card.appendChild(el("div", { class: "muted", style: "font-size:13px;margin-bottom:6px;" }, setupRecommendationSummary(rec)));
+      if (rec.tradeoffs.length) {
+        const tList = el("ul", { style: "margin:0 0 6px;padding-left:16px;font-size:12px;" });
+        rec.tradeoffs.forEach(t => tList.appendChild(el("li", null, t)));
+        card.appendChild(tList);
+      }
+      if (rec.warnings.length) {
+        const wDiv = el("div", { style: "font-size:12px;color:#c84b0e;margin-bottom:6px;" });
+        rec.warnings.forEach(w => wDiv.appendChild(el("div", null, "⚠ " + w)));
+        card.appendChild(wDiv);
+      }
+      const applyBtn = el("button", { class: "secondary", style: "width:100%;" }, "Apply");
+      applyBtn.addEventListener("click", () => { applySetupRecommendation(rec); close(); render(); });
+      card.appendChild(applyBtn);
+      recsContainer.appendChild(card);
+    });
+  });
+  modal.appendChild(getBtn);
+
+  modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Cancel"));
+
+  bg.appendChild(modal);
+  document.body.appendChild(bg);
+}
+
 function renderFormatChooser() {
   const wrap = el("div", { class: "format-chooser" });
 
@@ -8345,6 +8515,7 @@ function renderFormatChooser() {
     if (cur) wrap.appendChild(el("div", { class: "muted", style: "font-size:12px;margin:4px 0 10px;" },
       "Applied: " + cur.title + " — edit anything below."));
   }
+  wrap.appendChild(el("button", { class: "secondary", style: "margin-bottom:12px;", onclick: openSetupAssistant }, "Setup Assistant"));
 
   wrap.appendChild(el("div", { class: "format-chooser-label" }, "Format"));
   const row = el("div", { class: "format-options" });
