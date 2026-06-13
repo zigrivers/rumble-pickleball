@@ -2224,8 +2224,8 @@ function runSelfTests() {
     console.assert(order(rankPlayers(1)) === totalEquivalent,
       "RR equal-GP average ranking matches totals ranking", { avg: order(rankPlayers(1)), totalEquivalent });
     const standings = renderStandingsCard(2);
-    console.assert(/GP/.test(standings.textContent) && /11\.0/.test(standings.textContent),
-      "RR standings show GP and per-game values", standings.textContent);
+    console.assert(/GP/.test(standings.textContent) && /\bAM\b/.test(standings.textContent),
+      "RR standings show GP and Adjusted Margin columns", standings.textContent);
 
     state = {
       phase: "playing", format: "stack", courtCount: 2, stackRounds: 2,
@@ -10266,7 +10266,7 @@ function renderStandingsCard(throughRound, opts) {
     el("th", { style: "text-align: center;" }, "#"),
     el("th", null, "Player"),
     el("th", { class: "num", title: "Games played" }, "GP"),
-    el("th", { class: "num", title: "Points per game" }, "PPG"),
+    el("th", { class: "num", title: "Adjusted Margin — diminishing-returns point margin, weighted by opponent and partner strength. Updates retroactively as the field's strength becomes clearer." }, "AM"),
     el("th", { class: "num", title: "Wins per game" }, "W/G"),
     el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
   )));
@@ -10287,7 +10287,10 @@ function renderStandingsCard(throughRound, opts) {
       rankCell(i),
       standingNameCell(s, partnerChip, partnerBadge),
       el("td", { class: "num" }, "" + s.gp),
-      el("td", { class: "num" }, s.avgPoints.toFixed(1)),
+      el("td", {
+        class: "num",
+        style: s.adjScore > 0 ? "color: var(--good);" : (s.adjScore < 0 ? "color: var(--bad);" : ""),
+      }, s.adjScore.toFixed(1)),
       el("td", { class: "num" }, s.winRate.toFixed(1)),
       el("td", {
         class: "num col-hide-mobile",
@@ -11353,6 +11356,8 @@ function renderDoneScreen() {
     table.appendChild(tbody);
   } else {
     const allStats = computeStats(totalRegularRounds(), true);
+    const marginBySlot = new Map(
+      computeMarginStats(totalRegularRounds()).map(s => [s.slot, s.adjScore]));
     const colgroup = el("colgroup", null,
       el("col", { class: "c-rank" }),
       el("col", { class: "c-name" }),
@@ -11366,7 +11371,7 @@ function renderDoneScreen() {
       el("th", { style: "text-align: center;" }, "#"),
       el("th", null, "Player"),
       el("th", { class: "num", title: "Games played" }, "GP"),
-      el("th", { class: "num", title: "Points per game" }, "PPG"),
+      el("th", { class: "num", title: "Adjusted Margin (regular rounds)" }, "AM"),
       el("th", { class: "num", title: "Wins per game" }, "W/G"),
       el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
     )));
@@ -11378,7 +11383,11 @@ function renderDoneScreen() {
         rankCell(i),
         standingNameCell(s),
         el("td", { class: "num" }, "" + s.gp),
-        el("td", { class: "num" }, s.avgPoints.toFixed(1)),
+        el("td", {
+          class: "num",
+          style: (marginBySlot.get(s.slot) || 0) > 0 ? "color: var(--good);"
+               : ((marginBySlot.get(s.slot) || 0) < 0 ? "color: var(--bad);" : ""),
+        }, (marginBySlot.get(s.slot) || 0).toFixed(1)),
         el("td", { class: "num" }, s.winRate.toFixed(1)),
         el("td", { class: "num col-hide-mobile", style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : "") },
           (s.avgDiff > 0 ? "+" : "") + s.avgDiff.toFixed(1)),
