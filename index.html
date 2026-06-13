@@ -267,6 +267,14 @@
   .court-card.c6 .court-label { color: var(--court6); }
   .court-card.gold .court-label { color: var(--gold); }
   .court-card.silver .court-label { color: var(--silver); }
+  .court-label.hc {
+    display: inline-block;
+    color: var(--text);
+    background: var(--panel-2);
+    border: 2px solid var(--text);
+    border-radius: 6px;
+    padding: 2px 8px;
+  }
   .matchup {
     display: flex;
     flex-direction: column;
@@ -513,6 +521,7 @@
   .history-game .court-tag.c4 { background: rgba(244, 114, 182, 0.15); color: var(--court4); }
   .history-game .court-tag.c5 { background: rgba(245, 158, 11, 0.15); color: var(--court5); }
   .history-game .court-tag.c6 { background: rgba(34, 211, 238, 0.15); color: var(--court6); }
+  .history-game .court-tag.hc { color: var(--text); background: var(--panel-2); border: 1.5px solid var(--text); }
   .history-game .game-text { flex: 1; }
   .history-game .game-score {
     font-weight: 800;
@@ -1201,6 +1210,7 @@
   .schedule-game .court-tag.c6 { background: rgba(34, 211, 238, 0.15); color: var(--court6); }
   .schedule-game .court-tag.gold { background: rgba(251, 191, 36, 0.18); color: var(--gold); }
   .schedule-game .court-tag.silver { background: rgba(203, 213, 225, 0.15); color: var(--silver); }
+  .schedule-game .court-tag.hc { color: var(--text); background: var(--panel-2); border: 1.5px solid var(--text); }
   .schedule-game .game-text { flex: 1; }
   .schedule-game .game-score {
     font-weight: 800;
@@ -1612,6 +1622,19 @@ function runSelfTests() {
       s.accessibilityPrefs.showPartnerChips === false &&
       s.accessibilityPrefs.showAdvancedStats === true,
       "accessibilityPrefs backfills partial legacy prefs", s);
+  }
+  // Accessibility/product Task 3 - court identity
+  {
+    console.assert(typeof courtIdentity === "function", "courtIdentity exists");
+    const c1 = courtIdentity(1, "rr", { highContrast: true });
+    const c6 = courtIdentity(6, "rr", { highContrast: true });
+    const king = courtIdentity(1, "king", { highContrast: true });
+    console.assert(c1.label === "Court 1" && c1.shortLabel === "C1",
+      "courtIdentity labels court 1", c1);
+    console.assert(c6.label === "Court 6" && c6.shortLabel === "C6",
+      "courtIdentity labels court 6", c6);
+    console.assert(king.label.includes("King"),
+      "courtIdentity preserves King court language", king);
   }
   // Accessibility/product Task 2 - large score mode classes
   {
@@ -7011,6 +7034,20 @@ function activeSlots(round) {
     }
     return "Court " + court;
   }
+  function courtIdentity(court, format = state.format, opts = {}) {
+    const c = Math.max(1, Math.min(6, parseInt(court, 10) || 1));
+    let label;
+    if (format === "king" && c === 1) label = "King's Court";
+    else if (format === "king" && c === 2) label = "Bottom Court";
+    else label = "Court " + c;
+    return {
+      label,
+      shortLabel: "C" + c,
+      className: "c" + c,
+      accentVar: "--court" + c,
+      highContrastLabel: courtTagLabel(c, format),
+    };
+  }
   function shuffleRevealLabel(court, format = state.format) {
     if (format === "stack" && court === 1) return "🏆 Court 1";
     if (format === "king" && court === 1) return "👑 King's Court";
@@ -9323,7 +9360,8 @@ function renderCrownMatchCard(match, sched, externalRefreshes, matchIdx) {
   const { gamesWon1: g12w1, gamesWon2: g12w2 } = crownGamesWon(match, 2, matchIdx);
 
   const card = el("div", { class: ("court-card crown c1 " + scoreEntryClass()).trim(), style: "max-width:560px;margin:0 auto 14px;" });
-  card.appendChild(el("div", { class: "court-label" }, "👑 " + sched.name.toUpperCase()));
+  const hcCrown = (state.accessibilityPrefs && state.accessibilityPrefs.highContrastCourts) ? " hc" : "";
+  card.appendChild(el("div", { class: "court-label" + hcCrown }, "👑 " + sched.name.toUpperCase()));
 
   const scoreIndicator = el("div", {
     style: "text-align:center;font-size:14px;color:var(--muted);margin-bottom:12px;"
@@ -10050,7 +10088,8 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
 
   const isFinalCard = courtKey === "champ" || courtKey === "cons" || courtKey === "tier";
   const card = el("div", { class: (className + " " + scoreEntryClass()).trim() });
-  card.appendChild(el("div", { class: "court-label" }, labelText));
+  const hcCard = (state.accessibilityPrefs && state.accessibilityPrefs.highContrastCourts) ? " hc" : "";
+  card.appendChild(el("div", { class: "court-label" + hcCard }, labelText));
   if (!isFinalCard) {
     const scoringWord = state.scoringSystem === "rally" ? "Rally" : "First";
     const winByWord = state.winBy === 1 ? "win by 1" : "win by 2";
@@ -10493,8 +10532,9 @@ function renderHistory(currentRound) {
       const t1Win = isGameComplete(g) && g.score1 > g.score2;
       const t2Win = isGameComplete(g) && g.score2 > g.score1;
       const scoreText = (Number.isInteger(g.score1) ? g.score1 : "–") + "–" + (Number.isInteger(g.score2) ? g.score2 : "–");
+      const hcHistory = (state.accessibilityPrefs && state.accessibilityPrefs.highContrastCourts) ? " hc" : "";
       const row = el("div", { class: "history-game" },
-        el("span", { class: "court-tag c" + num }, label),
+        el("span", { class: "court-tag c" + num + hcHistory }, label),
         el("span", { class: "game-text" },
           el("span", { class: t1Win ? "winning-team" : "" }, teamName(g.team1)),
           " vs ",
@@ -11564,7 +11604,8 @@ function openScheduleModal() {
 
   function gameRow(g, courtTag, courtClass) {
     const row = el("div", { class: "schedule-game" });
-    row.appendChild(el("span", { class: "court-tag " + courtClass }, courtTag));
+    const hcSched = (state.accessibilityPrefs && state.accessibilityPrefs.highContrastCourts) ? " hc" : "";
+    row.appendChild(el("span", { class: "court-tag " + courtClass + hcSched }, courtTag));
     row.appendChild(el("span", { class: "game-text" },
       teamName(g.team1) + " vs " + teamName(g.team2)));
     const scoreText = isGameComplete(g)
