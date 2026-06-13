@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rumble Pickleball — How Standings Work</title>
+<meta name="description" content="How Rumble ranks players in every format — Round Robin, Gauntlet, Stack, and King of the Court — explained in plain language, with a technical deep-dive.">
+<meta name="theme-color" content="#0f1419">
+<!-- Open Graph / share preview -->
+<meta property="og:title" content="Rumble Pickleball — How Standings Work">
+<meta property="og:description" content="How players are ranked in every Rumble format, in plain language — plus a technical deep-dive into the math.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a2028; --panel-2:#232b36; --border:#2e3946;
+    --text:#f1f5f9; --muted:#94a3b8;
+    --gold:#fbbf24; --good:#10b981; --bad:#ef4444;
+    --court1:#38bdf8; --court2:#a78bfa;
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"Hanken Grotesk",system-ui,sans-serif;
+    --r:18px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--body); font-size:17px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 50% -10%, rgba(251,191,36,.10), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, rgba(56,189,248,.06), transparent 55%),
+      radial-gradient(900px 500px at 0% 14%, rgba(167,139,250,.06), transparent 55%);
+    background-attachment:fixed;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 20px 80px}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:20;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:14px 20px; margin:0 -20px 0;
+    background:rgba(15,20,25,.72); backdrop-filter:saturate(140%) blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:800; letter-spacing:-.02em}
+  .brand .ball{font-size:22px; filter:drop-shadow(0 2px 6px rgba(251,191,36,.4))}
+  .brand b{color:var(--gold)}
+  .topbar .actions{display:flex; gap:8px}
+  .btn{
+    font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.02em;
+    color:var(--text); background:var(--panel-2); border:1px solid var(--border);
+    border-radius:999px; padding:9px 16px; cursor:pointer; text-decoration:none;
+    display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
+    transition:transform .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .btn:hover{transform:translateY(-1px); border-color:var(--gold)}
+  .btn.gold{background:var(--gold); color:#1a1207; border-color:var(--gold)}
+  .btn.gold:hover{box-shadow:0 8px 24px rgba(251,191,36,.28)}
+
+  /* ---------- hero ---------- */
+  .hero{padding:64px 0 24px; text-align:center; position:relative}
+  .kicker{
+    font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.32em;
+    text-transform:uppercase; color:var(--gold);
+    display:inline-flex; align-items:center; gap:12px;
+  }
+  .kicker::before,.kicker::after{content:""; width:34px; height:2px; background:linear-gradient(90deg,transparent,var(--gold))}
+  .kicker::after{background:linear-gradient(90deg,var(--gold),transparent)}
+  h1{
+    font-family:var(--display); font-weight:900; letter-spacing:-.035em; line-height:.94;
+    font-size:clamp(40px, 9vw, 84px); margin:18px 0 6px; text-transform:uppercase;
+  }
+  .lede{max-width:680px; margin:14px auto 0; color:var(--muted); font-size:19px}
+  .court-rule{display:flex; height:6px; max-width:340px; margin:30px auto 0; border-radius:99px; overflow:hidden; border:1px solid var(--border)}
+  .court-rule span{flex:1}
+  .court-rule .c1{background:var(--court1)} .court-rule .gd{background:var(--gold)} .court-rule .c2{background:var(--court2)}
+
+  /* ---------- section headings ---------- */
+  h2{
+    font-family:var(--display); font-weight:800; letter-spacing:-.02em;
+    font-size:clamp(28px, 5vw, 40px); margin:64px 0 6px; text-transform:uppercase;
+  }
+  h2 .num{color:var(--gold); margin-right:10px}
+  .sub{color:var(--muted); margin:0 0 26px; font-size:18px}
+  h3{font-family:var(--display); font-weight:700; letter-spacing:-.01em; font-size:22px; margin:0 0 4px}
+
+  /* ---------- cards ---------- */
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px}
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
+    padding:24px 22px; position:relative; overflow:hidden;
+  }
+  .card::before{content:""; position:absolute; inset:0 0 auto 0; height:3px; background:var(--gold); opacity:.85}
+  .card.c-rr::before{background:var(--gold)}
+  .card.c-ga::before{background:linear-gradient(90deg,var(--court1),var(--court2))}
+  .card.c-st::before{background:var(--court2)}
+  .card.c-ki::before{background:var(--court1)}
+  .card.c-fi::before{background:linear-gradient(90deg,var(--gold),#fff,var(--gold))}
+  .tag{
+    display:inline-block; font-family:var(--display); font-weight:700; font-size:11px;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+    border:1px solid var(--border); border-radius:999px; padding:3px 10px; margin-bottom:14px;
+  }
+  .card p{margin:10px 0 0; color:#dbe3ee}
+  .card .pt{margin:14px 0 0; padding:0; list-style:none}
+  .card .pt li{position:relative; padding:4px 0 4px 24px; color:#cfd8e3}
+  .card .pt li::before{content:"▸"; position:absolute; left:2px; color:var(--gold)}
+  .ranked-by{
+    margin-top:16px; padding:12px 14px; background:var(--panel-2);
+    border:1px solid var(--border); border-radius:12px; font-size:15px;
+  }
+  .ranked-by b{color:var(--gold); font-family:var(--display); letter-spacing:.02em}
+
+  /* ---------- callout ---------- */
+  .callout{
+    background:linear-gradient(180deg, rgba(251,191,36,.08), transparent);
+    border:1px solid var(--border); border-left:3px solid var(--gold);
+    border-radius:12px; padding:18px 20px; margin:22px 0; color:#e6edf6;
+  }
+  .callout b{color:var(--gold)}
+
+  /* ---------- tables ---------- */
+  .tbl{width:100%; border-collapse:collapse; margin:18px 0; font-size:15px; overflow:hidden; border-radius:12px; border:1px solid var(--border)}
+  .tbl th,.tbl td{padding:10px 14px; text-align:left; border-bottom:1px solid var(--border)}
+  .tbl th{background:var(--panel-2); font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted)}
+  .tbl tr:last-child td{border-bottom:0}
+  .tbl td:not(:first-child){font-variant-numeric:tabular-nums}
+  .win{color:var(--good)} .loss{color:var(--bad)}
+
+  /* ---------- technical block ---------- */
+  .tech{background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:26px 24px; margin-top:18px}
+  .tech h3{margin-top:26px}
+  .tech h3:first-child{margin-top:0}
+  code,.formula{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  code{background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:1px 7px; font-size:.92em; color:#ffe9b0}
+  .formula{
+    display:block; background:#0b0f14; border:1px solid var(--border); border-radius:12px;
+    padding:16px 18px; margin:14px 0; color:#ffe9b0; font-size:15px; line-height:1.8; white-space:pre-wrap;
+  }
+  .formula .c{color:var(--muted)}
+  .pill{display:inline-block; font-family:var(--display); font-weight:700; font-size:12px; color:#1a1207; background:var(--gold); border-radius:999px; padding:2px 10px}
+
+  /* ---------- toc ---------- */
+  .toc{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:30px}
+  .toc a{font-family:var(--display); font-weight:600; font-size:13px; color:var(--muted); text-decoration:none; border:1px solid var(--border); border-radius:999px; padding:7px 14px; transition:border-color .15s, color .15s}
+  .toc a:hover{border-color:var(--gold); color:var(--text)}
+
+  footer{margin-top:70px; padding-top:26px; border-top:1px solid var(--border); color:var(--muted); font-size:14px; text-align:center}
+  a.inline{color:var(--gold); text-decoration:none} a.inline:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="../index.html" style="text-decoration:none;color:inherit"><span class="ball">🎾</span> <span>RUMBLE <b>·</b> Standings</span></a>
+  <div class="actions">
+    <a class="btn" href="../guide.html">Field Guide</a>
+    <a class="btn gold" href="../index.html">Open App</a>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="hero">
+    <span class="kicker">How Standings Work</span>
+    <h1>Who's<br>Winning?</h1>
+    <p class="lede">Every Rumble format ranks players a little differently. Here's how each one decides the standings — first in plain English, then a deep-dive into the math for the curious.</p>
+    <div class="court-rule"><span class="c1"></span><span class="gd"></span><span class="c2"></span></div>
+    <nav class="toc">
+      <a href="#plain">Plain English</a>
+      <a href="#rr">Round Robin</a>
+      <a href="#gauntlet">Gauntlet</a>
+      <a href="#stack">Stack</a>
+      <a href="#king">King of the Court</a>
+      <a href="#finals">Finals</a>
+      <a href="#tech">Under the Hood</a>
+    </nav>
+  </header>
+
+  <!-- ============ PLAIN LANGUAGE ============ -->
+  <h2 id="plain"><span class="num">01</span>The plain-English version</h2>
+  <p class="sub">No math required. Find your format and read the card.</p>
+
+  <div class="callout">
+    <b>The big idea (Round Robin &amp; Gauntlet):</b> you're ranked by <b>how convincingly you win</b>, not just by how many points you pile up. Winning a tight 13–11 battle counts the same as an 11–9 win — grinding out extra points doesn't help. Winning <em>big</em> does help, but with diminishing returns, so there's no reward for running up the score. And it's adjusted for who you played with and against.
+  </div>
+
+  <div class="grid">
+
+    <div class="card c-rr">
+      <span class="tag">Round Robin</span>
+      <h3>Adjusted Margin</h3>
+      <p>Everyone plays a set number of rounds, with partners and opponents rotating so you mix with the whole group.</p>
+      <ul class="pt">
+        <li><b>Margin matters.</b> How much you win (or lose) by drives your rank — with diminishing returns, so a blowout beats a squeaker but not by a runaway amount.</li>
+        <li><b>Deuce points don't inflate.</b> A 13–11 win counts exactly like an 11–9 win. Both are "won by 2."</li>
+        <li><b>Strength of schedule.</b> Beating strong teams counts more; being carried by a strong partner counts less.</li>
+        <li><b>Byes &amp; unfinished games</b> never count.</li>
+      </ul>
+      <div class="ranked-by">Ranked by <b>Adjusted Margin</b> → ties broken by win rate → head-to-head → a fixed random draw.</div>
+    </div>
+
+    <div class="card c-ga">
+      <span class="tag">Gauntlet</span>
+      <h3>Climb the Courts</h3>
+      <p>Eight players. After <em>every</em> round, everyone is re-ranked by the same Adjusted Margin as Round Robin, then re-paired by rank.</p>
+      <ul class="pt">
+        <li><b>Court 1</b> hosts the top four: #1 + #4 vs #2 + #3.</li>
+        <li><b>Court 2</b> hosts the next four: #5 + #8 vs #6 + #7.</li>
+        <li>Play well and you climb toward Court 1; slip and you slide down.</li>
+      </ul>
+      <div class="ranked-by">Same engine as Round Robin — final standings use <b>Adjusted Margin</b>.</div>
+    </div>
+
+    <div class="card c-st">
+      <span class="tag">Stack · Ladder</span>
+      <h3>Higher Courts Pay More</h3>
+      <p>Courts are ranked, with Court 1 at the top. Where you win matters as much as that you win.</p>
+      <ul class="pt">
+        <li><b>Points on higher courts are worth more</b> — up to 1.5× on the top court, scaling down to the bottom.</li>
+        <li><b>Winning</b> earns a bonus, and winning <em>below</em> the top court earns an extra climb bonus.</li>
+        <li>Keep winning to climb the ladder toward Court 1.</li>
+      </ul>
+      <div class="ranked-by">Ranked by <b>average Stack score per game</b> → ties broken by a fixed random draw.</div>
+    </div>
+
+    <div class="card c-ki">
+      <span class="tag">King of the Court</span>
+      <h3>Hold the Throne</h3>
+      <p>Two courts. Court 1 is the King's Court — the throne. Win there to reign; lose and you drop.</p>
+      <ul class="pt">
+        <li>Your score rewards <b>wins</b>, <b>points scored</b>, and especially <b>wins on the King's Court</b>.</li>
+        <li>The more time you spend winning at the top, the higher you finish.</li>
+      </ul>
+      <div class="ranked-by">Ranked by <b>average King score per game</b> → ties broken by a fixed random draw.</div>
+    </div>
+
+    <div class="card c-fi">
+      <span class="tag">Finals</span>
+      <h3>Brackets of Four</h3>
+      <p>After the regular rounds, players are seeded straight from the standings into brackets of four:</p>
+      <ul class="pt">
+        <li><b>Top 4</b> → Championship (1 vs 4, 2 vs 3).</li>
+        <li>Next groups → Consolation, Bronze, … one bracket per available court.</li>
+        <li>Players left over below the last full group of four are listed as <b>unseated</b>.</li>
+      </ul>
+      <div class="ranked-by">Seeding uses your regular-season rank. <b>Finals results never change the regular standings.</b></div>
+    </div>
+
+  </div>
+
+  <div class="callout" style="margin-top:26px">
+    <b>"My rank changed and I didn't even play!"</b> In Round Robin and Gauntlet, your standing reflects <em>who</em> you played. If an early-round opponent turns out to be strong, your result against them quietly gains value as the session goes on. That's strength of schedule doing its job — not a glitch.
+  </div>
+
+  <!-- ============ TECHNICAL ============ -->
+  <h2 id="tech"><span class="num">02</span>Under the hood</h2>
+  <p class="sub">For the curious — exactly how each number is computed.</p>
+
+  <div class="tech">
+
+    <h3 id="rr">Adjusted Margin — Round Robin &amp; Gauntlet</h3>
+    <p>A player's ranking number is the <b>average adjusted-margin credit</b> across their decided games, built in three layers.</p>
+
+    <p><span class="pill">Layer 1</span> &nbsp;<b>Diminishing-returns margin (per game).</b> Take the team's point margin <code>d = teamScore − oppScore</code> (negative for a loss) and put it on a square-root scale:</p>
+    <span class="formula">ms = sign(d) · √|d|</span>
+    <p>Because pickleball is win-by-2, every decided game has <code>|d| ≥ 2</code>, so a win is always <code>≥ √2 ≈ +1.41</code> and a loss <code>≤ −1.41</code>.</p>
+    <table class="tbl">
+      <thead><tr><th>Game</th><th>Raw margin</th><th>Margin score (ms)</th></tr></thead>
+      <tbody>
+        <tr><td>11–9 / 13–11 / any deuce win</td><td>+2</td><td class="win">+1.41</td></tr>
+        <tr><td>11–6</td><td>+5</td><td class="win">+2.24</td></tr>
+        <tr><td>11–3</td><td>+8</td><td class="win">+2.83</td></tr>
+        <tr><td>11–0</td><td>+11</td><td class="win">+3.32</td></tr>
+      </tbody>
+    </table>
+    <p>A shutout is worth only ~2.4× a squeaker — not 5.5× as it would be under raw points. This is what removes the reward for grinding out extra points.</p>
+
+    <p><span class="pill">Layer 2</span> &nbsp;<b>Base strength (first pass).</b> Each player's <b>base score</b> is the average of their <code>ms</code> across decided games. Center it on the field:</p>
+    <span class="formula">s<sub>p</sub> = base<sub>p</sub> − fieldAverage</span>
+    <p><code>s<sub>p</sub> &gt; 0</code> means stronger than the field, <code>&lt; 0</code> weaker. Early in a session everyone sits near 0, so the adjustment below starts small and grows as evidence accumulates.</p>
+
+    <p><span class="pill">Layer 3</span> &nbsp;<b>Strength-adjusted credit (second pass).</b> Re-walk each decided game from player <em>p</em>'s view, with partner <em>q</em> and opponents <em>o₁, o₂</em>:</p>
+    <span class="formula">O   = (s<sub>o₁</sub> + s<sub>o₂</sub>) / 2      <span class="c">// opposing-team strength</span>
+P   = s<sub>q</sub>                  <span class="c">// partner strength</span>
+adj = clamp( k · (O − P), −C, +C )
+credit = ms + adj</span>
+    <p>The term is <b>additive</b> (performance-vs-expectation), so it behaves correctly whether you win or lose:</p>
+    <table class="tbl">
+      <thead><tr><th>Situation</th><th>Effect on credit</th></tr></thead>
+      <tbody>
+        <tr><td>Beat a strong team</td><td class="win">boosted (you overperformed)</td></tr>
+        <tr><td>Lost to a strong team</td><td>penalty softened (expected to lose)</td></tr>
+        <tr><td>Lost to a weak team</td><td class="loss">penalty increased</td></tr>
+        <tr><td>Carried by a strong partner</td><td>discounted</td></tr>
+        <tr><td>Carried a weak partner</td><td class="win">boosted</td></tr>
+      </tbody>
+    </table>
+    <p>Your final <b>Adjusted Margin</b> is the mean of <code>credit</code> over your decided games.</p>
+
+    <table class="tbl">
+      <thead><tr><th>Constant</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>curve</td><td>√ (square root)</td><td>diminishing-returns shape</td></tr>
+        <tr><td><code>k</code></td><td>0.5</td><td>strength sensitivity (opponent &amp; partner)</td></tr>
+        <tr><td><code>C</code></td><td>1.0</td><td>max strength adjustment per game</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <b>The invariant:</b> because <code>C = 1.0 &lt; √2 ≤ |ms|</code>, the sign of <code>credit</code> always matches the sign of <code>ms</code>. <b>Every win credits positive, every loss negative</b> — strength weighting can reorder similar results, but a win is never worth less than a loss of the same margin.
+    </div>
+
+    <p><b>Why a single pass?</b> Base scores are computed once and used as fixed inputs for the adjustment — we deliberately do <em>not</em> iterate to a converged rating. On a short social session that would overfit and become impossible to explain. The light, fixed-strength heuristic stays predictable and transparent.</p>
+
+    <h3>Worked example — why 3–0 still beats 2–1</h3>
+    <p>Ignoring strength adjustment for clarity:</p>
+    <table class="tbl">
+      <thead><tr><th>Player</th><th>Record</th><th>Games</th><th>Avg margin score</th></tr></thead>
+      <tbody>
+        <tr><td>A</td><td>2–1</td><td>11–0, 11–0, 0–11</td><td>(3.32 + 3.32 − 3.32) / 3 = <b>1.11</b></td></tr>
+        <tr><td>B</td><td>3–0</td><td>11–9, 11–9, 11–9</td><td>(1.41 × 3) / 3 = <b>1.41</b></td></tr>
+      </tbody>
+    </table>
+    <p>Diminishing returns caps the value of those blowouts, so the unbeaten player (B) finishes ahead — winning more games reasserts itself, while margin still decides things between similar records.</p>
+
+    <h3>Tiebreaker chain (Round Robin &amp; Gauntlet)</h3>
+    <ol>
+      <li><b>Average adjusted credit</b> (Adjusted Margin) — primary</li>
+      <li><b>Win rate</b> (wins ÷ games)</li>
+      <li><b>Head-to-head</b> point differential in games the tied players faced each other (regular rounds only)</li>
+      <li><b>Fixed random draw</b> assigned once at tournament start</li>
+    </ol>
+    <p>Players with zero decided games sort last, ordered by the random draw. <b>Raw points scored is not used to rank</b> — it's shown only for context.</p>
+
+    <h3 id="stack">Stack (ladder)</h3>
+    <p>Per decided game, a player gains:</p>
+    <span class="formula">multiplier = 1 + 0.5 · (courtCount − court) / (courtCount − 1)
+gain = points · multiplier
+       + 3        <span class="c">// if the team won</span>
+       + 2        <span class="c">// extra, if the win was below the top court (a climb)</span></span>
+    <p>With two courts, the top court's multiplier is 1.5× and the bottom is 1.0×. Players are ranked by <b>average gain per game</b> (<code>stackScore ÷ games</code>), ties broken by the random draw.</p>
+
+    <h3 id="king">King of the Court</h3>
+    <p>Per decided game, points scored accumulate, wins are tallied, and wins on Court 1 (the King's Court) are tallied separately. The score is:</p>
+    <span class="formula">kingScore = wins + pointsScored + kingCourtWins</span>
+    <p>Players are ranked by <b>average King score per game</b> (<code>kingScore ÷ games</code>), ties broken by the random draw.</p>
+
+    <h3 id="finals">Finals seeding</h3>
+    <p>After the regular rounds, the format's final ranking is computed and players are sliced into groups of four — top four to the Championship (seed 1 vs 4, seed 2 vs 3), the next four to Consolation, then Bronze, and so on, one bracket per available court. Anyone below the last complete group of four is listed as unseated. Finals games are excluded from every regular-season statistic, so they never alter the standings that produced the seeding.</p>
+
+    <h3>What counts as a "decided" game</h3>
+    <p>Only games with a finished, win-by-2 result feed the statistics. A tied score (e.g. 11–11) is treated as in-progress and excluded from points, wins, and margins until it resolves — so an unfinished game can never pad the standings. Byes are not games and never count.</p>
+
+    <p style="color:var(--muted); font-size:14px; margin-top:24px">This page reflects the scoring constants defined in the app. If those are ever tuned, this page is updated to match.</p>
+
+  </div>
+
+  <footer>
+    Rumble Pickleball · <a class="inline" href="../guide.html">Field Guide</a> · <a class="inline" href="../index.html">Open the app</a>
+  </footer>
+
+</div>
+</body>
+</html>
