@@ -3823,6 +3823,89 @@ function runSelfTests() {
       "clampAdj caps at ±1", [clampAdj(2), clampAdj(-2), clampAdj(0.5)]);
   }
 
+  // Adjusted Margin — computeMarginStats
+  {
+    const savedState = state;
+    const closeTo = (a, b) => Math.abs(a - b) < 1e-9;
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    const sg = (court, team1, team2, score1, score2) => {
+      const g = makeGame(court, team1, team2); g.score1 = score1; g.score2 = score2; return g;
+    };
+    const baseState = (players, courtCount, rounds) => ({
+      phase: "playing", format: "rr", courtCount,
+      slots: Array.from({ length: players }, (_, i) => "P" + (i + 1)), players: makePlayers(players),
+      rounds, tiebreakRandom: Array.from({ length: players }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    });
+    const find = (stats, slot) => stats.find(s => s.slot === slot);
+
+    // (a) A deuce win (13–11) and an 11–9 win have identical base margin score.
+    state = baseState(8, 2, [
+      makeRound(1, [sg(1, [1,2], [3,4], 13, 11), sg(2, [5,6], [7,8], 11, 9)], []),
+    ]);
+    {
+      const ms = computeMarginStats(1);
+      console.assert(closeTo(find(ms, 1).avgMargin, find(ms, 5).avgMargin),
+        "deuce win and 11-9 win give equal base margin", { a: find(ms,1).avgMargin, b: find(ms,5).avgMargin });
+    }
+
+    // (b) Diminishing returns: three squeakers (3-0) outrank two blowouts + a blowout loss (2-1) on base margin.
+    state = baseState(8, 2, [
+      makeRound(1, [sg(1, [1,2], [3,4], 11, 0), sg(2, [5,6], [7,8], 11, 9)], []),
+      makeRound(2, [sg(1, [1,3], [2,4], 11, 0), sg(2, [5,7], [6,8], 11, 9)], []),
+      makeRound(3, [sg(1, [3,4], [1,2], 11, 0), sg(2, [5,8], [6,7], 11, 9)], []),
+    ]);
+    {
+      const ms = computeMarginStats(3);
+      // player 1: won 11-0, won 11-0, lost 0-11  → base = (√11 + √11 − √11)/3 = √11/3
+      // player 5: won 11-9, 11-9, 11-9           → base = √2
+      console.assert(find(ms, 5).avgMargin > find(ms, 1).avgMargin,
+        "3-0 of squeakers beats 2-1 with blowouts on base margin",
+        { p1: find(ms,1).avgMargin, p5: find(ms,5).avgMargin });
+    }
+
+    // (c) Sign invariant: with CAP < √2, a single-game player's adjScore has the sign of their result.
+    state = baseState(8, 2, [
+      makeRound(1, [sg(1, [1,2], [3,4], 11, 9), sg(2, [5,6], [7,8], 11, 0)], []),
+    ]);
+    {
+      const ms = computeMarginStats(1);
+      console.assert(find(ms,1).adjScore > 0 && find(ms,5).adjScore > 0,
+        "winners have positive adjScore", { p1: find(ms,1).adjScore, p5: find(ms,5).adjScore });
+      console.assert(find(ms,3).adjScore < 0 && find(ms,7).adjScore < 0,
+        "losers have negative adjScore", { p3: find(ms,3).adjScore, p7: find(ms,7).adjScore });
+    }
+
+    // (d) Opponent strength: beating a STRONG team beats the same margin vs a WEAK team.
+    state = baseState(8, 2, [
+      makeRound(1, [sg(1, [3,4], [5,6], 11, 1), sg(2, [1,2], [7,8], 11, 1)], []),
+      makeRound(2, [sg(1, [1,5], [3,4], 11, 9), sg(2, [2,6], [7,8], 11, 9)], []),
+    ]);
+    {
+      const ms = computeMarginStats(2);
+      console.assert(find(ms, 1).adjScore > find(ms, 2).adjScore,
+        "beating a strong team outscores beating a weak team (same margin)",
+        { p1: find(ms,1).adjScore, p2: find(ms,2).adjScore });
+    }
+
+    // (e) Partner strength: the SAME win counts for LESS when partnered with a stronger player.
+    const partnerState = partner => baseState(8, 2, [
+      makeRound(1, [sg(1, [3,4], [5,6], 11, 1), sg(2, [2,7], [8,1], 9, 11)], []),
+      makeRound(2, [sg(1, [1,partner], [7,8], 11, 9), sg(2, [2,6], [3,4], 9, 11)], []),
+    ]);
+    {
+      state = partnerState(3); const strongPartner = computeMarginStats(2).find(s => s.slot === 1).adjScore;
+      state = partnerState(5); const weakPartner   = computeMarginStats(2).find(s => s.slot === 1).adjScore;
+      console.assert(weakPartner > strongPartner,
+        "same win counts less with a stronger partner", { strongPartner, weakPartner });
+    }
+
+    state = savedState;
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -7050,6 +7133,59 @@ function computeStats(throughRound, includeFinals) {
     s.avgDiff = s.diff / Math.max(1, s.gp);
   });
   return stats;
+}
+
+// Per-player Adjusted Margin stats through `throughRound` (regular rounds only).
+// Builds on computeStats for display fields, then layers diminishing-returns
+// margin (avgMargin) and strength-adjusted credit (adjScore).
+function computeMarginStats(throughRound) {
+  const stats = computeStats(throughRound, false);
+  const n = stats.length;
+  const sumMs = new Array(n + 1).fill(0);
+  const sumCredit = new Array(n + 1).fill(0);
+  const games = [];
+  for (let i = 0; i < (throughRound || 0) && i < state.rounds.length; i++) {
+    for (const g of gamesOf(state.rounds[i])) {
+      if (isGameDecided(g)) games.push(g);
+    }
+  }
+  // Pass 1 — base margin score per player.
+  for (const g of games) {
+    const m1 = marginScore(g.score1 - g.score2);
+    for (const slot of g.team1) sumMs[slot] += m1;
+    for (const slot of g.team2) sumMs[slot] -= m1;
+  }
+  const base = new Array(n + 1).fill(0);
+  let fieldSum = 0, fieldCount = 0;
+  for (const s of stats) {
+    if (s.gp > 0) { base[s.slot] = sumMs[s.slot] / s.gp; fieldSum += base[s.slot]; fieldCount++; }
+  }
+  const fieldAvg = fieldCount ? fieldSum / fieldCount : 0;
+  const strength = new Array(n + 1).fill(0);
+  for (const s of stats) {
+    if (s.gp > 0) strength[s.slot] = base[s.slot] - fieldAvg;
+  }
+  // Pass 2 — strength-adjusted credit per player.
+  for (const g of games) {
+    const m1 = marginScore(g.score1 - g.score2);
+    addMarginCredit(g.team1, g.team2, m1, strength, sumCredit);
+    addMarginCredit(g.team2, g.team1, -m1, strength, sumCredit);
+  }
+  for (const s of stats) {
+    s.avgMargin = s.gp > 0 ? base[s.slot] : 0;
+    s.adjScore  = s.gp > 0 ? sumCredit[s.slot] / s.gp : 0;
+  }
+  return stats;
+}
+
+// Adds `ms + clamp(k·(opponentStrength − partnerStrength))` to each player on `team`.
+function addMarginCredit(team, opp, ms, strength, sumCredit) {
+  const O = (strength[opp[0]] + strength[opp[1]]) / 2;
+  for (let k = 0; k < team.length; k++) {
+    const partner = team[k === 0 ? 1 : 0];
+    const P = strength[partner];
+    sumCredit[team[k]] += ms + clampAdj(MARGIN_STRENGTH_K * (O - P));
+  }
 }
 
 function headToHead(slotA, slotB, throughRound) {
