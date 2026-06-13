@@ -3906,6 +3906,34 @@ function runSelfTests() {
     state = savedState;
   }
 
+  // Adjusted Margin — rankPlayers ordering
+  {
+    const savedState = state;
+    const makePlayers = n => Array.from({ length: n }, (_, i) => ({
+      slot: i + 1, name: "P" + (i + 1), phone: "", status: "active",
+      eligibleFromRound: 1, joinedRound: 1, leftRound: null,
+    }));
+    const sg = (court, team1, team2, score1, score2) => {
+      const g = makeGame(court, team1, team2); g.score1 = score1; g.score2 = score2; return g;
+    };
+    const idx = (ranked, slot) => ranked.findIndex(s => s.slot === slot);
+
+    // A blowout win (11-3) ranks above a squeaker win (11-9) of an otherwise-symmetric player.
+    state = {
+      phase: "playing", format: "rr", courtCount: 2,
+      slots: Array.from({ length: 8 }, (_, i) => "P" + (i + 1)), players: makePlayers(8),
+      rounds: [ makeRound(1, [sg(1, [1,2], [3,4], 11, 3), sg(2, [5,6], [7,8], 11, 9)], []) ],
+      tiebreakRandom: Array.from({ length: 8 }, (_, i) => i),
+      previousRanks: [], notifiedRounds: [], awardsShown: false, winScore: 11, finals: null,
+    };
+    const ranked = rankPlayers(1);
+    console.assert(idx(ranked, 1) < idx(ranked, 5),
+      "blowout winner outranks squeaker winner", ranked.map(s => s.slot).join(","));
+    console.assert(ranked[ranked.length - 1].slot >= 1,
+      "rankPlayers returns all players", ranked.length);
+    state = savedState;
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -7206,15 +7234,14 @@ function headToHead(slotA, slotB, throughRound) {
 }
 
 function rankPlayers(throughRound) {
-  const stats = computeStats(throughRound, false);
+  const stats = computeMarginStats(throughRound);
   stats.sort((a, b) => {
     if (a.gp === 0 || b.gp === 0) {
       if (a.gp !== b.gp) return a.gp === 0 ? 1 : -1;
       return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
     }
-    if (b.avgPoints !== a.avgPoints) return b.avgPoints - a.avgPoints;
-    if (b.winRate   !== a.winRate)   return b.winRate   - a.winRate;
-    if (b.avgDiff   !== a.avgDiff)   return b.avgDiff   - a.avgDiff;
+    if (b.adjScore !== a.adjScore) return b.adjScore - a.adjScore;
+    if (b.winRate  !== a.winRate)  return b.winRate  - a.winRate;
     const h2h = headToHead(a.slot, b.slot, throughRound);
     if (h2h !== 0) return -h2h;
     return tiebreakOrder(a.slot) - tiebreakOrder(b.slot);
