@@ -9621,6 +9621,34 @@ function renderTimeBudgetBlock() {
   return card;
 }
 
+function renderSaveToLifetimeBlock() {
+  const card = el("div", { class: "card" });
+  card.appendChild(el("h3", null, "Lifetime Stats"));
+  const toggleLabel = el("label", { class: "tb-toggle-row", style: "cursor:pointer;font-size:16px;min-height:44px;" });
+  const chk = el("input", {
+    type: "checkbox",
+    id: "save-to-lifetime",
+    style: "width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;",
+    onchange: (e) => {
+      state.saveToLifetime = e.target.checked;
+      save();
+      if (state.phase === "done") {
+        if (state.saveToLifetime) recordToLifetimeIfEnabled();
+        else retractLifetimeRecord();
+      }
+      render();
+    },
+  });
+  if (state.saveToLifetime) chk.setAttribute("checked", "checked");
+  toggleLabel.appendChild(chk);
+  toggleLabel.appendChild(document.createTextNode("Save results to lifetime stats"));
+  card.appendChild(toggleLabel);
+  card.appendChild(el("p", { class: "muted", style: "font-size:13px;margin:4px 0 0;" },
+    "Stores each player's results under their phone number for lifetime stats " +
+    "(on this device; synced when you sign in). Players can ask to be removed."));
+  return card;
+}
+
   function renderSetup() {
     const playerCount = setupRosterCount();
     ensureSetupRosterArrays(playerCount);
@@ -9728,6 +9756,7 @@ function renderTimeBudgetBlock() {
   startBtn.disabled = !canStart();
 
   wrap.appendChild(card);
+  wrap.appendChild(renderSaveToLifetimeBlock());
   wrap.appendChild(startBtn);
   const startHint = el("div", {
     id: "start-hint",
@@ -10509,6 +10538,8 @@ function renderDoneScreenCrown() {
   champions.appendChild(mvpBlock);
   card.appendChild(champions);
   wrap.appendChild(card);
+
+  wrap.appendChild(renderSaveToLifetimeBlock());
 
   wrap.appendChild(renderPodiumCrown(ranking));
   wrap.appendChild(renderShareCardsButtonCard());
@@ -12133,6 +12164,8 @@ function renderDoneScreen() {
 
   card.appendChild(champions);
   wrap.appendChild(card);
+
+  wrap.appendChild(renderSaveToLifetimeBlock());
 
   wrap.appendChild(renderPodium(ranking));
   // Surface the primary post-game action (texting) above the awards/standings
