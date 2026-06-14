@@ -3,6 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check:index": "node tools/check-index-boundaries.mjs"
+    "check:index": "node tools/check-index-boundaries.mjs",
+    "test:self": "node tools/run-url-check.mjs http://127.0.0.1:8765/index.html?test --expected-failures 1",
+    "test:simulate": "node tools/run-url-check.mjs http://127.0.0.1:8765/index.html?simulate --expected-failures 0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0"
   }
 }

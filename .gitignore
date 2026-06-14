@@ -17,3 +17,8 @@ verify-screenshots/
 
 # Surface audit state
 .surface/
+
+# Node / Playwright (dev-only tooling; runtime app has no deps)
+node_modules/
+/test-results/
+/playwright-report/
