@@ -1721,6 +1721,59 @@ function runSelfTests() {
     LifetimeStore.clearLedger();
     if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
   }
+  // Lifetime C6 — sign-out eviction / account-switch isolation / explicit anonymous move
+  // Pure (no Firebase): we hand-seed pb_lifetime_v1 with uid-keyed ledgers and drive
+  // the store's disconnect()/anonymousPendingCount()/moveAnonymousIntoActive() directly.
+  {
+    const saved = localStorage.getItem("pb_lifetime_v1");
+    const rec = (id) => ({ id, completedAt: 1, revisedAt: 1, results: [
+      { phoneKey: "5550009999", name: "P", gamesPlayed: 2, wins: 1, losses: 1, pointsFor: 20, pointDiff: 0, finalRank: 2, podium: 2, partial: false, status: "active" } ] });
+    const seed = (activeOwner, ledgers) => localStorage.setItem("pb_lifetime_v1", JSON.stringify({ schemaVersion: 1, activeOwner, ledgers }));
+
+    // (1) Sign-out eviction: disconnect() drops the signed-in owner's cached ledger,
+    // keeps "local", and resets activeOwner to "local".
+    seed("uidA", { local: emptyLedger(), uidA: ledgerPutRecord(emptyLedger(), rec("a1")) });
+    LifetimeStore.disconnect();
+    {
+      const all = JSON.parse(localStorage.getItem("pb_lifetime_v1"));
+      console.assert(all.activeOwner === "local", "evict: activeOwner reset to local", all.activeOwner);
+      console.assert(!all.ledgers.uidA, "evict: signed-in owner ledger removed", Object.keys(all.ledgers));
+      console.assert(!!all.ledgers.local, "evict: local ledger preserved");
+    }
+
+    // (2) Account-switch isolation: each uid reads only its OWN ledger; one account's
+    // tournaments never leak into another's active view.
+    seed("uidA", {
+      local: emptyLedger(),
+      uidA: ledgerPutRecord(emptyLedger(), rec("a1")),
+      uidB: ledgerPutRecord(emptyLedger(), rec("b1")),
+    });
+    console.assert(LifetimeStore.allRecords().length === 1 && LifetimeStore.allRecords()[0].id === "a1", "switch: uidA sees only its own record");
+    seed("uidB", {
+      local: emptyLedger(),
+      uidA: ledgerPutRecord(emptyLedger(), rec("a1")),
+      uidB: ledgerPutRecord(emptyLedger(), rec("b1")),
+    });
+    console.assert(LifetimeStore.allRecords().length === 1 && LifetimeStore.allRecords()[0].id === "b1", "switch: uidB sees only its own record, no comingle");
+
+    // (3) Explicit anonymous move: count, then move local -> active account ledger
+    // (queues pushes) and clear local. Never auto-merges (this call IS the consent).
+    seed("uidA", { local: ledgerPutRecord(ledgerPutRecord(emptyLedger(), rec("L1")), rec("L2")), uidA: emptyLedger() });
+    console.assert(LifetimeStore.anonymousPendingCount() === 2, "anon: counts local tournaments");
+    const moved = LifetimeStore.moveAnonymousIntoActive();
+    console.assert(moved === 2, "anon: move returns count", moved);
+    {
+      const all = JSON.parse(localStorage.getItem("pb_lifetime_v1"));
+      console.assert(Object.keys(all.ledgers.local.tournaments).length === 0, "anon: local cleared after move");
+      console.assert(Object.keys(all.ledgers.uidA.tournaments).length === 2, "anon: records landed in account ledger");
+      console.assert(all.ledgers.uidA.sync.pendingTournamentIds.length === 2, "anon: moved records queued for push");
+    }
+    // moveAnonymousIntoActive is a no-op when signed out (activeOwner === "local").
+    seed("local", { local: ledgerPutRecord(emptyLedger(), rec("L1")) });
+    console.assert(LifetimeStore.moveAnonymousIntoActive() === 0, "anon: no-op when signed out");
+
+    if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -8256,11 +8309,45 @@ const LifetimeStore = (() => {
     },
     disconnect() {
       this.setBackend(NullBackend);
-      _lifetimeOwner = "local";
       const all = readAll();
+      // Sign-out eviction: drop the signed-in owner's cached ledger so another
+      // person on a shared device can't read their players' phone numbers. It's
+      // recoverable from the cloud on the next sign-in (pull). The persisted
+      // activeOwner is the authoritative signed-in uid; fall back to _lifetimeOwner.
+      // Never touch "local".
+      const outgoing = (all.activeOwner && all.activeOwner !== "local") ? all.activeOwner : _lifetimeOwner;
+      if (outgoing && outgoing !== "local" && all.ledgers) delete all.ledgers[outgoing];
+      _lifetimeOwner = "local";
       all.activeOwner = "local";
       active(all);
       writeAll(all);
+    },
+    // Count tournaments saved into the anonymous ("local") ledger while signed out.
+    anonymousPendingCount() {
+      const led = readAll().ledgers && readAll().ledgers.local;
+      return (led && led.tournaments) ? Object.keys(led.tournaments).length : 0;
+    },
+    // Explicit, opt-in move of the anonymous ("local") ledger's tournaments into the
+    // currently-active (signed-in) ledger. PII safety: NEVER call this without the
+    // user's explicit consent — a different person may have signed in on this device.
+    // Each moved record is re-put (queues a cloud push) then removed from "local".
+    moveAnonymousIntoActive() {
+      const all = readAll();
+      if (all.activeOwner === "local") return 0;   // nothing to move into; not signed in
+      const localLed = (all.ledgers && all.ledgers.local) || emptyLedger();
+      const records = Object.values(localLed.tournaments || {});
+      if (!records.length) return 0;
+      let dest = active(all);
+      for (const rec of records) {
+        dest = ledgerPutRecord(dest, rec);
+        if (dest.sync.pendingTournamentIds.indexOf(rec.id) === -1) dest.sync.pendingTournamentIds.push(rec.id);
+      }
+      all.ledgers[all.activeOwner] = dest;
+      // They've moved — clear them from the anonymous ledger so they aren't double-counted.
+      all.ledgers.local = emptyLedger();
+      writeAll(all);
+      for (const rec of records) backend.push(rec).catch(() => {});
+      return records.length;
     },
     async syncNow() {
       if (backend === NullBackend) return;
@@ -8375,18 +8462,56 @@ function retractLifetimeRecord() {
 function setupLifetimeAuth() {
   const fb = window.__rumbleFb;
   if (!fb) return;
-  fb.api.getRedirectResult(fb.auth).catch(() => {});
+  // A non-null redirect result means the user JUST completed an interactive
+  // sign-in (the page navigated to Google and back). That's the only moment we
+  // may offer to move anonymous on-device data into their account.
+  let _justSignedInInteractively = false;
+  fb.api.getRedirectResult(fb.auth)
+    .then(res => { if (res && res.user) _justSignedInInteractively = true; })
+    .catch(() => {});
   // The first callback fires on every load to report the current (already
   // persisted) auth state; the app has already render()ed at boot, so a render
   // here would only destroy a modal opened during load. Re-render on later
   // transitions (interactive sign-in / sign-out) so the sync UI updates.
   let _firstAuthEvent = true;
   fb.api.onAuthStateChanged(fb.auth, user => {
-    if (user) LifetimeStore.connect(user).catch(() => {});
-    else LifetimeStore.disconnect();
-    if (_firstAuthEvent) { _firstAuthEvent = false; return; }
+    const wasFirst = _firstAuthEvent;
+    _firstAuthEvent = false;
+    if (user) {
+      // A signed-in user on a non-first event is also an interactive sign-in
+      // (e.g. popup flows that don't reload). Either signal offers the merge.
+      const interactive = _justSignedInInteractively || !wasFirst;
+      LifetimeStore.connect(user)
+        .then(() => { if (interactive) maybePromptAnonymousMerge(); })
+        .catch(() => {});
+    } else {
+      LifetimeStore.disconnect();
+    }
+    if (wasFirst) return;
     render();
   });
+}
+// PII safety: after a successful interactive sign-in, NEVER silently fold the
+// anonymous ("local") ledger into the account — a different person could have
+// signed in on a shared device. Offer an explicit, all-or-nothing opt-in.
+let _anonMergePrompted = false;
+function maybePromptAnonymousMerge() {
+  if (_anonMergePrompted) return;            // once per session is enough
+  let n = 0;
+  try { n = LifetimeStore.anonymousPendingCount(); } catch (e) {}
+  if (n < 1) return;
+  _anonMergePrompted = true;
+  showConfirm(
+    "You have " + n + " tournament" + (n === 1 ? "" : "s") +
+      " saved on this device while signed out. Move " + (n === 1 ? "it" : "them") +
+      " into your account? They'll sync to the cloud.",
+    () => {
+      try { LifetimeStore.moveAnonymousIntoActive(); } catch (e) {}
+      LifetimeStore.syncNow().catch(() => {});
+      render();
+    },
+    { title: "Move on-device stats?", confirmText: "Move to my account", cancelText: "Keep separate" }
+  );
 }
 function lifetimeSignIn() {
   const fb = window.__rumbleFb;
@@ -8396,7 +8521,16 @@ function lifetimeSignIn() {
 function lifetimeSignOut() {
   const fb = window.__rumbleFb;
   if (!fb) return;
-  fb.api.signOut(fb.auth);
+  showConfirm(
+    "Sign out? This device's local copy of your lifetime stats will be cleared — it stays safe in the cloud.",
+    () => {
+      // disconnect() (via onAuthStateChanged) evicts this owner's cached ledger.
+      // _lifetimeOwner still holds the outgoing uid at that point, so eviction
+      // targets the right ledger; no need to thread the uid through explicitly.
+      fb.api.signOut(fb.auth).catch(() => {});
+    },
+    { title: "Sign out", confirmText: "Sign out" }
+  );
 }
 
 // RUMBLE:LIFETIME:end
@@ -13634,6 +13768,14 @@ function buildSyncRow() {
       style: "flex:1;",
       onclick: lifetimeSignIn,
     }, "Sign in to sync"));
+    let localCount = 0;
+    try { localCount = LifetimeStore.anonymousPendingCount(); } catch (e) {}
+    if (localCount > 0) {
+      row.appendChild(el("div", {
+        class: "muted",
+        style: "flex-basis:100%;font-size:12px;",
+      }, "On this device only — sign in to sync."));
+    }
     return row;
   }
   const st = LifetimeStore.status();
