@@ -1682,6 +1682,26 @@ function runSelfTests() {
     console.assert(LifetimeStore.career("5550000009").tournaments === 0, "removePlayer scrubs rows");
     if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
   }
+  // Lifetime A7 — record building (RR)
+  {
+    const savedState = state;
+    state = (function () {
+      const s = newState();
+      s.format = "rr"; s.phase = "done"; s.tournamentId = "test-1"; s.startedAt = 1; s.saveToLifetime = true;
+      s.slots = ["A", "B", "C", "D"];
+      s.phones = ["5550000001", "5550000002", "5550000003", "5550000004"];
+      s.players = [1, 2, 3, 4].map(i => ({ slot: i, name: s.slots[i - 1], phone: s.phones[i - 1], status: "active", eligibleFromRound: 1, joinedRound: 1, leftRound: null }));
+      s.tiebreakRandom = [0, 1, 2, 3];
+      s.rounds = [{ round: 1, games: [{ court: 1, team1: [1, 2], team2: [3, 4], score1: 11, score2: 7, gameStartedAt: 1, gameEndedAt: 2 }], byes: [] }];
+      s.finals = null;
+      return s;
+    })();
+    const rec = buildTournamentRecord();
+    console.assert(rec.results.length === 4, "record: one row per trackable player", rec.results.length);
+    console.assert(rec.results.every(r => r.gamesPlayed > 0), "record: no gp=0 rows");
+    console.assert(rec.id === "test-1" && rec.fieldSize === 4, "record id + fieldSize", rec);
+    state = savedState;
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -5079,6 +5099,7 @@ function undoLastEvent() {
   }
   const undo = state.undoStack.shift();
   restoreUndoSnapshot(undo.beforeState);
+  if (state.phase !== "done") retractLifetimeRecord();   // undoing a finish retracts its lifetime record
   state.undoStack = (state.undoStack || []).filter(u => u.id !== undo.id);
   recordEvent({ kind: "undo", label: undo.label, reversible: false });
   save();
@@ -8141,6 +8162,74 @@ const LifetimeStore = (() => {
   };
 })();
 
+// ---------- recording ----------
+function currentOwnerId() { return "local"; }   // becomes the signed-in uid in Phase C
+
+function lifetimeStatsRows() {
+  const total = totalRegularRounds();
+  if (state.format === "stack") return computeStackStats(total);
+  if (state.format === "king")  return computeKingStats(total);
+  if (state.format === "crown") return crownPlayerStats();
+  return computeStats(total, true);              // rr / gauntlet, include finals
+}
+function lifetimeFinalOrder() {
+  return state.format === "crown" ? finalRankingCrown() : finalRanking();
+}
+// Podium (1|2|3) only when a championship is decided; {} for Crown / small fields / undecided.
+function podiumSlotsFromFinals() {
+  if (state.format === "crown") return {};
+  const champ = finalTiers()[0];
+  if (!champ || !isGameComplete(champ) || champ.score1 === champ.score2) return {};
+  const order = lifetimeFinalOrder();
+  const podium = {};
+  for (let i = 0; i < 3 && i < order.length; i++) podium[order[i].slot] = i + 1;
+  return podium;
+}
+function buildTournamentRecord() {
+  const rows = lifetimeStatsRows();
+  const order = lifetimeFinalOrder();            // array of stat objects, best-first (has .slot)
+  const rankOf = {};
+  order.forEach((s, i) => { rankOf[s.slot] = i + 1; });
+  const podiumSlots = podiumSlotsFromFinals();
+  const results = [];
+  for (const st of rows) {
+    const phoneRaw = phoneOf(st.slot);
+    if (!lifetimeTrackable(phoneRaw)) continue;
+    const norm = normalizeStatRow(state.format, st);
+    if (norm.gamesPlayed === 0) continue;        // never-played / no-show
+    const p = playerBySlot(st.slot) || {};
+    results.push(Object.assign({
+      phoneKey: lifetimePhoneKey(phoneRaw),
+      name: nameOf(st.slot), slot: st.slot,
+      status: p.status || "active",
+      finalRank: rankOf[st.slot] || null,
+      podium: podiumSlots[st.slot] || null,
+      partial: p.status === "left" || (p.joinedRound > 1),
+    }, norm));
+  }
+  const deduped = dedupeRecordResults(results);
+  const now = Date.now();
+  return {
+    id: state.tournamentId, ownerId: currentOwnerId(), schemaVersion: 1,
+    completedAt: now, revisedAt: now,
+    format: state.format, courtCount: state.courtCount,
+    trackedPlayerCount: deduped.length, fieldSize: (state.players || []).length,
+    results: deduped,
+  };
+}
+function recordToLifetimeIfEnabled() {
+  if (!state.saveToLifetime || !state.tournamentId) return;
+  try { LifetimeStore.putTournamentRecord(buildTournamentRecord()); }
+  catch (e) { console.warn("lifetime record failed", e); }
+}
+function retractLifetimeRecord() {
+  if (!state.tournamentId) return;
+  try {
+    const led = LifetimeStore.getLedger();
+    if (led.tournaments[state.tournamentId]) LifetimeStore.removeTournament(state.tournamentId);
+  } catch (e) {}
+}
+
 // RUMBLE:LIFETIME:end
 // RUMBLE:RENDER:start
 function render() {
@@ -10257,6 +10346,7 @@ function renderCrownPhaseScreen() {
       if (!isCrownMatchComplete(state.crownFinal)) return;
       const beforeState = stateSnapshotForUndo();
       state.phase = "done";
+      recordToLifetimeIfEnabled();
       recordEvent({
         kind: "finals",
         label: mutationEventLabel("finish", {}),
@@ -11243,6 +11333,7 @@ function renderFinalsScreen() {
       if (finalsReady()) {
         const beforeState = stateSnapshotForUndo();
         state.phase = "done";
+        recordToLifetimeIfEnabled();
         recordEvent({
           kind: "finals",
           label: mutationEventLabel("finish", {}),
