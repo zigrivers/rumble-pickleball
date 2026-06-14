@@ -7,9 +7,12 @@
     "test:self": "node tools/run-url-check.mjs http://127.0.0.1:8765/index.html?test --expected-failures 1",
     "test:simulate": "node tools/run-url-check.mjs http://127.0.0.1:8765/index.html?simulate --expected-failures 0",
     "test:visual": "playwright test tests/visual/rumble.visual.spec.mjs",
-    "test:visual:update": "playwright test tests/visual/rumble.visual.spec.mjs --update-snapshots"
+    "test:visual:update": "playwright test tests/visual/rumble.visual.spec.mjs --update-snapshots",
+    "test:rules": "firebase emulators:exec --only firestore \"node --test tests/rules/lifetime-rules.test.mjs\""
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.0"
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "@playwright/test": "^1.56.0",
+    "firebase-tools": "^15.20.0"
   }
 }

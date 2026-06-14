@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(ownerId) { return request.auth != null && request.auth.uid == ownerId; }
+    match /owners/{ownerId}/tournaments/{tid} {
+      allow read, delete: if isOwner(ownerId);
+      allow create, update: if isOwner(ownerId)
+        && request.resource.data.ownerId == ownerId
+        && request.resource.data.results is list
+        && request.resource.data.results.size() <= 64;
+    }
+    match /owners/{ownerId}/players/{phoneKey} {
+      allow read, delete: if isOwner(ownerId);
+      allow create, update: if isOwner(ownerId) && phoneKey.matches('^[0-9]+$');
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -8196,7 +8196,10 @@ function FirestoreBackend(ownerId) {
     connect() {},
     disconnect() {},
     push(record) {
-      return api.setDoc(tdoc(record.id), record).then(() => {
+      // Stamp this backend's ownerId: records authored while signed-out carry
+      // ownerId:"local"; after an anonymous-merge they're pushed under the signed-in
+      // owner, and the security rules require request.resource.data.ownerId == ownerId.
+      return api.setDoc(tdoc(record.id), Object.assign({}, record, { ownerId })).then(() => {
         const profiles = (record.results || [])
           .filter(r => r.phoneKey)
           .map(r => api.setDoc(pdoc(r.phoneKey), {
