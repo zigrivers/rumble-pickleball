@@ -1622,6 +1622,14 @@ function runSelfTests() {
     backfillStateDefaults(legacy);
     console.assert(legacy.startedAt === 0, "backfill idempotent / no clock read", legacy);
   }
+  // Lifetime A2 — identity
+  {
+    console.assert(lifetimePhoneKey("(555) 201-3344") === "5552013344", "key strips formatting");
+    console.assert(lifetimePhoneKey("+1 555 201 3344") === "5552013344", "key drops + and NANP 1");
+    console.assert(lifetimePhoneKey("15552013344") === "5552013344", "key drops leading 1");
+    console.assert(lifetimeTrackable("555-201-3344") === true, "10-digit trackable");
+    console.assert(lifetimeTrackable("12345") === false, "short not trackable");
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -7913,6 +7921,18 @@ function el(tag, props, ...children) {
 // Filled in across Phase A/B tasks. These are top-level function declarations
 // (hoisted), so they are callable from finish handlers and boot regardless of
 // their textual position here.
+// ---------- identity ----------
+// Canonical lifetime identity key. Collapses 5552013344 / 15552013344 / +15552013344.
+function lifetimePhoneKey(raw) {
+  const digits = normalizePhone(raw).replace(/\D/g, "");          // normalizePhone keeps a leading +; drop it here
+  if (digits.length === 11 && digits[0] === "1") return digits.slice(1); // NANP country code
+  return digits;
+}
+// Stricter than isValidPhone (>=7): lifetime tracking needs a real 10-digit number.
+function lifetimeTrackable(raw) {
+  return lifetimePhoneKey(raw).length >= 10;
+}
+
 // RUMBLE:LIFETIME:end
 // RUMBLE:RENDER:start
 function render() {
