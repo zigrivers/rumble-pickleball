@@ -1846,6 +1846,25 @@ function runSelfTests() {
       console.assert(led.sync.pendingDeletes.indexOf("t-keep") !== -1, "D4: signed-in clearLedger queues remote delete (queue preserved)");
       console.assert(led.sync.pendingPlayerDeletes.indexOf("5550000012") !== -1, "D4: signed-in clearLedger queues player remote delete");
     }
+    // (5) Cross-device forget (#4 hardening): forgetPlayerInCloudRecords scrubs the player
+    // from a cloud record this device never pulled, queues it, and SKIPS a record already
+    // scrubbed locally (whose revisedAt bump wins last-write-wins on the next pull).
+    {
+      const led = emptyLedger();
+      led.tournaments["t-shared"] = { id: "t-shared", completedAt: 1, revisedAt: 9, results: [row("5550000099", "Z")] };  // already scrubbed locally
+      const remote = { players: {}, tournaments: {
+        "t-shared":    { id: "t-shared",    completedAt: 1, revisedAt: 1, results: [row("5550000010", "A"), row("5550000099", "Z")] },  // stale cloud copy
+        "t-cloud":     { id: "t-cloud",     completedAt: 1, revisedAt: 1, results: [row("5550000010", "A"), row("5550000098", "Y")] },  // cloud-only, mixed
+        "t-cloudsolo": { id: "t-cloudsolo", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A")] },                          // cloud-only, player only
+      }, sync: emptyLedger().sync };
+      const changed = forgetPlayerInCloudRecords(led, remote, "5550000010");
+      console.assert(changed === true, "D5: forget reports a change");
+      console.assert(led.tournaments["t-shared"].results.length === 1, "D5: locally-scrubbed record is skipped (untouched)");
+      console.assert(led.tournaments["t-cloud"] && led.tournaments["t-cloud"].results.every(r => r.phoneKey !== "5550000010"), "D5: cloud-only record is scrubbed");
+      console.assert(led.sync.pendingTournamentIds.indexOf("t-cloud") !== -1, "D5: scrubbed cloud record queued for push");
+      console.assert(!led.tournaments["t-cloudsolo"], "D5: emptied cloud-only record dropped");
+      console.assert(led.sync.pendingDeletes.indexOf("t-cloudsolo") !== -1, "D5: emptied cloud-only record queued for delete");
+    }
     LifetimeStore.setBackend(null);   // restore NullBackend
     if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
   }
@@ -8207,6 +8226,34 @@ function mergeLedgers(a, b) {
   return out;
 }
 
+// Cross-device right-to-be-forgotten (pure; mutates `led`). removePlayer scrubs only the
+// records THIS device holds, so a record containing the player that was authored on another
+// device and not yet pulled here would resurrect them on the next sync. Given a freshly
+// pulled `remote` ledger, scrub `phoneKey` from every cloud record the local ledger doesn't
+// already hold scrubbed, queueing each change for push (scrubbed) or delete (emptied).
+// Records already scrubbed locally are skipped — their revisedAt bump wins last-write-wins.
+// Returns true if anything changed.
+function forgetPlayerInCloudRecords(led, remote, phoneKey) {
+  if (!remote || !remote.tournaments) return false;
+  let changed = false;
+  for (const [id, t] of Object.entries(remote.tournaments)) {
+    if (!Array.isArray(t.results) || !t.results.some(r => r.phoneKey === phoneKey)) continue;
+    const local = led.tournaments[id];
+    if (local && Array.isArray(local.results) && !local.results.some(r => r.phoneKey === phoneKey)) continue;  // already scrubbed locally
+    const results = t.results.filter(r => r.phoneKey !== phoneKey);
+    if (results.length) {
+      led.tournaments[id] = Object.assign({}, t, { results, trackedPlayerCount: results.length, revisedAt: Date.now() });
+      if (led.sync.pendingTournamentIds.indexOf(id) === -1) led.sync.pendingTournamentIds.push(id);
+    } else {
+      delete led.tournaments[id];
+      led.sync.pendingTournamentIds = led.sync.pendingTournamentIds.filter(x => x !== id);
+      if (led.sync.pendingDeletes.indexOf(id) === -1) led.sync.pendingDeletes.push(id);
+    }
+    changed = true;
+  }
+  return changed;
+}
+
 // ---------- cross-format normalization ----------
 // Map a format's per-slot stat object into the common results-row shape.
 function normalizeStatRow(format, st) {
@@ -8379,10 +8426,23 @@ const LifetimeStore = (() => {
         }
         if (led.sync.pendingPlayerDeletes.indexOf(phoneKey) === -1) led.sync.pendingPlayerDeletes.push(phoneKey);
         writeAll(all);
-        this.syncNow().catch(() => {});
+        this._forgetPlayerEverywhere(phoneKey).catch(() => {});
       } else {
         writeAll(all);
       }
+    },
+    // Cross-device tail of removePlayer (signed in only): pull the full cloud ledger and
+    // scrub the player from any record this device hadn't synced yet, then flush. Without
+    // this, the synchronous scrub above only covers locally-held records and the next
+    // pull() resurrects the player from a cloud record authored on another device.
+    async _forgetPlayerEverywhere(phoneKey) {
+      let remote = null;
+      try { remote = await backend.pull(); } catch (e) {}
+      if (remote) {
+        const all = readAll(); const led = active(all);
+        if (forgetPlayerInCloudRecords(led, remote, phoneKey)) writeAll(all);
+      }
+      return this.syncNow();
     },
     clearLedger() {
       const all = readAll();
