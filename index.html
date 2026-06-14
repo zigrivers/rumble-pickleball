@@ -8130,6 +8130,44 @@ const NullBackend = {
   pull() { return Promise.resolve(null); },
 };
 
+// Cloud backend (Firestore). Uses the C2 bridge on window.__rumbleFb. Records live
+// under owners/{ownerId}/tournaments/{id}; player profiles are mirrored under
+// owners/{ownerId}/players/{phoneKey} (best-effort, for a future global phase —
+// careers are still derived from tournament records on merge).
+function FirestoreBackend(ownerId) {
+  const fb = window.__rumbleFb;
+  const db = fb.db, api = fb.api;
+  const tdoc = (id) => api.doc(db, "owners", ownerId, "tournaments", id);
+  const pdoc = (key) => api.doc(db, "owners", ownerId, "players", key);
+  return {
+    connect() {},
+    disconnect() {},
+    push(record) {
+      return api.setDoc(tdoc(record.id), record).then(() => {
+        const profiles = (record.results || [])
+          .filter(r => r.phoneKey)
+          .map(r => api.setDoc(pdoc(r.phoneKey), {
+            phoneKey: r.phoneKey, displayName: r.name, lastSeenAt: record.completedAt,
+          }).catch(() => {}));
+        return Promise.all(profiles);
+      });
+    },
+    deleteRemote(id) {
+      return api.deleteDoc(tdoc(id));
+    },
+    async pull() {
+      const ledger = { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] } };
+      const tsnap = await api.getDocs(api.collection(db, "owners", ownerId, "tournaments"));
+      tsnap.forEach(d => { ledger.tournaments[d.id] = d.data(); });
+      const psnap = await api.getDocs(api.collection(db, "owners", ownerId, "players"));
+      psnap.forEach(d => { ledger.players[d.id] = d.data(); });
+      return ledger;
+    },
+  };
+}
+
+let _lifetimeOwner = "local";   // signed-in uid when connected, else "local"
+
 const LifetimeStore = (() => {
   let backend = NullBackend;
   function readAll() {
@@ -8206,11 +8244,65 @@ const LifetimeStore = (() => {
       all.ledgers[all.activeOwner] = (opts && opts.merge) ? mergeLedgers(led, norm) : norm;
       writeAll(all);
     },
+    // ---------- cloud sync (Phase C) ----------
+    async connect(user) {
+      this.setBackend(FirestoreBackend(user.uid));
+      _lifetimeOwner = user.uid;
+      const all = readAll();
+      all.activeOwner = user.uid;
+      active(all);                 // ensure all.ledgers[user.uid] exists + normalized
+      writeAll(all);
+      await this.syncNow();
+    },
+    disconnect() {
+      this.setBackend(NullBackend);
+      _lifetimeOwner = "local";
+      const all = readAll();
+      all.activeOwner = "local";
+      active(all);
+      writeAll(all);
+    },
+    async syncNow() {
+      if (backend === NullBackend) return;
+      const all = readAll(); const led = active(all);
+      // Outbox: flush pending pushes, then pending deletes. Failures stay queued.
+      for (const id of led.sync.pendingTournamentIds.slice()) {
+        const rec = led.tournaments[id];
+        if (!rec) { led.sync.pendingTournamentIds = led.sync.pendingTournamentIds.filter(x => x !== id); continue; }
+        try { await backend.push(rec); led.sync.pendingTournamentIds = led.sync.pendingTournamentIds.filter(x => x !== id); }
+        catch (e) {}
+      }
+      for (const id of led.sync.pendingDeletes.slice()) {
+        try { await backend.deleteRemote(id); led.sync.pendingDeletes = led.sync.pendingDeletes.filter(x => x !== id); }
+        catch (e) {}
+      }
+      // Pull + union remote into the active ledger.
+      try {
+        const remote = await backend.pull();
+        if (remote) {
+          const merged = mergeLedgers(led, remote);
+          merged.sync = led.sync;          // mergeLedgers carries a.sync; keep our outbox state explicit
+          all.ledgers[all.activeOwner] = merged;
+        }
+      } catch (e) {}
+      const cur = active(all);
+      cur.sync.lastSyncedAt = Date.now();
+      writeAll(all);
+    },
+    status() {
+      const led = active(readAll());
+      return {
+        online: navigator.onLine,
+        signedIn: backend !== NullBackend,
+        lastSyncedAt: (led.sync && led.sync.lastSyncedAt) || 0,
+        pendingCount: ((led.sync && led.sync.pendingTournamentIds) || []).length + ((led.sync && led.sync.pendingDeletes) || []).length,
+      };
+    },
   };
 })();
 
 // ---------- recording ----------
-function currentOwnerId() { return "local"; }   // becomes the signed-in uid in Phase C
+function currentOwnerId() { return _lifetimeOwner; }   // signed-in uid when connected, else "local"
 
 function lifetimeStatsRows() {
   const total = totalRegularRounds();
@@ -8275,6 +8367,36 @@ function retractLifetimeRecord() {
     const led = LifetimeStore.getLedger();
     if (led.tournaments[state.tournamentId]) LifetimeStore.removeTournament(state.tournamentId);
   } catch (e) {}
+}
+
+// ---------- cloud auth wiring (Phase C) ----------
+// Wired only when the Firebase bridge (C2) is present; otherwise the app stays
+// 100% local-only. Called via the readiness hook in BOOT.
+function setupLifetimeAuth() {
+  const fb = window.__rumbleFb;
+  if (!fb) return;
+  fb.api.getRedirectResult(fb.auth).catch(() => {});
+  // The first callback fires on every load to report the current (already
+  // persisted) auth state; the app has already render()ed at boot, so a render
+  // here would only destroy a modal opened during load. Re-render on later
+  // transitions (interactive sign-in / sign-out) so the sync UI updates.
+  let _firstAuthEvent = true;
+  fb.api.onAuthStateChanged(fb.auth, user => {
+    if (user) LifetimeStore.connect(user).catch(() => {});
+    else LifetimeStore.disconnect();
+    if (_firstAuthEvent) { _firstAuthEvent = false; return; }
+    render();
+  });
+}
+function lifetimeSignIn() {
+  const fb = window.__rumbleFb;
+  if (!fb) return;
+  fb.api.signInWithRedirect(fb.auth, new fb.api.GoogleAuthProvider());
+}
+function lifetimeSignOut() {
+  const fb = window.__rumbleFb;
+  if (!fb) return;
+  fb.api.signOut(fb.auth);
 }
 
 // RUMBLE:LIFETIME:end
@@ -13361,6 +13483,8 @@ function openCareer() {
   bg.addEventListener("click", e => { if (e.target === bg) close(); });
 
   modal.appendChild(el("h2", null, "Lifetime Stats"));
+  const syncRow = buildSyncRow();
+  if (syncRow) modal.appendChild(syncRow);
 
   // Reopen from scratch after an import/wipe so the table reflects the change,
   // including the empty <-> populated transition (which swaps the whole layout).
@@ -13492,6 +13616,44 @@ function openCareer() {
   modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Done"));
   bg.appendChild(modal);
   mountModal(bg, modal);
+}
+
+// Cloud-sync row for the Career modal header. Returns null when the Firebase
+// bridge is absent (local-only build) so signed-out local use is unaffected.
+// Signed out: a "Sign in to sync" button. Signed in: account email + a status
+// chip (Synced / Pending(n) / Offline) + a Sign out button.
+function buildSyncRow() {
+  const fb = window.__rumbleFb;
+  if (!fb) return null;
+  const row = el("div", {
+    style: "display:flex;align-items:center;gap:8px;margin:-4px 0 14px;flex-wrap:wrap;",
+  });
+  const user = fb.auth && fb.auth.currentUser;
+  if (!user) {
+    row.appendChild(el("button", {
+      style: "flex:1;",
+      onclick: lifetimeSignIn,
+    }, "Sign in to sync"));
+    return row;
+  }
+  const st = LifetimeStore.status();
+  const chipLabel = !st.online ? "Offline"
+    : st.pendingCount ? "Pending(" + st.pendingCount + ")"
+    : "Synced";
+  const chipColor = !st.online ? "var(--muted)"
+    : st.pendingCount ? "var(--accent)"
+    : "var(--good)";
+  row.appendChild(el("div", {
+    class: "muted",
+    style: "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;",
+    title: user.email || "",
+  }, user.email || "Signed in"));
+  row.appendChild(el("span", {
+    style: "font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px;" +
+      "border:1px solid var(--border);color:" + chipColor + ";white-space:nowrap;",
+  }, chipLabel));
+  row.appendChild(el("button", { onclick: lifetimeSignOut }, "Sign out"));
+  return row;
 }
 
 // Data-management footer for the Career modal: export / import / wipe the active
@@ -13701,6 +13863,13 @@ window.addEventListener("hashchange", () => {
   if (!isSnapshotRoute()) state = load() || newState();
   render();
 });
+
+// ---------- lifetime cloud sync: auth readiness hook (Phase C) ----------
+// The Firebase bridge (C2) loads as a SEPARATE module AFTER this classic script.
+// It may finish before or after this line runs, so cover both: register the hook
+// it calls when ready, and also invoke now if it already signalled ready.
+window.__onRumbleFbReady = setupLifetimeAuth;
+if (window.__rumbleFbReady) setupLifetimeAuth();
 
 // ---------- PWA: service worker registration + update chip ----------
 // Register on secure contexts: https in production, and localhost/127.0.0.1 for
