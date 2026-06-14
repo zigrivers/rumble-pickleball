@@ -13759,5 +13759,76 @@ window.addEventListener("hashchange", () => {
 }
 // RUMBLE:BOOT:end
 </script>
+<!--
+  Firebase cloud foundation (lifetime-stats sync). Loaded as a SEPARATE ES module,
+  AFTER the classic app <script> above. The classic app is fully functional without
+  this: LifetimeStore defaults to NullBackend and only switches to a cloud backend
+  when a LATER task calls LifetimeStore.setBackend(...). This module only sets up the
+  Firebase SDK and exposes a bridge on window.__rumbleFb; it does NOT wire any backend,
+  auth UI, or sync yet. Any failure here is swallowed so the app stays local-only.
+
+  Vendoring note: we import the Firebase v11.10.0 modular ESM builds from the PINNED
+  gstatic CDN URLs rather than vendoring them same-origin. True same-origin vendoring
+  was attempted and verified impractical without a build step: the stock gstatic
+  firebase-auth.js / firebase-firestore.js / firebase-app-check.js builds each hard-code
+  an ABSOLUTE `import ... from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js"`,
+  so even copies served same-origin would still fetch firebase-app from gstatic. Rewriting
+  those imports would require a bundler/build step, which this project intentionally avoids.
+  Pinning the exact version URLs keeps loads deterministic and lets the SW precache them later.
+
+  Config below is a Firebase WEB app config and the App Check reCAPTCHA v3 SITE key —
+  both are publishable by design (security is enforced by App Check + Firestore rules).
+  Analytics (measurementId) is intentionally NOT initialized.
+-->
+<script type="module">
+  try {
+    const V = "https://www.gstatic.com/firebasejs/11.10.0";
+    const [{ initializeApp },
+           { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult,
+             onAuthStateChanged, signOut, reauthenticateWithRedirect },
+           { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+             doc, collection, setDoc, getDoc, getDocs, deleteDoc, writeBatch },
+           { initializeAppCheck, ReCaptchaV3Provider }] = await Promise.all([
+      import(`${V}/firebase-app.js`),
+      import(`${V}/firebase-auth.js`),
+      import(`${V}/firebase-firestore.js`),
+      import(`${V}/firebase-app-check.js`),
+    ]);
+
+    const CONFIG = {
+      apiKey: "AIzaSyC6tCWKiJt4YfYMDIt-vfEeEt7oZm5Jv8s",
+      authDomain: "rumble-d45d9.firebaseapp.com",
+      projectId: "rumble-d45d9",
+      storageBucket: "rumble-d45d9.firebasestorage.app",
+      messagingSenderId: "1084852964901",
+      appId: "1:1084852964901:web:72fd44fca7308c4a1a79cc",
+      measurementId: "G-KFLVF9NG8S",
+    };
+    const RECAPTCHA_V3_SITE_KEY = "6LfN1x4tAAAAAEbAJQ7xe8KwNDfE2vE-H5_8wfBX";
+
+    const app = initializeApp(CONFIG);
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+    const db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+    const auth = getAuth(app);
+
+    window.__rumbleFb = {
+      app, auth, db,
+      api: {
+        GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged,
+        signOut, reauthenticateWithRedirect,
+        doc, collection, setDoc, getDoc, getDocs, deleteDoc, writeBatch,
+      },
+    };
+    window.__rumbleFbReady = true;
+    if (typeof window.__onRumbleFbReady === "function") window.__onRumbleFbReady();
+  } catch (e) {
+    console.warn("[rumble] Firebase unavailable; staying local-only", e);
+  }
+</script>
 </body>
 </html>
