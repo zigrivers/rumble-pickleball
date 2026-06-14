@@ -1774,6 +1774,81 @@ function runSelfTests() {
 
     if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
   }
+  // Lifetime D4 — cloud-complete deletion + signed-out invariance (network-free, synchronous).
+  // Signed-out removePlayer/clearLedger stay purely local (no sync mutation). For the
+  // signed-in paths we drive a fake backend and read the QUEUE that removePlayer/clearLedger
+  // persist (via writeAll) *before* their internal syncNow() flushes it — that write is
+  // synchronous, so the localStorage read right after the call is deterministic. The async
+  // syncNow drain + pull-strip are covered by a Playwright page.evaluate no-throw check.
+  {
+    const saved = localStorage.getItem("pb_lifetime_v1");
+    localStorage.removeItem("pb_lifetime_v1");
+    const row = (key, name) => ({ phoneKey: key, name, gamesPlayed: 2, wins: 1, losses: 1, pointsFor: 20, pointDiff: 0, finalRank: 2, podium: 2, partial: false, status: "active" });
+    const queueOf = (owner) => JSON.parse(localStorage.getItem("pb_lifetime_v1")).ledgers[owner].sync;
+
+    // emptyLedger + active() shape-guard expose pendingPlayerDeletes.
+    console.assert(Array.isArray(emptyLedger().sync.pendingPlayerDeletes), "D4: emptyLedger has pendingPlayerDeletes");
+    localStorage.setItem("pb_lifetime_v1", JSON.stringify({ schemaVersion: 1, activeOwner: "local",
+      ledgers: { local: { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] } } } }));
+    console.assert(Array.isArray(LifetimeStore.getLedger().sync.pendingPlayerDeletes), "D4: active() backfills pendingPlayerDeletes on old ledgers");
+
+    // (1) Signed OUT: removePlayer still scrubs + prunes locally and NEVER touches sync.
+    localStorage.removeItem("pb_lifetime_v1");
+    LifetimeStore.putTournamentRecord({ id: "t-shared", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A"), row("5550000011", "B")] });
+    LifetimeStore.putTournamentRecord({ id: "t-solo", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A")] });
+    LifetimeStore.removePlayer("5550000010");
+    {
+      const led = LifetimeStore.getLedger();
+      console.assert(led.tournaments["t-shared"] && led.tournaments["t-shared"].results.length === 1, "D4: signed-out removePlayer scrubs shared record");
+      console.assert(!led.tournaments["t-solo"], "D4: signed-out removePlayer drops emptied record");
+      console.assert(led.sync.pendingPlayerDeletes.length === 0 && led.sync.pendingDeletes.length === 0, "D4: signed-out removePlayer leaves sync queues empty (purely local)");
+    }
+    // (2) Signed OUT: clearLedger empties to a fresh ledger (no preserved queue).
+    LifetimeStore.clearLedger();
+    {
+      const led = LifetimeStore.getLedger();
+      console.assert(Object.keys(led.tournaments).length === 0 && led.sync.pendingDeletes.length === 0 && led.sync.pendingPlayerDeletes.length === 0, "D4: signed-out clearLedger empties with clean sync");
+    }
+
+    // (3) Signed IN (fake backend): removePlayer enqueues a modified-record push + an
+    // emptied-record delete + a player delete, then fires syncNow(). The enqueue is written
+    // synchronously, so reading the persisted queue right after the call is deterministic.
+    const fake = {
+      connect() {}, disconnect() {},
+      push() { return Promise.reject(new Error("offline")); },       // reject → queues stay put so we can read them
+      deleteRemote() { return Promise.reject(new Error("offline")); },
+      deletePlayerRemote() { return Promise.reject(new Error("offline")); },
+      pull() { return Promise.reject(new Error("offline")); },
+    };
+    localStorage.setItem("pb_lifetime_v1", JSON.stringify({ schemaVersion: 1, activeOwner: "uidX", ledgers: { local: emptyLedger(), uidX: emptyLedger() } }));
+    LifetimeStore.setBackend(fake);
+    LifetimeStore.putTournamentRecord({ id: "t-shared", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A"), row("5550000011", "B")] });
+    LifetimeStore.putTournamentRecord({ id: "t-solo", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A")] });
+    let threw = false;
+    try { LifetimeStore.removePlayer("5550000010"); } catch (e) { threw = true; }
+    console.assert(!threw, "D4: signed-in removePlayer does not throw", threw);
+    {
+      const sync = queueOf("uidX");
+      console.assert(sync.pendingTournamentIds.indexOf("t-shared") !== -1, "D4: scrubbed tournament queued for re-push");
+      console.assert(sync.pendingTournamentIds.indexOf("t-solo") === -1, "D4: emptied tournament not left on the push queue");
+      console.assert(sync.pendingDeletes.indexOf("t-solo") !== -1, "D4: emptied tournament queued for remote delete");
+      console.assert(sync.pendingPlayerDeletes.indexOf("5550000010") !== -1, "D4: removed player queued for remote delete");
+    }
+    // (4) Signed IN clearLedger: queue every record + player for remote delete, preserve queues, empty locally.
+    LifetimeStore.putTournamentRecord({ id: "t-keep", completedAt: 1, revisedAt: 1, results: [row("5550000012", "C")] });
+    let threw2 = false;
+    try { LifetimeStore.clearLedger(); } catch (e) { threw2 = true; }
+    console.assert(!threw2, "D4: signed-in clearLedger does not throw", threw2);
+    {
+      const all = JSON.parse(localStorage.getItem("pb_lifetime_v1"));
+      const led = all.ledgers.uidX;
+      console.assert(Object.keys(led.tournaments).length === 0, "D4: signed-in clearLedger empties tournaments locally");
+      console.assert(led.sync.pendingDeletes.indexOf("t-keep") !== -1, "D4: signed-in clearLedger queues remote delete (queue preserved)");
+      console.assert(led.sync.pendingPlayerDeletes.indexOf("5550000012") !== -1, "D4: signed-in clearLedger queues player remote delete");
+    }
+    LifetimeStore.setBackend(null);   // restore NullBackend
+    if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -8080,7 +8155,7 @@ function lifetimeTrackable(raw) {
 
 // ---------- ledger (pure) ----------
 function emptyLedger() {
-  return { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] } };
+  return { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [], pendingPlayerDeletes: [] } };
 }
 
 // Collapse multiple rows that share a canonical key within ONE tournament record.
@@ -8180,6 +8255,7 @@ const NullBackend = {
   connect() {}, disconnect() {},
   push() { return Promise.resolve(); },
   deleteRemote() { return Promise.resolve(); },
+  deletePlayerRemote() { return Promise.resolve(); },
   pull() { return Promise.resolve(null); },
 };
 
@@ -8211,8 +8287,11 @@ function FirestoreBackend(ownerId) {
     deleteRemote(id) {
       return api.deleteDoc(tdoc(id));
     },
+    deletePlayerRemote(phoneKey) {
+      return api.deleteDoc(api.doc(db, "owners", ownerId, "players", phoneKey));
+    },
     async pull() {
-      const ledger = { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] } };
+      const ledger = { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [], pendingPlayerDeletes: [] } };
       const tsnap = await api.getDocs(api.collection(db, "owners", ownerId, "tournaments"));
       tsnap.forEach(d => { ledger.tournaments[d.id] = d.data(); });
       const psnap = await api.getDocs(api.collection(db, "owners", ownerId, "players"));
@@ -8249,6 +8328,7 @@ const LifetimeStore = (() => {
     if (!led.players || typeof led.players !== "object") led.players = {};
     if (!led.tournaments || typeof led.tournaments !== "object") led.tournaments = {};
     if (!led.sync || typeof led.sync !== "object") led.sync = { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] };
+    if (!Array.isArray(led.sync.pendingPlayerDeletes)) led.sync.pendingPlayerDeletes = [];   // backfill old ledgers
     all.ledgers[all.activeOwner] = led;
     return led;
   }
@@ -8274,14 +8354,50 @@ const LifetimeStore = (() => {
       const all = readAll(); const led = active(all);
       const players = Object.assign({}, led.players); delete players[phoneKey]; led.players = players;
       const tournaments = {};
+      const modifiedIds = [];   // record still exists but a row for phoneKey was scrubbed out
+      const removedIds = [];    // record became empty and was dropped (right-to-be-forgotten)
       for (const [id, t] of Object.entries(led.tournaments)) {
+        const before = (t.results || []).length;
         const results = (t.results || []).filter(r => r.phoneKey !== phoneKey);
-        if (results.length) tournaments[id] = Object.assign({}, t, { results });  // else drop now-empty record (right-to-be-forgotten)
+        if (results.length === before) { tournaments[id] = t; continue; }   // player absent — untouched, don't re-sync
+        if (results.length) { tournaments[id] = Object.assign({}, t, { results }); modifiedIds.push(id); }
+        else removedIds.push(id);                                            // emptied → drop locally + delete remotely
       }
       led.tournaments = tournaments;
-      writeAll(all);
+      // Signed in: propagate to the cloud so the next pull() can't resurrect the
+      // deleted data. Re-push scrubbed records, delete emptied ones, delete the
+      // player's profile doc. Signed out: purely local (unchanged behavior).
+      if (backend !== NullBackend) {
+        for (const id of modifiedIds) if (led.sync.pendingTournamentIds.indexOf(id) === -1) led.sync.pendingTournamentIds.push(id);
+        for (const id of removedIds) {
+          led.sync.pendingTournamentIds = led.sync.pendingTournamentIds.filter(x => x !== id);   // don't push a doc we're deleting
+          if (led.sync.pendingDeletes.indexOf(id) === -1) led.sync.pendingDeletes.push(id);
+        }
+        if (led.sync.pendingPlayerDeletes.indexOf(phoneKey) === -1) led.sync.pendingPlayerDeletes.push(phoneKey);
+        writeAll(all);
+        this.syncNow().catch(() => {});
+      } else {
+        writeAll(all);
+      }
     },
-    clearLedger() { const all = readAll(); all.ledgers[all.activeOwner] = emptyLedger(); writeAll(all); },
+    clearLedger() {
+      const all = readAll();
+      if (backend !== NullBackend) {
+        // Signed in: queue a remote delete for every record + player, then empty
+        // the local ledger but PRESERVE the sync queues so syncNow() can flush the
+        // deletes (and the pull-strip keeps a stale pull from resurrecting them).
+        const led = active(all);
+        const sync = { lastSyncedAt: led.sync.lastSyncedAt, pendingTournamentIds: [], pendingDeletes: [], pendingPlayerDeletes: [] };
+        for (const id of Object.keys(led.tournaments)) sync.pendingDeletes.push(id);
+        for (const key of Object.keys(led.players)) sync.pendingPlayerDeletes.push(key);
+        const empty = emptyLedger(); empty.sync = sync;
+        all.ledgers[all.activeOwner] = empty;
+        writeAll(all);
+        this.syncNow().catch(() => {});
+      } else {
+        all.ledgers[all.activeOwner] = emptyLedger(); writeAll(all);
+      }
+    },
     allRecords() { return Object.values(active(readAll()).tournaments); },
     career(phoneKey) { return playerCareer(active(readAll()), phoneKey); },
     careers() { return allCareers(active(readAll())); },
@@ -8294,7 +8410,7 @@ const LifetimeStore = (() => {
       const norm = {
         players: (incoming.players && typeof incoming.players === "object") ? incoming.players : {},
         tournaments: incoming.tournaments,
-        sync: (incoming.sync && typeof incoming.sync === "object") ? incoming.sync : { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] },
+        sync: (incoming.sync && typeof incoming.sync === "object") ? incoming.sync : { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [], pendingPlayerDeletes: [] },
       };
       const all = readAll(); const led = active(all);
       all.ledgers[all.activeOwner] = (opts && opts.merge) ? mergeLedgers(led, norm) : norm;
@@ -8366,12 +8482,19 @@ const LifetimeStore = (() => {
         try { await backend.deleteRemote(id); led.sync.pendingDeletes = led.sync.pendingDeletes.filter(x => x !== id); }
         catch (e) {}
       }
+      for (const key of (led.sync.pendingPlayerDeletes || []).slice()) {
+        try { await backend.deletePlayerRemote(key); led.sync.pendingPlayerDeletes = led.sync.pendingPlayerDeletes.filter(x => x !== key); }
+        catch (e) {}
+      }
       // Pull + union remote into the active ledger.
       try {
         const remote = await backend.pull();
         if (remote) {
           const merged = mergeLedgers(led, remote);
           merged.sync = led.sync;          // mergeLedgers carries a.sync; keep our outbox state explicit
+          // Pull-strip: a tournament delete that hasn't been confirmed remotely
+          // (still queued in pendingDeletes) must not be resurrected by this pull.
+          for (const id of merged.sync.pendingDeletes) if (merged.tournaments[id]) delete merged.tournaments[id];
           all.ledgers[all.activeOwner] = merged;
         }
       } catch (e) {}
@@ -8385,7 +8508,7 @@ const LifetimeStore = (() => {
         online: navigator.onLine,
         signedIn: backend !== NullBackend,
         lastSyncedAt: (led.sync && led.sync.lastSyncedAt) || 0,
-        pendingCount: ((led.sync && led.sync.pendingTournamentIds) || []).length + ((led.sync && led.sync.pendingDeletes) || []).length,
+        pendingCount: ((led.sync && led.sync.pendingTournamentIds) || []).length + ((led.sync && led.sync.pendingDeletes) || []).length + ((led.sync && led.sync.pendingPlayerDeletes) || []).length,
       };
     },
   };
@@ -9950,8 +10073,9 @@ function renderSaveToLifetimeBlock() {
   toggleLabel.appendChild(document.createTextNode("Save results to lifetime stats"));
   card.appendChild(toggleLabel);
   card.appendChild(el("p", { class: "muted", style: "font-size:13px;margin:4px 0 0;" },
-    "Stores each player's results under their phone number for lifetime stats " +
-    "(on this device; synced when you sign in). Players can ask to be removed."));
+    "Stores each player's results under their phone number for lifetime stats — on " +
+    "this device, and when you sign in, in your private cloud space (US region). " +
+    "Players can ask to be removed; deleting removes their data from both."));
   card.appendChild(el("button", {
     class: "secondary",
     style: "width:100%;margin-top:12px;",
@@ -13632,6 +13756,7 @@ function openCareer() {
     modal.appendChild(el("p", { class: "muted" },
       "No lifetime stats yet — enable 'Save to lifetime stats' when you run a tournament."));
     modal.appendChild(buildDataRow(reopen));
+    modal.appendChild(buildDataAboutSection());
     modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Done"));
     bg.appendChild(modal);
     mountModal(bg, modal);
@@ -13750,6 +13875,7 @@ function openCareer() {
   renderBody();
 
   modal.appendChild(buildDataRow(reopen));
+  modal.appendChild(buildDataAboutSection());
   modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Done"));
   bg.appendChild(modal);
   mountModal(bg, modal);
@@ -13848,7 +13974,11 @@ function buildDataRow(refresh) {
 
   const wipeBtn = el("button", { class: "danger", style: "flex:1;" }, "Wipe");
   wipeBtn.addEventListener("click", () => {
-    showConfirm("Erase all lifetime stats on this device? This can't be undone.", () => {
+    const signedIn = LifetimeStore.status().signedIn;
+    const msg = signedIn
+      ? "Erase all lifetime stats — on this device and in your cloud space? This can't be undone."
+      : "Erase all lifetime stats on this device? This can't be undone.";
+    showConfirm(msg, () => {
       LifetimeStore.clearLedger();
       showToast("Lifetime stats erased.");
       refresh();
@@ -13860,6 +13990,34 @@ function buildDataRow(refresh) {
   row.appendChild(wipeBtn);
   row.appendChild(fileInput);
   return row;
+}
+
+// "Your lifetime data" privacy blurb for the Career modal: a small toggle link
+// that reveals where lifetime data lives, who can read it, and how to remove it.
+// Collapsed by default to keep the modal compact.
+function buildDataAboutSection() {
+  const wrap = el("div", { style: "margin-top:10px;" });
+  const blurb = el("p", {
+    class: "muted",
+    style: "display:none;font-size:12px;line-height:1.5;margin:8px 0 0;",
+  },
+    "Lifetime stats are stored on this device. When you sign in, they're also kept " +
+    "in your own owner-scoped cloud space (Firestore, US / nam5 region) — only you " +
+    "can read it. Remove one person with “Remove this player,” or erase everything " +
+    "with Wipe; deletion clears both this device and the cloud. Data is retained " +
+    "until you delete it.");
+  const link = el("button", {
+    style: "background:none;border:none;padding:0;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;",
+    "aria-expanded": "false",
+  }, "ⓘ About this data");
+  link.addEventListener("click", () => {
+    const open = blurb.style.display === "none";
+    blurb.style.display = open ? "block" : "none";
+    link.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  wrap.appendChild(link);
+  wrap.appendChild(blurb);
+  return wrap;
 }
 
 // Player career card: stacks over the leaderboard. `onRemoved` rebuilds the
