@@ -22,3 +22,6 @@ verify-screenshots/
 node_modules/
 /test-results/
 /playwright-report/
+
+# Visual regression baselines are committed (override the *.png rule above)
+!tests/visual/**/*.png
