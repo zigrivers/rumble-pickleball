@@ -1702,6 +1702,25 @@ function runSelfTests() {
     console.assert(rec.id === "test-1" && rec.fieldSize === 4, "record id + fieldSize", rec);
     state = savedState;
   }
+  // Lifetime MMR fixes — resilience + deletion completeness
+  {
+    const saved = localStorage.getItem("pb_lifetime_v1");
+    localStorage.removeItem("pb_lifetime_v1");
+    let threw = false;
+    try { playerCareer({ players: { k: { phoneKey: "k", displayName: "K", aliases: [] } }, tournaments: { bad: { id: "bad" } }, sync: {} }, "k"); }
+    catch (e) { threw = true; }
+    console.assert(!threw, "playerCareer tolerates a record missing results");
+    LifetimeStore.putTournamentRecord({ id: "only", completedAt: 1, revisedAt: 1, results: [
+      { phoneKey: "5550000007", name: "Solo", gamesPlayed: 2, wins: 2, losses: 0, pointsFor: 22, pointDiff: 8, finalRank: 1, podium: 1, partial: false, status: "active" } ] });
+    LifetimeStore.removePlayer("5550000007");
+    console.assert(LifetimeStore.allRecords().length === 0, "removePlayer drops the emptied tournament");
+    console.assert(LifetimeStore.careers().length === 0, "no ghost zero-stat careers after removal");
+    LifetimeStore.importJSON(JSON.stringify({ tournaments: { x: { id: "x", completedAt: 1, revisedAt: 1, results: [
+      { phoneKey: "5550000008", name: "Imp", gamesPlayed: 1, wins: 1, losses: 0, pointsFor: 11, pointDiff: 5, finalRank: 1, podium: null, partial: false, status: "active" } ] } } }), { merge: true });
+    console.assert(LifetimeStore.allRecords().length === 1 && LifetimeStore.careers().length === 1, "import without players map is normalized");
+    LifetimeStore.clearLedger();
+    if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -8015,6 +8034,7 @@ function emptyLedger() {
 function dedupeRecordResults(results) {
   const byKey = {};
   for (const r of results) {
+    if (!r.phoneKey) continue;
     const cur = byKey[r.phoneKey];
     if (!cur) { byKey[r.phoneKey] = Object.assign({}, r); continue; }
     cur.gamesPlayed += r.gamesPlayed; cur.wins += r.wins; cur.losses += r.losses;
@@ -8080,7 +8100,7 @@ function normalizeStatRow(format, st) {
 
 // ---------- aggregation (derive on read) ----------
 function playerCareer(ledger, phoneKey) {
-  const recs = Object.values(ledger.tournaments).filter(t => t.results.some(r => r.phoneKey === phoneKey));
+  const recs = Object.values(ledger.tournaments || {}).filter(t => Array.isArray(t.results) && t.results.some(r => r.phoneKey === phoneKey));
   let wins = 0, losses = 0, games = 0, pointsFor = 0, diffSum = 0, best = null;
   const podiums = { 1: 0, 2: 0, 3: 0 };
   for (const t of recs) {
@@ -8090,7 +8110,7 @@ function playerCareer(ledger, phoneKey) {
     if (r.finalRank && (best === null || r.finalRank < best)) best = r.finalRank;
     if (r.podium) podiums[r.podium]++;
   }
-  const player = ledger.players[phoneKey] || { phoneKey, displayName: phoneKey, aliases: [] };
+  const player = (ledger.players || {})[phoneKey] || { phoneKey, displayName: phoneKey, aliases: [] };
   return {
     phoneKey, displayName: player.displayName, aliases: player.aliases || [],
     tournaments: recs.length, wins, losses, games,
@@ -8099,7 +8119,7 @@ function playerCareer(ledger, phoneKey) {
     bestFinish: best, podiums,
   };
 }
-function allCareers(ledger) { return Object.keys(ledger.players).map(k => playerCareer(ledger, k)); }
+function allCareers(ledger) { return Object.keys(ledger.players || {}).map(k => playerCareer(ledger, k)).filter(c => c.tournaments > 0); }
 
 // ---------- store facade ----------
 const LIFETIME_KEY = "pb_lifetime_v1";
@@ -8113,7 +8133,16 @@ const NullBackend = {
 const LifetimeStore = (() => {
   let backend = NullBackend;
   function readAll() {
-    try { const raw = localStorage.getItem(LIFETIME_KEY); if (raw) return JSON.parse(raw); } catch (e) {}
+    try {
+      const raw = localStorage.getItem(LIFETIME_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.ledgers && typeof parsed.ledgers === "object") {
+          if (typeof parsed.activeOwner !== "string") parsed.activeOwner = "local";
+          return parsed;
+        }
+      }
+    } catch (e) {}
     return { schemaVersion: 1, activeOwner: "local", ledgers: { local: emptyLedger() } };
   }
   function writeAll(all) {
@@ -8121,8 +8150,13 @@ const LifetimeStore = (() => {
     catch (e) { console.warn("lifetime save failed", e); }
   }
   function active(all) {
-    all.ledgers[all.activeOwner] = all.ledgers[all.activeOwner] || emptyLedger();
-    return all.ledgers[all.activeOwner];
+    let led = all.ledgers[all.activeOwner];
+    if (!led || typeof led !== "object") led = emptyLedger();
+    if (!led.players || typeof led.players !== "object") led.players = {};
+    if (!led.tournaments || typeof led.tournaments !== "object") led.tournaments = {};
+    if (!led.sync || typeof led.sync !== "object") led.sync = { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] };
+    all.ledgers[all.activeOwner] = led;
+    return led;
   }
   return {
     setBackend(b) { backend = b || NullBackend; },
@@ -8138,13 +8172,19 @@ const LifetimeStore = (() => {
     removeTournament(id) {
       const all = readAll(); const led = active(all);
       const tournaments = Object.assign({}, led.tournaments); delete tournaments[id]; led.tournaments = tournaments;
+      led.sync.pendingTournamentIds = (led.sync.pendingTournamentIds || []).filter(x => x !== id);
       if (led.sync.pendingDeletes.indexOf(id) === -1) led.sync.pendingDeletes.push(id);
       writeAll(all);
     },
     removePlayer(phoneKey) {
       const all = readAll(); const led = active(all);
       const players = Object.assign({}, led.players); delete players[phoneKey]; led.players = players;
-      for (const t of Object.values(led.tournaments)) t.results = t.results.filter(r => r.phoneKey !== phoneKey);
+      const tournaments = {};
+      for (const [id, t] of Object.entries(led.tournaments)) {
+        const results = (t.results || []).filter(r => r.phoneKey !== phoneKey);
+        if (results.length) tournaments[id] = Object.assign({}, t, { results });  // else drop now-empty record (right-to-be-forgotten)
+      }
+      led.tournaments = tournaments;
       writeAll(all);
     },
     clearLedger() { const all = readAll(); all.ledgers[all.activeOwner] = emptyLedger(); writeAll(all); },
@@ -8154,9 +8194,16 @@ const LifetimeStore = (() => {
     exportJSON() { return JSON.stringify(active(readAll()), null, 2); },
     importJSON(text, opts) {
       const incoming = JSON.parse(text);
-      if (!incoming || typeof incoming !== "object" || !incoming.tournaments) throw new Error("invalid lifetime export");
+      if (!incoming || typeof incoming !== "object" || !incoming.tournaments || typeof incoming.tournaments !== "object") {
+        throw new Error("invalid lifetime export");
+      }
+      const norm = {
+        players: (incoming.players && typeof incoming.players === "object") ? incoming.players : {},
+        tournaments: incoming.tournaments,
+        sync: (incoming.sync && typeof incoming.sync === "object") ? incoming.sync : { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] },
+      };
       const all = readAll(); const led = active(all);
-      all.ledgers[all.activeOwner] = (opts && opts.merge) ? mergeLedgers(led, incoming) : incoming;
+      all.ledgers[all.activeOwner] = (opts && opts.merge) ? mergeLedgers(led, norm) : norm;
       writeAll(all);
     },
   };
@@ -8169,7 +8216,7 @@ function lifetimeStatsRows() {
   const total = totalRegularRounds();
   if (state.format === "stack") return computeStackStats(total);
   if (state.format === "king")  return computeKingStats(total);
-  if (state.format === "crown") return crownPlayerStats();
+  if (state.format === "crown") return finalRankingCrown();   // finals-inclusive, matches the Crown done screen
   return computeStats(total, true);              // rr / gauntlet, include finals
 }
 function lifetimeFinalOrder() {
