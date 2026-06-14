@@ -1630,6 +1630,19 @@ function runSelfTests() {
     console.assert(lifetimeTrackable("555-201-3344") === true, "10-digit trackable");
     console.assert(lifetimeTrackable("12345") === false, "short not trackable");
   }
+  // Lifetime A3 — ledger merge/dedupe
+  {
+    const rec = { id: "t1", completedAt: 100, revisedAt: 1, results: [
+      { phoneKey: "5550000001", name: "Ann", gamesPlayed: 3, wins: 2, losses: 1, pointsFor: 30, pointDiff: 4, finalRank: 1, podium: 1, partial: false, status: "active" },
+    ]};
+    let L = ledgerPutRecord(emptyLedger(), rec);
+    console.assert(Object.keys(L.tournaments).length === 1 && L.players["5550000001"].displayName === "Ann", "put adds record + player");
+    const older = Object.assign({}, rec, { revisedAt: 0, results: [Object.assign({}, rec.results[0], { wins: 99 })] });
+    L = ledgerPutRecord(L, older);
+    console.assert(L.tournaments["t1"].results[0].wins === 2, "older revisedAt does not overwrite");
+    const dup = dedupeRecordResults([rec.results[0], Object.assign({}, rec.results[0], { gamesPlayed: 1, wins: 0, losses: 1, finalRank: 5, podium: null })]);
+    console.assert(dup.length === 1 && dup[0].gamesPlayed === 4 && dup[0].finalRank === 1, "dedupe sums games, keeps best finish", dup);
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -7931,6 +7944,59 @@ function lifetimePhoneKey(raw) {
 // Stricter than isValidPhone (>=7): lifetime tracking needs a real 10-digit number.
 function lifetimeTrackable(raw) {
   return lifetimePhoneKey(raw).length >= 10;
+}
+
+// ---------- ledger (pure) ----------
+function emptyLedger() {
+  return { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] } };
+}
+
+// Collapse multiple rows that share a canonical key within ONE tournament record.
+function dedupeRecordResults(results) {
+  const byKey = {};
+  for (const r of results) {
+    const cur = byKey[r.phoneKey];
+    if (!cur) { byKey[r.phoneKey] = Object.assign({}, r); continue; }
+    cur.gamesPlayed += r.gamesPlayed; cur.wins += r.wins; cur.losses += r.losses;
+    cur.pointsFor += r.pointsFor; cur.pointDiff += r.pointDiff;
+    if ((r.finalRank || 1e9) < (cur.finalRank || 1e9)) {   // keep the better finish + its podium/partial/status
+      cur.finalRank = r.finalRank; cur.podium = r.podium; cur.partial = r.partial; cur.status = r.status; cur.name = r.name;
+    }
+  }
+  return Object.values(byKey);
+}
+
+// Merge one tournament record into a ledger (idempotent by id; last-write-wins by revisedAt).
+function ledgerPutRecord(ledger, record) {
+  const out = Object.assign({}, ledger, {
+    tournaments: Object.assign({}, ledger.tournaments),
+    players: Object.assign({}, ledger.players),
+  });
+  const existing = out.tournaments[record.id];
+  if (!existing || (record.revisedAt || 0) >= (existing.revisedAt || 0)) {
+    out.tournaments[record.id] = record;
+  }
+  for (const r of record.results) out.players[r.phoneKey] = mergePlayer(out.players[r.phoneKey], r, record.completedAt);
+  return out;
+}
+
+function mergePlayer(prev, row, seenAt) {
+  const aliases = new Set((prev && prev.aliases) || []);
+  if (prev && prev.displayName && prev.displayName !== row.name) aliases.add(prev.displayName);
+  return {
+    phoneKey: row.phoneKey,
+    displayName: row.name,
+    aliases: Array.from(aliases).slice(-5),
+    firstSeenAt: prev ? Math.min(prev.firstSeenAt || seenAt, seenAt) : seenAt,
+    lastSeenAt: Math.max((prev && prev.lastSeenAt) || 0, seenAt),
+  };
+}
+
+// Union two ledgers (cross-device merge and import).
+function mergeLedgers(a, b) {
+  let out = { players: Object.assign({}, a.players), tournaments: Object.assign({}, a.tournaments), sync: a.sync };
+  for (const rec of Object.values(b.tournaments)) out = ledgerPutRecord(out, rec);
+  return out;
 }
 
 // RUMBLE:LIFETIME:end
