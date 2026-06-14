@@ -1643,6 +1643,15 @@ function runSelfTests() {
     const dup = dedupeRecordResults([rec.results[0], Object.assign({}, rec.results[0], { gamesPlayed: 1, wins: 0, losses: 1, finalRank: 5, podium: null })]);
     console.assert(dup.length === 1 && dup[0].gamesPlayed === 4 && dup[0].finalRank === 1, "dedupe sums games, keeps best finish", dup);
   }
+  // Lifetime A4 — normalization
+  {
+    console.assert(JSON.stringify(normalizeStatRow("king", { gp: 4, wins: 3, pointsScored: 40 }))
+      === JSON.stringify({ gamesPlayed: 4, wins: 3, losses: 1, pointsFor: 40, pointDiff: 0 }), "king losses = gp - wins");
+    console.assert(normalizeStatRow("stack", { gp: 5, wins: 3, losses: 2, pointsScored: 50, pointsAgainst: 41 }).pointDiff === 9,
+      "stack pointDiff = scored - against");
+    console.assert(normalizeStatRow("crown", { gamesWon: 2, gamesLost: 1, pointsScored: 33, pointDiff: 5 }).gamesPlayed === 3,
+      "crown gamesPlayed = won + lost");
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -7997,6 +8006,25 @@ function mergeLedgers(a, b) {
   let out = { players: Object.assign({}, a.players), tournaments: Object.assign({}, a.tournaments), sync: a.sync };
   for (const rec of Object.values(b.tournaments)) out = ledgerPutRecord(out, rec);
   return out;
+}
+
+// ---------- cross-format normalization ----------
+// Map a format's per-slot stat object into the common results-row shape.
+function normalizeStatRow(format, st) {
+  if (format === "king") {                                  // King has no losses field or points-against
+    return { gamesPlayed: st.gp, wins: st.wins, losses: Math.max(0, st.gp - st.wins),
+             pointsFor: st.pointsScored, pointDiff: 0 };
+  }
+  if (format === "stack") {                                 // Stack tracks real wins/losses + points-against
+    return { gamesPlayed: st.gp, wins: st.wins, losses: st.losses,
+             pointsFor: st.pointsScored, pointDiff: st.pointsScored - st.pointsAgainst };
+  }
+  if (format === "crown") {                                 // Crown counts best-of-3 sub-games
+    return { gamesPlayed: (st.gamesWon || 0) + (st.gamesLost || 0), wins: st.gamesWon, losses: st.gamesLost,
+             pointsFor: st.pointsScored, pointDiff: st.pointDiff };
+  }
+  return { gamesPlayed: st.gp, wins: st.wins, losses: st.losses,   // rr / gauntlet (computeStats rows)
+           pointsFor: st.points, pointDiff: st.diff };
 }
 
 // RUMBLE:LIFETIME:end
