@@ -9646,6 +9646,11 @@ function renderSaveToLifetimeBlock() {
   card.appendChild(el("p", { class: "muted", style: "font-size:13px;margin:4px 0 0;" },
     "Stores each player's results under their phone number for lifetime stats " +
     "(on this device; synced when you sign in). Players can ask to be removed."));
+  card.appendChild(el("button", {
+    class: "secondary",
+    style: "width:100%;margin-top:12px;",
+    onclick: openCareer,
+  }, "View Lifetime Stats"));
   return card;
 }
 
@@ -12495,6 +12500,11 @@ function openSettings() {
     onclick: () => { window.open(displayModeUrl(), "_blank", "noopener"); },
   }, "TV / Projector Mode"));
 
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-bottom: 12px;",
+    onclick: () => { close(); openCareer(); },
+  }, "Lifetime Stats"));
+
   if (state.phase !== "setup") {
     modal.appendChild(el("button", {
       style: "width: 100%; margin-bottom: 12px;",
@@ -13286,6 +13296,236 @@ function openSettings() {
     const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
     updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
   }
+}
+
+// ---------- lifetime: career view + player card ----------
+function fmtPct(p) { return Math.round((p || 0) * 100) + "%"; }
+function fmtCareerDate(ms) {
+  if (!ms) return "—";
+  try { return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); }
+  catch (e) { return "—"; }
+}
+
+// Leaderboard modal: sortable, searchable table of every tracked career.
+function openCareer() {
+  const bg = el("div", { class: "modal-bg" });
+  const modal = el("div", { class: "modal" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  modal.appendChild(el("h2", null, "Lifetime Stats"));
+
+  const careers = LifetimeStore.careers();
+  if (!careers.length) {
+    modal.appendChild(el("p", { class: "muted" },
+      "No lifetime stats yet — enable 'Save to lifetime stats' when you run a tournament."));
+    modal.appendChild(el("button", { style: "width:100%;margin-top:12px;", onclick: close }, "Done"));
+    bg.appendChild(modal);
+    mountModal(bg, modal);
+    return;
+  }
+
+  // Column definitions: each has a value extractor for sorting.
+  const cols = [
+    { key: "player", label: "Player", num: false, val: c => (c.displayName || c.phoneKey || "").toLowerCase() },
+    { key: "tournaments", label: "Tournaments", num: true, val: c => c.tournaments },
+    { key: "wl", label: "W–L", num: true, val: c => c.wins - c.losses },
+    { key: "winPct", label: "Win%", num: true, val: c => c.winPct },
+    { key: "games", label: "Games", num: true, val: c => c.games },
+    { key: "best", label: "Best finish", num: true, val: c => (c.bestFinish == null ? Infinity : c.bestFinish) },
+  ];
+
+  let sortKey = "winPct";
+  let sortDir = -1;          // -1 desc, 1 asc
+  let query = "";
+
+  const search = el("input", {
+    class: "name-input",
+    type: "search",
+    placeholder: "Search players…",
+    "aria-label": "Search players",
+    autocomplete: "off",
+    style: "margin-bottom:12px;",
+  });
+  search.addEventListener("input", () => { query = search.value.trim().toLowerCase(); renderBody(); });
+  modal.appendChild(search);
+
+  const wrap = el("div", { style: "overflow-x:auto;" });
+  const table = el("table", { style: "width:100%;border-collapse:collapse;font-size:14px;" });
+  const thead = el("thead");
+  const headRow = el("tr");
+  const thStyle = (num) =>
+    "padding:7px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap;text-align:" +
+    (num ? "right" : "left") + ";";
+  cols.forEach(col => {
+    const arrow = sortKey === col.key ? (sortDir === -1 ? " ▾" : " ▴") : "";
+    const th = el("th", {
+      "data-key": col.key,
+      style: thStyle(col.num),
+      title: "Sort by " + col.label,
+      onclick: () => {
+        if (sortKey === col.key) { sortDir = -sortDir; }
+        else { sortKey = col.key; sortDir = col.num ? -1 : 1; }   // numbers default desc, names asc
+        renderHead();
+        renderBody();
+      },
+    }, col.label + arrow);
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = el("tbody");
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  modal.appendChild(wrap);
+
+  function renderHead() {
+    Array.from(headRow.children).forEach((th, i) => {
+      const col = cols[i];
+      const arrow = sortKey === col.key ? (sortDir === -1 ? " ▾" : " ▴") : "";
+      th.textContent = col.label + arrow;
+    });
+  }
+
+  function renderBody() {
+    tbody.textContent = "";
+    const list = LifetimeStore.careers().filter(c => {
+      if (!query) return true;
+      return (c.displayName || "").toLowerCase().includes(query) ||
+             (c.phoneKey || "").toLowerCase().includes(query);
+    });
+    const col = cols.find(c => c.key === sortKey);
+    const tieTournaments = (a, b) => b.tournaments - a.tournaments;   // secondary: tournaments desc
+    list.sort((a, b) => {
+      const av = col.val(a), bv = col.val(b);
+      let cmp;
+      if (typeof av === "string") cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      else cmp = av - bv;
+      cmp *= sortDir;
+      if (cmp !== 0) return cmp;
+      if (sortKey !== "tournaments") { const t = tieTournaments(a, b); if (t !== 0) return t; }
+      return (a.displayName || "").localeCompare(b.displayName || "");
+    });
+    if (!list.length) {
+      const tr = el("tr");
+      const msg = query
+        ? "No players match \"" + search.value + "\"."
+        : "No lifetime stats yet — enable 'Save to lifetime stats' when you run a tournament.";
+      tr.appendChild(el("td", { colspan: String(cols.length), class: "muted", style: "padding:12px 8px;text-align:center;" }, msg));
+      tbody.appendChild(tr);
+      return;
+    }
+    const tdNum = "padding:7px 8px;text-align:right;white-space:nowrap;";
+    const tdName = "padding:7px 8px;text-align:left;";
+    list.forEach(c => {
+      const tr = el("tr", {
+        style: "cursor:pointer;border-bottom:1px solid var(--border);",
+        title: "View " + (c.displayName || c.phoneKey) + "'s career",
+        onclick: () => openPlayerCard(c.phoneKey, renderBody),
+      });
+      tr.appendChild(el("td", { style: tdName },
+        el("div", { style: "font-weight:600;" }, c.displayName || c.phoneKey || "Unknown")));
+      tr.appendChild(el("td", { style: tdNum }, String(c.tournaments)));
+      tr.appendChild(el("td", { style: tdNum }, c.wins + "–" + c.losses));
+      tr.appendChild(el("td", { style: tdNum }, fmtPct(c.winPct)));
+      tr.appendChild(el("td", { style: tdNum }, String(c.games)));
+      tr.appendChild(el("td", { style: tdNum }, c.bestFinish == null ? "—" : "#" + c.bestFinish));
+      tbody.appendChild(tr);
+    });
+  }
+
+  renderBody();
+
+  modal.appendChild(el("button", { style: "width:100%;margin-top:12px;", onclick: close }, "Done"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+
+// Player career card: stacks over the leaderboard. `onRemoved` rebuilds the
+// leaderboard table after a removal so the row disappears when we close.
+function openPlayerCard(phoneKey, onRemoved) {
+  const bg = el("div", { class: "modal-bg" });
+  const modal = el("div", { class: "modal" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  const c = LifetimeStore.career(phoneKey);
+  modal.appendChild(el("h2", null, c.displayName || c.phoneKey || "Player"));
+  if (c.displayName && c.phoneKey && c.displayName !== c.phoneKey) {
+    modal.appendChild(el("p", { class: "muted", style: "margin:-6px 0 12px;font-size:13px;" }, c.phoneKey));
+  }
+
+  // Aggregates
+  const stats = [
+    ["Tournaments", String(c.tournaments)],
+    ["W–L", c.wins + "–" + c.losses],
+    ["Win%", fmtPct(c.winPct)],
+    ["Games", String(c.games)],
+    ["Points", String(c.pointsFor)],
+    ["Avg point diff", (c.avgPointDiff >= 0 ? "+" : "") + c.avgPointDiff.toFixed(1)],
+    ["Best finish", c.bestFinish == null ? "—" : "#" + c.bestFinish],
+    ["🥇 / 🥈 / 🥉", (c.podiums[1] || 0) + " / " + (c.podiums[2] || 0) + " / " + (c.podiums[3] || 0)],
+  ];
+  const grid = el("div", { style: "display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px;" });
+  stats.forEach(([label, val]) => {
+    const cell = el("div", { style: "background:var(--panel-2);border-radius:8px;padding:8px 10px;" });
+    cell.appendChild(el("div", { class: "muted", style: "font-size:12px;" }, label));
+    cell.appendChild(el("div", { style: "font-size:16px;font-weight:700;" }, val));
+    grid.appendChild(cell);
+  });
+  modal.appendChild(grid);
+
+  // Per-tournament history
+  modal.appendChild(el("h3", null, "Tournaments"));
+  const records = LifetimeStore.allRecords()
+    .filter(t => t.results.some(r => r.phoneKey === phoneKey))
+    .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  if (!records.length) {
+    modal.appendChild(el("p", { class: "muted" }, "No tournaments recorded."));
+  } else {
+    const wrap = el("div", { style: "overflow-x:auto;" });
+    const table = el("table", { style: "width:100%;border-collapse:collapse;font-size:14px;" });
+    const thStyle = (align) => "padding:7px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;white-space:nowrap;text-align:" + align + ";";
+    const head = el("tr");
+    head.appendChild(el("th", { style: thStyle("left") }, "Date"));
+    head.appendChild(el("th", { style: thStyle("left") }, "Format"));
+    head.appendChild(el("th", { style: thStyle("right") }, "Finish"));
+    head.appendChild(el("th", { style: thStyle("right") }, "W–L"));
+    table.appendChild(el("thead", null, head));
+    const tbody = el("tbody");
+    records.forEach(t => {
+      const r = t.results.find(x => x.phoneKey === phoneKey);
+      const tr = el("tr", { style: "border-bottom:1px solid var(--border);" });
+      tr.appendChild(el("td", { style: "padding:7px 8px;text-align:left;white-space:nowrap;" }, fmtCareerDate(t.completedAt)));
+      tr.appendChild(el("td", { style: "padding:7px 8px;text-align:left;text-transform:capitalize;" }, t.format || "—"));
+      tr.appendChild(el("td", { style: "padding:7px 8px;text-align:right;" }, r.finalRank == null ? "—" : "#" + r.finalRank));
+      tr.appendChild(el("td", { style: "padding:7px 8px;text-align:right;white-space:nowrap;" }, r.wins + "–" + r.losses));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    modal.appendChild(wrap);
+  }
+
+  const backBtn = el("button", { style: "width:100%;margin-top:16px;", onclick: close }, "← Back");
+  modal.appendChild(backBtn);
+
+  const removeBtn = el("button", { class: "danger", style: "width:100%;margin-top:8px;" }, "Remove this player");
+  removeBtn.addEventListener("click", () => {
+    showConfirm(
+      "Remove " + (c.displayName || c.phoneKey) + " from lifetime stats? This deletes their results from every tournament on this device.",
+      () => {
+        LifetimeStore.removePlayer(phoneKey);
+        close();
+        if (typeof onRemoved === "function") onRemoved();
+      },
+      { title: "Remove player", confirmText: "Remove", danger: true }
+    );
+  });
+  modal.appendChild(removeBtn);
+
+  bg.appendChild(modal);
+  mountModal(bg, modal);
 }
 
 // ---------- boot ----------
