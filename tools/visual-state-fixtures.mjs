@@ -115,16 +115,67 @@ export function doneTextResultsState() {
   return s;
 }
 
+// Setup view with the "Save to lifetime stats" toggle switched on.
+export function setupLifetimeToggleState() {
+  const s = baseState();
+  s.saveToLifetime = true;
+  return s;
+}
+
+// A fully-populated pb_lifetime_v1 store: 3 players (Ava/Ben/Cy) across 2 tournaments,
+// with realistic wins/losses/finalRank/podium so the leaderboard renders with content.
+// FIXED timestamps only — never Date.now().
+export function lifetimeLedgerPopulated() {
+  const T = 1790000000000;
+  return {
+    schemaVersion: 1,
+    activeOwner: "local",
+    ledgers: {
+      local: {
+        players: {
+          "5550000001": { phoneKey: "5550000001", displayName: "Ava", aliases: [], firstSeenAt: T, lastSeenAt: T },
+          "5550000002": { phoneKey: "5550000002", displayName: "Ben", aliases: [], firstSeenAt: T, lastSeenAt: T },
+          "5550000003": { phoneKey: "5550000003", displayName: "Cy",  aliases: [], firstSeenAt: T, lastSeenAt: T },
+        },
+        tournaments: {
+          "t1": {
+            id: "t1", ownerId: "local", schemaVersion: 1,
+            completedAt: T, revisedAt: T,
+            format: "rr", courtCount: 2, trackedPlayerCount: 3, fieldSize: 8,
+            results: [
+              { phoneKey: "5550000001", name: "Ava", slot: 1, status: "active", gamesPlayed: 7, wins: 5, losses: 2, pointsFor: 71, pointDiff: 14, finalRank: 1, podium: 1, partial: false },
+              { phoneKey: "5550000002", name: "Ben", slot: 2, status: "active", gamesPlayed: 7, wins: 4, losses: 3, pointsFor: 66, pointDiff: 3,  finalRank: 2, podium: 2, partial: false },
+              { phoneKey: "5550000003", name: "Cy",  slot: 3, status: "active", gamesPlayed: 7, wins: 3, losses: 4, pointsFor: 60, pointDiff: -6, finalRank: 3, podium: 3, partial: false },
+            ],
+          },
+          "t2": {
+            id: "t2", ownerId: "local", schemaVersion: 1,
+            completedAt: T, revisedAt: T,
+            format: "rr", courtCount: 2, trackedPlayerCount: 3, fieldSize: 8,
+            results: [
+              { phoneKey: "5550000002", name: "Ben", slot: 1, status: "active", gamesPlayed: 6, wins: 5, losses: 1, pointsFor: 64, pointDiff: 18, finalRank: 1, podium: 1,    partial: false },
+              { phoneKey: "5550000001", name: "Ava", slot: 2, status: "active", gamesPlayed: 6, wins: 4, losses: 2, pointsFor: 58, pointDiff: 9,  finalRank: 2, podium: 2,    partial: false },
+              { phoneKey: "5550000003", name: "Cy",  slot: 4, status: "active", gamesPlayed: 6, wins: 2, losses: 4, pointsFor: 49, pointDiff: -8, finalRank: 5, podium: null, partial: false },
+            ],
+          },
+        },
+        sync: { lastSyncedAt: T, pendingTournamentIds: [], pendingDeletes: [] },
+      },
+    },
+  };
+}
+
 export function stateForVisual(name) {
   if (name === "setup-desktop" || name === "setup-mobile") return setupDesktopState();
   if (name === "playing-13p-3c" || name === "settings-modal") return playing13p3cState();
   if (name === "finals-13p-3c") return finals13p3cState();
   if (name === "text-results") return doneTextResultsState();
+  if (name === "setup-lifetime-toggle") return setupLifetimeToggleState();
   throw new Error("Unknown visual state: " + name);
 }
 
 export function listVisualStates() {
-  return ["setup-desktop", "setup-mobile", "playing-13p-3c", "settings-modal", "finals-13p-3c", "text-results"];
+  return ["setup-desktop", "setup-mobile", "playing-13p-3c", "settings-modal", "finals-13p-3c", "text-results", "setup-lifetime-toggle", "career-empty", "career-populated"];
 }
 
 if (process.argv[1] && process.argv[1].endsWith("visual-state-fixtures.mjs")) {

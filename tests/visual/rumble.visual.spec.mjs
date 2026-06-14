@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { stateForVisual } from "../../tools/visual-state-fixtures.mjs";
+import { stateForVisual, lifetimeLedgerPopulated } from "../../tools/visual-state-fixtures.mjs";
 
 const STORAGE_KEY = "pb_tourney_v5";
+const LIFETIME_KEY = "pb_lifetime_v1";
 const BASE = "http://127.0.0.1:8765";
 
 // Freeze time so elapsed game timers and "saved ago" text are deterministic across
@@ -26,6 +27,21 @@ async function seedState(page, name) {
     localStorage.setItem(key, JSON.stringify(value));
   }, { key: STORAGE_KEY, value: state });
   await page.reload({ waitUntil: "load" });
+}
+
+// Seed BOTH localStorage keys, then open the Lifetime Stats (career) modal.
+// `lifetime` may be null to exercise the empty-store state.
+async function seedCareer(page, tourneyState, lifetime) {
+  await page.addInitScript(freezeTime);
+  await page.goto(BASE + "/index.html", { waitUntil: "load" });
+  await page.evaluate(({ tKey, tVal, lKey, lVal }) => {
+    localStorage.clear();
+    localStorage.setItem(tKey, JSON.stringify(tVal));
+    if (lVal !== null) localStorage.setItem(lKey, JSON.stringify(lVal));
+  }, { tKey: STORAGE_KEY, tVal: tourneyState, lKey: LIFETIME_KEY, lVal: lifetime });
+  await page.reload({ waitUntil: "load" });
+  await page.evaluate(() => window.openCareer());
+  await page.waitForTimeout(200);
 }
 
 test("setup desktop", async ({ page }) => {
@@ -70,4 +86,22 @@ test("guide flex section", async ({ page }) => {
   await page.addInitScript(freezeTime);
   await page.goto(BASE + "/guide.html#flex", { waitUntil: "load" });
   await expect(page).toHaveScreenshot("guide-flex.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
+});
+
+test("setup lifetime toggle", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await seedState(page, "setup-lifetime-toggle");
+  await expect(page).toHaveScreenshot("setup-lifetime-toggle.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
+});
+
+test("career empty", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await seedCareer(page, stateForVisual("setup-desktop"), null);
+  await expect(page).toHaveScreenshot("career-empty.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
+});
+
+test("career populated", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await seedCareer(page, stateForVisual("setup-desktop"), lifetimeLedgerPopulated());
+  await expect(page).toHaveScreenshot("career-populated.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
 });
