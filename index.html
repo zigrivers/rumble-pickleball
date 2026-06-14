@@ -11,6 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Rumble Pickleball</title>
+<!-- RUMBLE:STYLE:start -->
 <style>
   :root {
     --bg: #0f1419;
@@ -1408,12 +1409,14 @@
     .court-card.gold .team-name { font-size: 18px; }
   }
 </style>
+<!-- RUMBLE:STYLE:end -->
 </head>
 <body>
 <div class="app" id="app"></div>
 <script>
 "use strict";
 
+// RUMBLE:STATE:start
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -1590,6 +1593,8 @@ function projectFinishTime(state, calibration, nowTs) {
 }
 
 // -------- self-tests (gated by ?test URL param) --------
+// RUMBLE:STATE:end
+// RUMBLE:TESTS:start
 function runSelfTests() {
   let failures = 0;
   const _origAssert = console.assert.bind(console);
@@ -4390,6 +4395,8 @@ let state = isSnapshotRoute() ? newState() : (isDisplayMode() ? (readDisplayStat
 let displayRefreshStarted = false;
 let displayLastSaved = null;
 
+// RUMBLE:TESTS:end
+// RUMBLE:CORE:start
 function newState() {
   return {
     phase: "setup",                                  // setup | playing | finals | crown | done
@@ -5587,6 +5594,8 @@ function stackScoreGain(pts, court, courtCount, won) {
 }
 
 // Per-player stack stats through the given round (1-based, inclusive).
+// RUMBLE:CORE:end
+// RUMBLE:FORMATS:start
 function computeStackStats(throughRound) {
   const upTo = Math.min(throughRound || 0, state.rounds.length);
   let count = Math.max(playerCount(), (state.slots || []).length);
@@ -7349,6 +7358,8 @@ function clampAdj(x) {
   return Math.max(-MARGIN_ADJ_CAP, Math.min(MARGIN_ADJ_CAP, x));
 }
 
+// RUMBLE:FORMATS:end
+// RUMBLE:STATS:start
 function computeStats(throughRound, includeFinals) {
   const stats = [];
   const count = statsSlotCount(throughRound, includeFinals);
@@ -7877,6 +7888,8 @@ function el(tag, props, ...children) {
   return e;
 }
 
+// RUMBLE:STATS:end
+// RUMBLE:RENDER:start
 function render() {
   // Dismiss any open dialog (settings/paste/etc.) on a full re-render so it can't
   // stay stacked over a new view. Dialogs use .modal-bg; the shuffle-reveal
@@ -12081,6 +12094,8 @@ function openHowItWorksModal() {
   mountModal(bg, modal);
 }
 
+// RUMBLE:RENDER:end
+// RUMBLE:MODALS:start
 function openSettings() {
   const bg = el("div", { class: "modal-bg" });
   let statusTimer = null;
@@ -12941,6 +12956,8 @@ function setupDisplayModeRefresh() {
   });
 }
 
+// RUMBLE:MODALS:end
+// RUMBLE:BOOT:start
 setupDisplayModeRefresh();
 render();
 window.addEventListener("hashchange", () => {
@@ -13003,6 +13020,7 @@ window.addEventListener("hashchange", () => {
     });
   }
 }
+// RUMBLE:BOOT:end
 </script>
 </body>
 </html>

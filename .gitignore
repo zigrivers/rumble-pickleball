@@ -17,3 +17,11 @@ verify-screenshots/
 
 # Surface audit state
 .surface/
+
+# Node / Playwright (dev-only tooling; runtime app has no deps)
+node_modules/
+/test-results/
+/playwright-report/
+
+# Visual regression baselines are committed (override the *.png rule above)
+!tests/visual/**/*.png
