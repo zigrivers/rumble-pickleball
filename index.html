@@ -13315,11 +13315,16 @@ function openCareer() {
 
   modal.appendChild(el("h2", null, "Lifetime Stats"));
 
+  // Reopen from scratch after an import/wipe so the table reflects the change,
+  // including the empty <-> populated transition (which swaps the whole layout).
+  const reopen = () => { close(); openCareer(); };
+
   const careers = LifetimeStore.careers();
   if (!careers.length) {
     modal.appendChild(el("p", { class: "muted" },
       "No lifetime stats yet — enable 'Save to lifetime stats' when you run a tournament."));
-    modal.appendChild(el("button", { style: "width:100%;margin-top:12px;", onclick: close }, "Done"));
+    modal.appendChild(buildDataRow(reopen));
+    modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Done"));
     bg.appendChild(modal);
     mountModal(bg, modal);
     return;
@@ -13436,9 +13441,71 @@ function openCareer() {
 
   renderBody();
 
-  modal.appendChild(el("button", { style: "width:100%;margin-top:12px;", onclick: close }, "Done"));
+  modal.appendChild(buildDataRow(reopen));
+  modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Done"));
   bg.appendChild(modal);
   mountModal(bg, modal);
+}
+
+// Data-management footer for the Career modal: export / import / wipe the active
+// lifetime ledger. `refresh` re-renders the open modal after import/wipe.
+function buildDataRow(refresh) {
+  const row = el("div", {
+    style: "display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);",
+  });
+
+  const exportBtn = el("button", { style: "flex:1;" }, "Export");
+  exportBtn.addEventListener("click", () => {
+    showConfirm(
+      "This file contains your players' phone numbers, unencrypted. Only share it with people you trust.",
+      () => {
+        const blob = new Blob([LifetimeStore.exportJSON()], { type: "application/json" });
+        downloadBlob(blob, "rumble-lifetime.json");
+      },
+      { title: "Export lifetime stats", confirmText: "Download" }
+    );
+  });
+
+  const fileInput = el("input", {
+    type: "file",
+    accept: "application/json,.json",
+    style: "display:none;",
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    file.text().then(text => {
+      try {
+        LifetimeStore.importJSON(text, { merge: true });
+        showToast("Merged into this device's lifetime stats.");
+        refresh();
+      } catch (e) {
+        showConfirm("Import failed: " + (e && e.message ? e.message : "could not read file") + ".",
+          () => {}, { title: "Import lifetime stats", confirmText: "OK", cancelText: "Close" });
+      }
+    }).catch(() => {
+      showConfirm("Import failed: could not read file.",
+        () => {}, { title: "Import lifetime stats", confirmText: "OK", cancelText: "Close" });
+    });
+    fileInput.value = "";   // allow re-selecting the same file
+  });
+  const importBtn = el("button", { style: "flex:1;" }, "Import");
+  importBtn.addEventListener("click", () => fileInput.click());
+
+  const wipeBtn = el("button", { class: "danger", style: "flex:1;" }, "Wipe");
+  wipeBtn.addEventListener("click", () => {
+    showConfirm("Erase all lifetime stats on this device? This can't be undone.", () => {
+      LifetimeStore.clearLedger();
+      showToast("Lifetime stats erased.");
+      refresh();
+    }, { title: "Wipe lifetime stats", danger: true, confirmText: "Erase" });
+  });
+
+  row.appendChild(exportBtn);
+  row.appendChild(importBtn);
+  row.appendChild(wipeBtn);
+  row.appendChild(fileInput);
+  return row;
 }
 
 // Player career card: stacks over the leaderboard. `onRemoved` rebuilds the
