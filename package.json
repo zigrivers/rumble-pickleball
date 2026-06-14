@@ -1,0 +1,8 @@
+{
+  "name": "rumble-pickleball",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check:index": "node tools/check-index-boundaries.mjs"
+  }
+}
