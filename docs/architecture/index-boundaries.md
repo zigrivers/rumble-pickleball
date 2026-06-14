@@ -14,6 +14,7 @@
 | Core | state shape, persistence, scheduling core (`newState`, `backfillStateDefaults`, `load`, `save`, `makeScheduleSeed`) | `RUMBLE:CORE` |
 | Formats | per-format engines + stats + schedule generation (Stack/King/Crown, RR schedule) | `RUMBLE:FORMATS` |
 | Stats | cross-format stats & ranking (`computeStats`, `rankPlayersForFormat`, `finalRanking`) | `RUMBLE:STATS` |
+| Lifetime | phone-keyed lifetime ledger, recording, aggregation, sync | `RUMBLE:LIFETIME` |
 | Render | setup/play/finals/done rendering, plus awards (`render`, `computeAwards`) | `RUMBLE:RENDER` |
 | Modals | settings, schedule, help, dialogs (`openSettings`, modal helpers) | `RUMBLE:MODALS` |
 | Boot | initial render, display-mode refresh, service-worker registration | `RUMBLE:BOOT` |
