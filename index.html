@@ -1721,6 +1721,134 @@ function runSelfTests() {
     LifetimeStore.clearLedger();
     if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
   }
+  // Lifetime C6 — sign-out eviction / account-switch isolation / explicit anonymous move
+  // Pure (no Firebase): we hand-seed pb_lifetime_v1 with uid-keyed ledgers and drive
+  // the store's disconnect()/anonymousPendingCount()/moveAnonymousIntoActive() directly.
+  {
+    const saved = localStorage.getItem("pb_lifetime_v1");
+    const rec = (id) => ({ id, completedAt: 1, revisedAt: 1, results: [
+      { phoneKey: "5550009999", name: "P", gamesPlayed: 2, wins: 1, losses: 1, pointsFor: 20, pointDiff: 0, finalRank: 2, podium: 2, partial: false, status: "active" } ] });
+    const seed = (activeOwner, ledgers) => localStorage.setItem("pb_lifetime_v1", JSON.stringify({ schemaVersion: 1, activeOwner, ledgers }));
+
+    // (1) Sign-out eviction: disconnect() drops the signed-in owner's cached ledger,
+    // keeps "local", and resets activeOwner to "local".
+    seed("uidA", { local: emptyLedger(), uidA: ledgerPutRecord(emptyLedger(), rec("a1")) });
+    LifetimeStore.disconnect();
+    {
+      const all = JSON.parse(localStorage.getItem("pb_lifetime_v1"));
+      console.assert(all.activeOwner === "local", "evict: activeOwner reset to local", all.activeOwner);
+      console.assert(!all.ledgers.uidA, "evict: signed-in owner ledger removed", Object.keys(all.ledgers));
+      console.assert(!!all.ledgers.local, "evict: local ledger preserved");
+    }
+
+    // (2) Account-switch isolation: each uid reads only its OWN ledger; one account's
+    // tournaments never leak into another's active view.
+    seed("uidA", {
+      local: emptyLedger(),
+      uidA: ledgerPutRecord(emptyLedger(), rec("a1")),
+      uidB: ledgerPutRecord(emptyLedger(), rec("b1")),
+    });
+    console.assert(LifetimeStore.allRecords().length === 1 && LifetimeStore.allRecords()[0].id === "a1", "switch: uidA sees only its own record");
+    seed("uidB", {
+      local: emptyLedger(),
+      uidA: ledgerPutRecord(emptyLedger(), rec("a1")),
+      uidB: ledgerPutRecord(emptyLedger(), rec("b1")),
+    });
+    console.assert(LifetimeStore.allRecords().length === 1 && LifetimeStore.allRecords()[0].id === "b1", "switch: uidB sees only its own record, no comingle");
+
+    // (3) Explicit anonymous move: count, then move local -> active account ledger
+    // (queues pushes) and clear local. Never auto-merges (this call IS the consent).
+    seed("uidA", { local: ledgerPutRecord(ledgerPutRecord(emptyLedger(), rec("L1")), rec("L2")), uidA: emptyLedger() });
+    console.assert(LifetimeStore.anonymousPendingCount() === 2, "anon: counts local tournaments");
+    const moved = LifetimeStore.moveAnonymousIntoActive();
+    console.assert(moved === 2, "anon: move returns count", moved);
+    {
+      const all = JSON.parse(localStorage.getItem("pb_lifetime_v1"));
+      console.assert(Object.keys(all.ledgers.local.tournaments).length === 0, "anon: local cleared after move");
+      console.assert(Object.keys(all.ledgers.uidA.tournaments).length === 2, "anon: records landed in account ledger");
+      console.assert(all.ledgers.uidA.sync.pendingTournamentIds.length === 2, "anon: moved records queued for push");
+    }
+    // moveAnonymousIntoActive is a no-op when signed out (activeOwner === "local").
+    seed("local", { local: ledgerPutRecord(emptyLedger(), rec("L1")) });
+    console.assert(LifetimeStore.moveAnonymousIntoActive() === 0, "anon: no-op when signed out");
+
+    if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
+  }
+  // Lifetime D4 — cloud-complete deletion + signed-out invariance (network-free, synchronous).
+  // Signed-out removePlayer/clearLedger stay purely local (no sync mutation). For the
+  // signed-in paths we drive a fake backend and read the QUEUE that removePlayer/clearLedger
+  // persist (via writeAll) *before* their internal syncNow() flushes it — that write is
+  // synchronous, so the localStorage read right after the call is deterministic. The async
+  // syncNow drain + pull-strip are covered by a Playwright page.evaluate no-throw check.
+  {
+    const saved = localStorage.getItem("pb_lifetime_v1");
+    localStorage.removeItem("pb_lifetime_v1");
+    const row = (key, name) => ({ phoneKey: key, name, gamesPlayed: 2, wins: 1, losses: 1, pointsFor: 20, pointDiff: 0, finalRank: 2, podium: 2, partial: false, status: "active" });
+    const queueOf = (owner) => JSON.parse(localStorage.getItem("pb_lifetime_v1")).ledgers[owner].sync;
+
+    // emptyLedger + active() shape-guard expose pendingPlayerDeletes.
+    console.assert(Array.isArray(emptyLedger().sync.pendingPlayerDeletes), "D4: emptyLedger has pendingPlayerDeletes");
+    localStorage.setItem("pb_lifetime_v1", JSON.stringify({ schemaVersion: 1, activeOwner: "local",
+      ledgers: { local: { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] } } } }));
+    console.assert(Array.isArray(LifetimeStore.getLedger().sync.pendingPlayerDeletes), "D4: active() backfills pendingPlayerDeletes on old ledgers");
+
+    // (1) Signed OUT: removePlayer still scrubs + prunes locally and NEVER touches sync.
+    localStorage.removeItem("pb_lifetime_v1");
+    LifetimeStore.putTournamentRecord({ id: "t-shared", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A"), row("5550000011", "B")] });
+    LifetimeStore.putTournamentRecord({ id: "t-solo", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A")] });
+    LifetimeStore.removePlayer("5550000010");
+    {
+      const led = LifetimeStore.getLedger();
+      console.assert(led.tournaments["t-shared"] && led.tournaments["t-shared"].results.length === 1, "D4: signed-out removePlayer scrubs shared record");
+      console.assert(!led.tournaments["t-solo"], "D4: signed-out removePlayer drops emptied record");
+      console.assert(led.sync.pendingPlayerDeletes.length === 0 && led.sync.pendingDeletes.length === 0, "D4: signed-out removePlayer leaves sync queues empty (purely local)");
+    }
+    // (2) Signed OUT: clearLedger empties to a fresh ledger (no preserved queue).
+    LifetimeStore.clearLedger();
+    {
+      const led = LifetimeStore.getLedger();
+      console.assert(Object.keys(led.tournaments).length === 0 && led.sync.pendingDeletes.length === 0 && led.sync.pendingPlayerDeletes.length === 0, "D4: signed-out clearLedger empties with clean sync");
+    }
+
+    // (3) Signed IN (fake backend): removePlayer enqueues a modified-record push + an
+    // emptied-record delete + a player delete, then fires syncNow(). The enqueue is written
+    // synchronously, so reading the persisted queue right after the call is deterministic.
+    const fake = {
+      connect() {}, disconnect() {},
+      push() { return Promise.reject(new Error("offline")); },       // reject → queues stay put so we can read them
+      deleteRemote() { return Promise.reject(new Error("offline")); },
+      deletePlayerRemote() { return Promise.reject(new Error("offline")); },
+      pull() { return Promise.reject(new Error("offline")); },
+    };
+    localStorage.setItem("pb_lifetime_v1", JSON.stringify({ schemaVersion: 1, activeOwner: "uidX", ledgers: { local: emptyLedger(), uidX: emptyLedger() } }));
+    LifetimeStore.setBackend(fake);
+    LifetimeStore.putTournamentRecord({ id: "t-shared", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A"), row("5550000011", "B")] });
+    LifetimeStore.putTournamentRecord({ id: "t-solo", completedAt: 1, revisedAt: 1, results: [row("5550000010", "A")] });
+    let threw = false;
+    try { LifetimeStore.removePlayer("5550000010"); } catch (e) { threw = true; }
+    console.assert(!threw, "D4: signed-in removePlayer does not throw", threw);
+    {
+      const sync = queueOf("uidX");
+      console.assert(sync.pendingTournamentIds.indexOf("t-shared") !== -1, "D4: scrubbed tournament queued for re-push");
+      console.assert(sync.pendingTournamentIds.indexOf("t-solo") === -1, "D4: emptied tournament not left on the push queue");
+      console.assert(sync.pendingDeletes.indexOf("t-solo") !== -1, "D4: emptied tournament queued for remote delete");
+      console.assert(sync.pendingPlayerDeletes.indexOf("5550000010") !== -1, "D4: removed player queued for remote delete");
+    }
+    // (4) Signed IN clearLedger: queue every record + player for remote delete, preserve queues, empty locally.
+    LifetimeStore.putTournamentRecord({ id: "t-keep", completedAt: 1, revisedAt: 1, results: [row("5550000012", "C")] });
+    let threw2 = false;
+    try { LifetimeStore.clearLedger(); } catch (e) { threw2 = true; }
+    console.assert(!threw2, "D4: signed-in clearLedger does not throw", threw2);
+    {
+      const all = JSON.parse(localStorage.getItem("pb_lifetime_v1"));
+      const led = all.ledgers.uidX;
+      console.assert(Object.keys(led.tournaments).length === 0, "D4: signed-in clearLedger empties tournaments locally");
+      console.assert(led.sync.pendingDeletes.indexOf("t-keep") !== -1, "D4: signed-in clearLedger queues remote delete (queue preserved)");
+      console.assert(led.sync.pendingPlayerDeletes.indexOf("5550000012") !== -1, "D4: signed-in clearLedger queues player remote delete");
+    }
+    LifetimeStore.setBackend(null);   // restore NullBackend
+    if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -8027,7 +8155,7 @@ function lifetimeTrackable(raw) {
 
 // ---------- ledger (pure) ----------
 function emptyLedger() {
-  return { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] } };
+  return { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [], pendingPlayerDeletes: [] } };
 }
 
 // Collapse multiple rows that share a canonical key within ONE tournament record.
@@ -8127,8 +8255,53 @@ const NullBackend = {
   connect() {}, disconnect() {},
   push() { return Promise.resolve(); },
   deleteRemote() { return Promise.resolve(); },
+  deletePlayerRemote() { return Promise.resolve(); },
   pull() { return Promise.resolve(null); },
 };
+
+// Cloud backend (Firestore). Uses the C2 bridge on window.__rumbleFb. Records live
+// under owners/{ownerId}/tournaments/{id}; player profiles are mirrored under
+// owners/{ownerId}/players/{phoneKey} (best-effort, for a future global phase —
+// careers are still derived from tournament records on merge).
+function FirestoreBackend(ownerId) {
+  const fb = window.__rumbleFb;
+  const db = fb.db, api = fb.api;
+  const tdoc = (id) => api.doc(db, "owners", ownerId, "tournaments", id);
+  const pdoc = (key) => api.doc(db, "owners", ownerId, "players", key);
+  return {
+    connect() {},
+    disconnect() {},
+    push(record) {
+      // Stamp this backend's ownerId: records authored while signed-out carry
+      // ownerId:"local"; after an anonymous-merge they're pushed under the signed-in
+      // owner, and the security rules require request.resource.data.ownerId == ownerId.
+      return api.setDoc(tdoc(record.id), Object.assign({}, record, { ownerId })).then(() => {
+        const profiles = (record.results || [])
+          .filter(r => r.phoneKey)
+          .map(r => api.setDoc(pdoc(r.phoneKey), {
+            phoneKey: r.phoneKey, displayName: r.name, lastSeenAt: record.completedAt,
+          }).catch(() => {}));
+        return Promise.all(profiles);
+      });
+    },
+    deleteRemote(id) {
+      return api.deleteDoc(tdoc(id));
+    },
+    deletePlayerRemote(phoneKey) {
+      return api.deleteDoc(api.doc(db, "owners", ownerId, "players", phoneKey));
+    },
+    async pull() {
+      const ledger = { players: {}, tournaments: {}, sync: { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [], pendingPlayerDeletes: [] } };
+      const tsnap = await api.getDocs(api.collection(db, "owners", ownerId, "tournaments"));
+      tsnap.forEach(d => { ledger.tournaments[d.id] = d.data(); });
+      const psnap = await api.getDocs(api.collection(db, "owners", ownerId, "players"));
+      psnap.forEach(d => { ledger.players[d.id] = d.data(); });
+      return ledger;
+    },
+  };
+}
+
+let _lifetimeOwner = "local";   // signed-in uid when connected, else "local"
 
 const LifetimeStore = (() => {
   let backend = NullBackend;
@@ -8155,6 +8328,7 @@ const LifetimeStore = (() => {
     if (!led.players || typeof led.players !== "object") led.players = {};
     if (!led.tournaments || typeof led.tournaments !== "object") led.tournaments = {};
     if (!led.sync || typeof led.sync !== "object") led.sync = { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] };
+    if (!Array.isArray(led.sync.pendingPlayerDeletes)) led.sync.pendingPlayerDeletes = [];   // backfill old ledgers
     all.ledgers[all.activeOwner] = led;
     return led;
   }
@@ -8180,14 +8354,54 @@ const LifetimeStore = (() => {
       const all = readAll(); const led = active(all);
       const players = Object.assign({}, led.players); delete players[phoneKey]; led.players = players;
       const tournaments = {};
+      const modifiedIds = [];   // record still exists but a row for phoneKey was scrubbed out
+      const removedIds = [];    // record became empty and was dropped (right-to-be-forgotten)
       for (const [id, t] of Object.entries(led.tournaments)) {
+        const before = (t.results || []).length;
         const results = (t.results || []).filter(r => r.phoneKey !== phoneKey);
-        if (results.length) tournaments[id] = Object.assign({}, t, { results });  // else drop now-empty record (right-to-be-forgotten)
+        if (results.length === before) { tournaments[id] = t; continue; }   // player absent — untouched, don't re-sync
+        // Bump revisedAt so this scrubbed record deterministically WINS last-write-wins
+        // against the stale cloud copy on the next pull. Without it, an equal-timestamp
+        // remote (the un-scrubbed original, e.g. when the re-push failed offline)
+        // resurrects the removed player's rows. trackedPlayerCount is kept honest too.
+        if (results.length) { tournaments[id] = Object.assign({}, t, { results, trackedPlayerCount: results.length, revisedAt: Date.now() }); modifiedIds.push(id); }
+        else removedIds.push(id);                                            // emptied → drop locally + delete remotely
       }
       led.tournaments = tournaments;
-      writeAll(all);
+      // Signed in: propagate to the cloud so the next pull() can't resurrect the
+      // deleted data. Re-push scrubbed records, delete emptied ones, delete the
+      // player's profile doc. Signed out: purely local (unchanged behavior).
+      if (backend !== NullBackend) {
+        for (const id of modifiedIds) if (led.sync.pendingTournamentIds.indexOf(id) === -1) led.sync.pendingTournamentIds.push(id);
+        for (const id of removedIds) {
+          led.sync.pendingTournamentIds = led.sync.pendingTournamentIds.filter(x => x !== id);   // don't push a doc we're deleting
+          if (led.sync.pendingDeletes.indexOf(id) === -1) led.sync.pendingDeletes.push(id);
+        }
+        if (led.sync.pendingPlayerDeletes.indexOf(phoneKey) === -1) led.sync.pendingPlayerDeletes.push(phoneKey);
+        writeAll(all);
+        this.syncNow().catch(() => {});
+      } else {
+        writeAll(all);
+      }
     },
-    clearLedger() { const all = readAll(); all.ledgers[all.activeOwner] = emptyLedger(); writeAll(all); },
+    clearLedger() {
+      const all = readAll();
+      if (backend !== NullBackend) {
+        // Signed in: queue a remote delete for every record + player, then empty
+        // the local ledger but PRESERVE the sync queues so syncNow() can flush the
+        // deletes (and the pull-strip keeps a stale pull from resurrecting them).
+        const led = active(all);
+        const sync = { lastSyncedAt: led.sync.lastSyncedAt, pendingTournamentIds: [], pendingDeletes: [], pendingPlayerDeletes: [] };
+        for (const id of Object.keys(led.tournaments)) sync.pendingDeletes.push(id);
+        for (const key of Object.keys(led.players)) sync.pendingPlayerDeletes.push(key);
+        const empty = emptyLedger(); empty.sync = sync;
+        all.ledgers[all.activeOwner] = empty;
+        writeAll(all);
+        this.syncNow().catch(() => {});
+      } else {
+        all.ledgers[all.activeOwner] = emptyLedger(); writeAll(all);
+      }
+    },
     allRecords() { return Object.values(active(readAll()).tournaments); },
     career(phoneKey) { return playerCareer(active(readAll()), phoneKey); },
     careers() { return allCareers(active(readAll())); },
@@ -8200,17 +8414,112 @@ const LifetimeStore = (() => {
       const norm = {
         players: (incoming.players && typeof incoming.players === "object") ? incoming.players : {},
         tournaments: incoming.tournaments,
-        sync: (incoming.sync && typeof incoming.sync === "object") ? incoming.sync : { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [] },
+        sync: (incoming.sync && typeof incoming.sync === "object") ? incoming.sync : { lastSyncedAt: 0, pendingTournamentIds: [], pendingDeletes: [], pendingPlayerDeletes: [] },
       };
       const all = readAll(); const led = active(all);
       all.ledgers[all.activeOwner] = (opts && opts.merge) ? mergeLedgers(led, norm) : norm;
       writeAll(all);
     },
+    // ---------- cloud sync (Phase C) ----------
+    async connect(user) {
+      this.setBackend(FirestoreBackend(user.uid));
+      _lifetimeOwner = user.uid;
+      const all = readAll();
+      all.activeOwner = user.uid;
+      active(all);                 // ensure all.ledgers[user.uid] exists + normalized
+      writeAll(all);
+      await this.syncNow();
+    },
+    disconnect() {
+      this.setBackend(NullBackend);
+      const all = readAll();
+      // Sign-out eviction: drop the signed-in owner's cached ledger so another
+      // person on a shared device can't read their players' phone numbers. It's
+      // recoverable from the cloud on the next sign-in (pull). The persisted
+      // activeOwner is the authoritative signed-in uid; fall back to _lifetimeOwner.
+      // Never touch "local".
+      const outgoing = (all.activeOwner && all.activeOwner !== "local") ? all.activeOwner : _lifetimeOwner;
+      if (outgoing && outgoing !== "local" && all.ledgers) delete all.ledgers[outgoing];
+      _lifetimeOwner = "local";
+      all.activeOwner = "local";
+      active(all);
+      writeAll(all);
+    },
+    // Count tournaments saved into the anonymous ("local") ledger while signed out.
+    anonymousPendingCount() {
+      const led = readAll().ledgers && readAll().ledgers.local;
+      return (led && led.tournaments) ? Object.keys(led.tournaments).length : 0;
+    },
+    // Explicit, opt-in move of the anonymous ("local") ledger's tournaments into the
+    // currently-active (signed-in) ledger. PII safety: NEVER call this without the
+    // user's explicit consent — a different person may have signed in on this device.
+    // Each moved record is re-put (queues a cloud push) then removed from "local".
+    moveAnonymousIntoActive() {
+      const all = readAll();
+      if (all.activeOwner === "local") return 0;   // nothing to move into; not signed in
+      const localLed = (all.ledgers && all.ledgers.local) || emptyLedger();
+      const records = Object.values(localLed.tournaments || {});
+      if (!records.length) return 0;
+      let dest = active(all);
+      for (const rec of records) {
+        dest = ledgerPutRecord(dest, rec);
+        if (dest.sync.pendingTournamentIds.indexOf(rec.id) === -1) dest.sync.pendingTournamentIds.push(rec.id);
+      }
+      all.ledgers[all.activeOwner] = dest;
+      // They've moved — clear them from the anonymous ledger so they aren't double-counted.
+      all.ledgers.local = emptyLedger();
+      writeAll(all);
+      for (const rec of records) backend.push(rec).catch(() => {});
+      return records.length;
+    },
+    async syncNow() {
+      if (backend === NullBackend) return;
+      const all = readAll(); const led = active(all);
+      // Outbox: flush pending pushes, then pending deletes. Failures stay queued.
+      for (const id of led.sync.pendingTournamentIds.slice()) {
+        const rec = led.tournaments[id];
+        if (!rec) { led.sync.pendingTournamentIds = led.sync.pendingTournamentIds.filter(x => x !== id); continue; }
+        try { await backend.push(rec); led.sync.pendingTournamentIds = led.sync.pendingTournamentIds.filter(x => x !== id); }
+        catch (e) {}
+      }
+      for (const id of led.sync.pendingDeletes.slice()) {
+        try { await backend.deleteRemote(id); led.sync.pendingDeletes = led.sync.pendingDeletes.filter(x => x !== id); }
+        catch (e) {}
+      }
+      for (const key of (led.sync.pendingPlayerDeletes || []).slice()) {
+        try { await backend.deletePlayerRemote(key); led.sync.pendingPlayerDeletes = led.sync.pendingPlayerDeletes.filter(x => x !== key); }
+        catch (e) {}
+      }
+      // Pull + union remote into the active ledger.
+      try {
+        const remote = await backend.pull();
+        if (remote) {
+          const merged = mergeLedgers(led, remote);
+          merged.sync = led.sync;          // mergeLedgers carries a.sync; keep our outbox state explicit
+          // Pull-strip: a tournament delete that hasn't been confirmed remotely
+          // (still queued in pendingDeletes) must not be resurrected by this pull.
+          for (const id of merged.sync.pendingDeletes) if (merged.tournaments[id]) delete merged.tournaments[id];
+          all.ledgers[all.activeOwner] = merged;
+        }
+      } catch (e) {}
+      const cur = active(all);
+      cur.sync.lastSyncedAt = Date.now();
+      writeAll(all);
+    },
+    status() {
+      const led = active(readAll());
+      return {
+        online: navigator.onLine,
+        signedIn: backend !== NullBackend,
+        lastSyncedAt: (led.sync && led.sync.lastSyncedAt) || 0,
+        pendingCount: ((led.sync && led.sync.pendingTournamentIds) || []).length + ((led.sync && led.sync.pendingDeletes) || []).length + ((led.sync && led.sync.pendingPlayerDeletes) || []).length,
+      };
+    },
   };
 })();
 
 // ---------- recording ----------
-function currentOwnerId() { return "local"; }   // becomes the signed-in uid in Phase C
+function currentOwnerId() { return _lifetimeOwner; }   // signed-in uid when connected, else "local"
 
 function lifetimeStatsRows() {
   const total = totalRegularRounds();
@@ -8275,6 +8584,89 @@ function retractLifetimeRecord() {
     const led = LifetimeStore.getLedger();
     if (led.tournaments[state.tournamentId]) LifetimeStore.removeTournament(state.tournamentId);
   } catch (e) {}
+}
+
+// ---------- cloud auth wiring (Phase C) ----------
+// Wired only when the Firebase bridge (C2) is present; otherwise the app stays
+// 100% local-only. Called via the readiness hook in BOOT.
+async function setupLifetimeAuth() {
+  const fb = window.__rumbleFb;
+  if (!fb) return;
+  // Resolve any pending redirect sign-in BEFORE registering the auth observer.
+  // A non-null redirect result means the user JUST completed an interactive
+  // sign-in (the page navigated to Google and back) — the only moment we may
+  // offer to move anonymous on-device data into their account. Awaiting it here
+  // (rather than in a separate, racing .then()) guarantees the signal is known
+  // before the first onAuthStateChanged fires; otherwise the observer could win
+  // the microtask race and the merge offer would be silently missed on redirect.
+  let _redirectUid = null;
+  try {
+    const res = await fb.api.getRedirectResult(fb.auth);
+    if (res && res.user) _redirectUid = res.user.uid;
+  } catch (e) {}
+  // The first callback fires on every load to report the current (already
+  // persisted) auth state; the app has already render()ed at boot, so a render
+  // here would only destroy a modal opened during load. Re-render on later
+  // transitions (interactive sign-in / sign-out) so the sync UI updates.
+  let _firstAuthEvent = true;
+  fb.api.onAuthStateChanged(fb.auth, user => {
+    const wasFirst = _firstAuthEvent;
+    _firstAuthEvent = false;
+    if (user) {
+      // Interactive sign-in = this load consumed a redirect result for this user,
+      // OR a later (non-first) transition (e.g. popup flows that don't reload).
+      // Either signal offers the merge; a persisted-session reload offers nothing.
+      const interactive = (_redirectUid && _redirectUid === user.uid) || !wasFirst;
+      LifetimeStore.connect(user)
+        .then(() => { if (interactive) maybePromptAnonymousMerge(); })
+        .catch(() => {});
+    } else {
+      LifetimeStore.disconnect();
+    }
+    if (wasFirst) return;
+    render();
+  });
+}
+// PII safety: after a successful interactive sign-in, NEVER silently fold the
+// anonymous ("local") ledger into the account — a different person could have
+// signed in on a shared device. Offer an explicit, all-or-nothing opt-in.
+let _anonMergePrompted = false;
+function maybePromptAnonymousMerge() {
+  if (_anonMergePrompted) return;            // once per session is enough
+  let n = 0;
+  try { n = LifetimeStore.anonymousPendingCount(); } catch (e) {}
+  if (n < 1) return;
+  _anonMergePrompted = true;
+  showConfirm(
+    "You have " + n + " tournament" + (n === 1 ? "" : "s") +
+      " saved on this device while signed out. Move " + (n === 1 ? "it" : "them") +
+      " into your account? They'll sync to the cloud.",
+    () => {
+      try { LifetimeStore.moveAnonymousIntoActive(); } catch (e) {}
+      LifetimeStore.syncNow().catch(() => {});
+      render();
+    },
+    { title: "Move on-device stats?", confirmText: "Move to my account", cancelText: "Keep separate" }
+  );
+}
+function lifetimeSignIn() {
+  const fb = window.__rumbleFb;
+  if (!fb) return;
+  fb.api.signInWithRedirect(fb.auth, new fb.api.GoogleAuthProvider());
+}
+function lifetimeSignOut() {
+  const fb = window.__rumbleFb;
+  if (!fb) return;
+  showConfirm(
+    "Sign out? This device's local copy of your lifetime stats will be cleared — it stays safe in the cloud.",
+    () => {
+      // disconnect() (via onAuthStateChanged) evicts this owner's cached ledger.
+      // _lifetimeOwner still holds the outgoing uid at that point, so eviction
+      // targets the right ledger; no need to thread the uid through explicitly.
+      fb.api.signOut(fb.auth).catch(() => {});
+    },
+    { title: "Sign out", confirmText: "Sign out" }
+  );
 }
 
 // RUMBLE:LIFETIME:end
@@ -9691,8 +10083,9 @@ function renderSaveToLifetimeBlock() {
   toggleLabel.appendChild(document.createTextNode("Save results to lifetime stats"));
   card.appendChild(toggleLabel);
   card.appendChild(el("p", { class: "muted", style: "font-size:13px;margin:4px 0 0;" },
-    "Stores each player's results under their phone number for lifetime stats " +
-    "(on this device; synced when you sign in). Players can ask to be removed."));
+    "Stores each player's results under their phone number for lifetime stats — on " +
+    "this device, and when you sign in, in your private cloud space (US region). " +
+    "Players can ask to be removed; deleting removes their data from both."));
   card.appendChild(el("button", {
     class: "secondary",
     style: "width:100%;margin-top:12px;",
@@ -13361,6 +13754,8 @@ function openCareer() {
   bg.addEventListener("click", e => { if (e.target === bg) close(); });
 
   modal.appendChild(el("h2", null, "Lifetime Stats"));
+  const syncRow = buildSyncRow();
+  if (syncRow) modal.appendChild(syncRow);
 
   // Reopen from scratch after an import/wipe so the table reflects the change,
   // including the empty <-> populated transition (which swaps the whole layout).
@@ -13371,6 +13766,7 @@ function openCareer() {
     modal.appendChild(el("p", { class: "muted" },
       "No lifetime stats yet — enable 'Save to lifetime stats' when you run a tournament."));
     modal.appendChild(buildDataRow(reopen));
+    modal.appendChild(buildDataAboutSection());
     modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Done"));
     bg.appendChild(modal);
     mountModal(bg, modal);
@@ -13489,9 +13885,56 @@ function openCareer() {
   renderBody();
 
   modal.appendChild(buildDataRow(reopen));
+  modal.appendChild(buildDataAboutSection());
   modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Done"));
   bg.appendChild(modal);
   mountModal(bg, modal);
+}
+
+// Cloud-sync row for the Career modal header. Returns null when the Firebase
+// bridge is absent (local-only build) so signed-out local use is unaffected.
+// Signed out: a "Sign in to sync" button. Signed in: account email + a status
+// chip (Synced / Pending(n) / Offline) + a Sign out button.
+function buildSyncRow() {
+  const fb = window.__rumbleFb;
+  if (!fb) return null;
+  const row = el("div", {
+    style: "display:flex;align-items:center;gap:8px;margin:-4px 0 14px;flex-wrap:wrap;",
+  });
+  const user = fb.auth && fb.auth.currentUser;
+  if (!user) {
+    row.appendChild(el("button", {
+      style: "flex:1;",
+      onclick: lifetimeSignIn,
+    }, "Sign in to sync"));
+    let localCount = 0;
+    try { localCount = LifetimeStore.anonymousPendingCount(); } catch (e) {}
+    if (localCount > 0) {
+      row.appendChild(el("div", {
+        class: "muted",
+        style: "flex-basis:100%;font-size:12px;",
+      }, "On this device only — sign in to sync."));
+    }
+    return row;
+  }
+  const st = LifetimeStore.status();
+  const chipLabel = !st.online ? "Offline"
+    : st.pendingCount ? "Pending(" + st.pendingCount + ")"
+    : "Synced";
+  const chipColor = !st.online ? "var(--muted)"
+    : st.pendingCount ? "var(--accent)"
+    : "var(--good)";
+  row.appendChild(el("div", {
+    class: "muted",
+    style: "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;",
+    title: user.email || "",
+  }, user.email || "Signed in"));
+  row.appendChild(el("span", {
+    style: "font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px;" +
+      "border:1px solid var(--border);color:" + chipColor + ";white-space:nowrap;",
+  }, chipLabel));
+  row.appendChild(el("button", { onclick: lifetimeSignOut }, "Sign out"));
+  return row;
 }
 
 // Data-management footer for the Career modal: export / import / wipe the active
@@ -13541,7 +13984,11 @@ function buildDataRow(refresh) {
 
   const wipeBtn = el("button", { class: "danger", style: "flex:1;" }, "Wipe");
   wipeBtn.addEventListener("click", () => {
-    showConfirm("Erase all lifetime stats on this device? This can't be undone.", () => {
+    const signedIn = LifetimeStore.status().signedIn;
+    const msg = signedIn
+      ? "Erase all lifetime stats — on this device and in your cloud space? This can't be undone."
+      : "Erase all lifetime stats on this device? This can't be undone.";
+    showConfirm(msg, () => {
       LifetimeStore.clearLedger();
       showToast("Lifetime stats erased.");
       refresh();
@@ -13553,6 +14000,34 @@ function buildDataRow(refresh) {
   row.appendChild(wipeBtn);
   row.appendChild(fileInput);
   return row;
+}
+
+// "Your lifetime data" privacy blurb for the Career modal: a small toggle link
+// that reveals where lifetime data lives, who can read it, and how to remove it.
+// Collapsed by default to keep the modal compact.
+function buildDataAboutSection() {
+  const wrap = el("div", { style: "margin-top:10px;" });
+  const blurb = el("p", {
+    class: "muted",
+    style: "display:none;font-size:12px;line-height:1.5;margin:8px 0 0;",
+  },
+    "Lifetime stats are stored on this device. When you sign in, they're also kept " +
+    "in your own owner-scoped cloud space (Firestore, US / nam5 region) — only you " +
+    "can read it. Remove one person with “Remove this player,” or erase everything " +
+    "with Wipe; deletion clears both this device and the cloud. Data is retained " +
+    "until you delete it.");
+  const link = el("button", {
+    style: "background:none;border:none;padding:0;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;",
+    "aria-expanded": "false",
+  }, "ⓘ About this data");
+  link.addEventListener("click", () => {
+    const open = blurb.style.display === "none";
+    blurb.style.display = open ? "block" : "none";
+    link.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  wrap.appendChild(link);
+  wrap.appendChild(blurb);
+  return wrap;
 }
 
 // Player career card: stacks over the leaderboard. `onRemoved` rebuilds the
@@ -13626,8 +14101,10 @@ function openPlayerCard(phoneKey, onRemoved) {
 
   const removeBtn = el("button", { class: "danger", style: "width:100%;margin-top:8px;" }, "Remove this player");
   removeBtn.addEventListener("click", () => {
+    const signedIn = LifetimeStore.status().signedIn;
     showConfirm(
-      "Remove " + (c.displayName || c.phoneKey) + " from lifetime stats? This deletes their results from every tournament on this device.",
+      "Remove " + (c.displayName || c.phoneKey) + " from lifetime stats? This deletes their results from every tournament on this device" +
+        (signedIn ? " and in your cloud space." : "."),
       () => {
         LifetimeStore.removePlayer(phoneKey);
         close();
@@ -13702,6 +14179,13 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
+// ---------- lifetime cloud sync: auth readiness hook (Phase C) ----------
+// The Firebase bridge (C2) loads as a SEPARATE module AFTER this classic script.
+// It may finish before or after this line runs, so cover both: register the hook
+// it calls when ready, and also invoke now if it already signalled ready.
+window.__onRumbleFbReady = setupLifetimeAuth;
+if (window.__rumbleFbReady) setupLifetimeAuth();
+
 // ---------- PWA: service worker registration + update chip ----------
 // Register on secure contexts: https in production, and localhost/127.0.0.1 for
 // local testing (both are valid SW secure contexts). file:// is excluded, so
@@ -13758,6 +14242,77 @@ window.addEventListener("hashchange", () => {
   }
 }
 // RUMBLE:BOOT:end
+</script>
+<!--
+  Firebase cloud foundation (lifetime-stats sync). Loaded as a SEPARATE ES module,
+  AFTER the classic app <script> above. The classic app is fully functional without
+  this: LifetimeStore defaults to NullBackend and only switches to a cloud backend
+  when a LATER task calls LifetimeStore.setBackend(...). This module only sets up the
+  Firebase SDK and exposes a bridge on window.__rumbleFb; it does NOT wire any backend,
+  auth UI, or sync yet. Any failure here is swallowed so the app stays local-only.
+
+  Vendoring note: we import the Firebase v11.10.0 modular ESM builds from the PINNED
+  gstatic CDN URLs rather than vendoring them same-origin. True same-origin vendoring
+  was attempted and verified impractical without a build step: the stock gstatic
+  firebase-auth.js / firebase-firestore.js / firebase-app-check.js builds each hard-code
+  an ABSOLUTE `import ... from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js"`,
+  so even copies served same-origin would still fetch firebase-app from gstatic. Rewriting
+  those imports would require a bundler/build step, which this project intentionally avoids.
+  Pinning the exact version URLs keeps loads deterministic and lets the SW precache them later.
+
+  Config below is a Firebase WEB app config and the App Check reCAPTCHA v3 SITE key —
+  both are publishable by design (security is enforced by App Check + Firestore rules).
+  Analytics (measurementId) is intentionally NOT initialized.
+-->
+<script type="module">
+  try {
+    const V = "https://www.gstatic.com/firebasejs/11.10.0";
+    const [{ initializeApp },
+           { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult,
+             onAuthStateChanged, signOut, reauthenticateWithRedirect },
+           { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+             doc, collection, setDoc, getDoc, getDocs, deleteDoc, writeBatch },
+           { initializeAppCheck, ReCaptchaV3Provider }] = await Promise.all([
+      import(`${V}/firebase-app.js`),
+      import(`${V}/firebase-auth.js`),
+      import(`${V}/firebase-firestore.js`),
+      import(`${V}/firebase-app-check.js`),
+    ]);
+
+    const CONFIG = {
+      apiKey: "AIzaSyC6tCWKiJt4YfYMDIt-vfEeEt7oZm5Jv8s",
+      authDomain: "rumble-d45d9.firebaseapp.com",
+      projectId: "rumble-d45d9",
+      storageBucket: "rumble-d45d9.firebasestorage.app",
+      messagingSenderId: "1084852964901",
+      appId: "1:1084852964901:web:72fd44fca7308c4a1a79cc",
+      measurementId: "G-KFLVF9NG8S",
+    };
+    const RECAPTCHA_V3_SITE_KEY = "6LfN1x4tAAAAAEbAJQ7xe8KwNDfE2vE-H5_8wfBX";
+
+    const app = initializeApp(CONFIG);
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+    const db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+    const auth = getAuth(app);
+
+    window.__rumbleFb = {
+      app, auth, db,
+      api: {
+        GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged,
+        signOut, reauthenticateWithRedirect,
+        doc, collection, setDoc, getDoc, getDocs, deleteDoc, writeBatch,
+      },
+    };
+    window.__rumbleFbReady = true;
+    if (typeof window.__onRumbleFbReady === "function") window.__onRumbleFbReady();
+  } catch (e) {
+    console.warn("[rumble] Firebase unavailable; staying local-only", e);
+  }
 </script>
 </body>
 </html>

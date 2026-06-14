@@ -29,10 +29,37 @@ async function seedState(page, name) {
   await page.reload({ waitUntil: "load" });
 }
 
+// Deterministic, network-free Firebase bridge for visual snapshots: stubs the
+// C2 surface as signed-OUT so the Career modal's "Sign in to sync" row renders
+// without depending on the gstatic CDN (which would otherwise race the modal and
+// flake the baseline). Real gstatic imports are blocked below so the live module
+// can't overwrite this stub.
+function stubFirebaseSignedOut() {
+  window.__rumbleFb = {
+    auth: { currentUser: null },
+    db: {},
+    api: {
+      GoogleAuthProvider: function () {},
+      signInWithRedirect() { return Promise.resolve(); },
+      getRedirectResult() { return Promise.resolve(null); },
+      onAuthStateChanged(_auth, cb) { cb(null); return () => {}; },
+      signOut() { return Promise.resolve(); },
+      doc() { return {}; }, collection() { return {}; },
+      setDoc() { return Promise.resolve(); }, getDoc() { return Promise.resolve({}); },
+      getDocs() { return Promise.resolve({ forEach() {} }); },
+      deleteDoc() { return Promise.resolve(); }, writeBatch() { return {}; },
+    },
+  };
+  window.__rumbleFbReady = true;
+  if (typeof window.__onRumbleFbReady === "function") window.__onRumbleFbReady();
+}
+
 // Seed BOTH localStorage keys, then open the Lifetime Stats (career) modal.
 // `lifetime` may be null to exercise the empty-store state.
 async function seedCareer(page, tourneyState, lifetime) {
+  await page.route("https://www.gstatic.com/firebasejs/**", route => route.abort());
   await page.addInitScript(freezeTime);
+  await page.addInitScript(stubFirebaseSignedOut);
   await page.goto(BASE + "/index.html", { waitUntil: "load" });
   await page.evaluate(({ tKey, tVal, lKey, lVal }) => {
     localStorage.clear();
