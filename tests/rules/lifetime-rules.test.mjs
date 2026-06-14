@@ -58,7 +58,7 @@ function validTournament(owner, overrides) {
           pointsFor: 33,
           pointDiff: 5,
           finalRank: 1,
-          podium: "gold",
+          podium: 1,
           partial: false,
         },
       ],
@@ -202,6 +202,16 @@ test("player doc id with non-digits is denied", async () => {
   await assertFails(
     setDoc(playerDoc(db, A, "555-123-4567"), validPlayer({ phoneKey: "555-123-4567" }))
   );
+});
+
+// ----- DENY-BY-DEFAULT (catch-all) ---------------------------------------
+
+test("authenticated owner cannot write outside the tournaments/players subtrees", async () => {
+  const db = testEnv.authenticatedContext(A).firestore();
+  // A sibling collection under the owner's own doc matches no allow rule → catch-all denies.
+  await assertFails(setDoc(doc(db, "owners", A, "misc", "x"), { foo: 1 }));
+  // A top-level collection is outside both subtrees → catch-all denies.
+  await assertFails(setDoc(doc(db, "tournaments", "x"), { foo: 1 }));
 });
 
 // ----- UNAUTHENTICATED ---------------------------------------------------

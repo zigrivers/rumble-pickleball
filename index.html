@@ -8360,7 +8360,11 @@ const LifetimeStore = (() => {
         const before = (t.results || []).length;
         const results = (t.results || []).filter(r => r.phoneKey !== phoneKey);
         if (results.length === before) { tournaments[id] = t; continue; }   // player absent — untouched, don't re-sync
-        if (results.length) { tournaments[id] = Object.assign({}, t, { results }); modifiedIds.push(id); }
+        // Bump revisedAt so this scrubbed record deterministically WINS last-write-wins
+        // against the stale cloud copy on the next pull. Without it, an equal-timestamp
+        // remote (the un-scrubbed original, e.g. when the re-push failed offline)
+        // resurrects the removed player's rows. trackedPlayerCount is kept honest too.
+        if (results.length) { tournaments[id] = Object.assign({}, t, { results, trackedPlayerCount: results.length, revisedAt: Date.now() }); modifiedIds.push(id); }
         else removedIds.push(id);                                            // emptied → drop locally + delete remotely
       }
       led.tournaments = tournaments;
@@ -8585,16 +8589,21 @@ function retractLifetimeRecord() {
 // ---------- cloud auth wiring (Phase C) ----------
 // Wired only when the Firebase bridge (C2) is present; otherwise the app stays
 // 100% local-only. Called via the readiness hook in BOOT.
-function setupLifetimeAuth() {
+async function setupLifetimeAuth() {
   const fb = window.__rumbleFb;
   if (!fb) return;
+  // Resolve any pending redirect sign-in BEFORE registering the auth observer.
   // A non-null redirect result means the user JUST completed an interactive
-  // sign-in (the page navigated to Google and back). That's the only moment we
-  // may offer to move anonymous on-device data into their account.
-  let _justSignedInInteractively = false;
-  fb.api.getRedirectResult(fb.auth)
-    .then(res => { if (res && res.user) _justSignedInInteractively = true; })
-    .catch(() => {});
+  // sign-in (the page navigated to Google and back) — the only moment we may
+  // offer to move anonymous on-device data into their account. Awaiting it here
+  // (rather than in a separate, racing .then()) guarantees the signal is known
+  // before the first onAuthStateChanged fires; otherwise the observer could win
+  // the microtask race and the merge offer would be silently missed on redirect.
+  let _redirectUid = null;
+  try {
+    const res = await fb.api.getRedirectResult(fb.auth);
+    if (res && res.user) _redirectUid = res.user.uid;
+  } catch (e) {}
   // The first callback fires on every load to report the current (already
   // persisted) auth state; the app has already render()ed at boot, so a render
   // here would only destroy a modal opened during load. Re-render on later
@@ -8604,9 +8613,10 @@ function setupLifetimeAuth() {
     const wasFirst = _firstAuthEvent;
     _firstAuthEvent = false;
     if (user) {
-      // A signed-in user on a non-first event is also an interactive sign-in
-      // (e.g. popup flows that don't reload). Either signal offers the merge.
-      const interactive = _justSignedInInteractively || !wasFirst;
+      // Interactive sign-in = this load consumed a redirect result for this user,
+      // OR a later (non-first) transition (e.g. popup flows that don't reload).
+      // Either signal offers the merge; a persisted-session reload offers nothing.
+      const interactive = (_redirectUid && _redirectUid === user.uid) || !wasFirst;
       LifetimeStore.connect(user)
         .then(() => { if (interactive) maybePromptAnonymousMerge(); })
         .catch(() => {});
@@ -14091,8 +14101,10 @@ function openPlayerCard(phoneKey, onRemoved) {
 
   const removeBtn = el("button", { class: "danger", style: "width:100%;margin-top:8px;" }, "Remove this player");
   removeBtn.addEventListener("click", () => {
+    const signedIn = LifetimeStore.status().signedIn;
     showConfirm(
-      "Remove " + (c.displayName || c.phoneKey) + " from lifetime stats? This deletes their results from every tournament on this device.",
+      "Remove " + (c.displayName || c.phoneKey) + " from lifetime stats? This deletes their results from every tournament on this device" +
+        (signedIn ? " and in your cloud space." : "."),
       () => {
         LifetimeStore.removePlayer(phoneKey);
         close();
