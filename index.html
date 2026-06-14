@@ -1663,6 +1663,25 @@ function runSelfTests() {
     console.assert(c.tournaments === 2 && c.wins === 6 && c.games === 10, "career sums across records", c);
     console.assert(Math.abs(c.winPct - 0.6) < 1e-9 && c.bestFinish === 1 && c.podiums[1] === 1 && c.podiums[2] === 1, "career derived fields", c);
   }
+  // Lifetime A6 — store round-trips (guards the real key)
+  {
+    const saved = localStorage.getItem("pb_lifetime_v1");
+    localStorage.removeItem("pb_lifetime_v1");
+    const rec = { id: "t1", completedAt: 1, revisedAt: 1, results: [
+      { phoneKey: "5550000009", name: "Z", gamesPlayed: 2, wins: 1, losses: 1, pointsFor: 20, pointDiff: 0, finalRank: 3, podium: 3, partial: false, status: "active" } ]};
+    LifetimeStore.putTournamentRecord(rec);
+    console.assert(LifetimeStore.allRecords().length === 1, "store persists record");
+    LifetimeStore.putTournamentRecord(rec);
+    console.assert(LifetimeStore.allRecords().length === 1, "store idempotent on same id");
+    const json = LifetimeStore.exportJSON();
+    LifetimeStore.clearLedger();
+    console.assert(LifetimeStore.allRecords().length === 0, "wipe clears");
+    LifetimeStore.importJSON(json, { merge: true });
+    console.assert(LifetimeStore.allRecords().length === 1, "import restores");
+    LifetimeStore.removePlayer("5550000009");
+    console.assert(LifetimeStore.career("5550000009").tournaments === 0, "removePlayer scrubs rows");
+    if (saved !== null) localStorage.setItem("pb_lifetime_v1", saved); else localStorage.removeItem("pb_lifetime_v1");
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -8060,6 +8079,67 @@ function playerCareer(ledger, phoneKey) {
   };
 }
 function allCareers(ledger) { return Object.keys(ledger.players).map(k => playerCareer(ledger, k)); }
+
+// ---------- store facade ----------
+const LIFETIME_KEY = "pb_lifetime_v1";
+const NullBackend = {
+  connect() {}, disconnect() {},
+  push() { return Promise.resolve(); },
+  deleteRemote() { return Promise.resolve(); },
+  pull() { return Promise.resolve(null); },
+};
+
+const LifetimeStore = (() => {
+  let backend = NullBackend;
+  function readAll() {
+    try { const raw = localStorage.getItem(LIFETIME_KEY); if (raw) return JSON.parse(raw); } catch (e) {}
+    return { schemaVersion: 1, activeOwner: "local", ledgers: { local: emptyLedger() } };
+  }
+  function writeAll(all) {
+    try { localStorage.setItem(LIFETIME_KEY, JSON.stringify(all)); }
+    catch (e) { console.warn("lifetime save failed", e); }
+  }
+  function active(all) {
+    all.ledgers[all.activeOwner] = all.ledgers[all.activeOwner] || emptyLedger();
+    return all.ledgers[all.activeOwner];
+  }
+  return {
+    setBackend(b) { backend = b || NullBackend; },
+    getLedger() { return active(readAll()); },
+    putTournamentRecord(record) {
+      const all = readAll(); const led = active(all);
+      const merged = ledgerPutRecord(led, record);
+      if (merged.sync.pendingTournamentIds.indexOf(record.id) === -1) merged.sync.pendingTournamentIds.push(record.id);
+      all.ledgers[all.activeOwner] = merged; writeAll(all);
+      backend.push(record).catch(() => {});
+      return merged;
+    },
+    removeTournament(id) {
+      const all = readAll(); const led = active(all);
+      const tournaments = Object.assign({}, led.tournaments); delete tournaments[id]; led.tournaments = tournaments;
+      if (led.sync.pendingDeletes.indexOf(id) === -1) led.sync.pendingDeletes.push(id);
+      writeAll(all);
+    },
+    removePlayer(phoneKey) {
+      const all = readAll(); const led = active(all);
+      const players = Object.assign({}, led.players); delete players[phoneKey]; led.players = players;
+      for (const t of Object.values(led.tournaments)) t.results = t.results.filter(r => r.phoneKey !== phoneKey);
+      writeAll(all);
+    },
+    clearLedger() { const all = readAll(); all.ledgers[all.activeOwner] = emptyLedger(); writeAll(all); },
+    allRecords() { return Object.values(active(readAll()).tournaments); },
+    career(phoneKey) { return playerCareer(active(readAll()), phoneKey); },
+    careers() { return allCareers(active(readAll())); },
+    exportJSON() { return JSON.stringify(active(readAll()), null, 2); },
+    importJSON(text, opts) {
+      const incoming = JSON.parse(text);
+      if (!incoming || typeof incoming !== "object" || !incoming.tournaments) throw new Error("invalid lifetime export");
+      const all = readAll(); const led = active(all);
+      all.ledgers[all.activeOwner] = (opts && opts.merge) ? mergeLedgers(led, incoming) : incoming;
+      writeAll(all);
+    },
+  };
+})();
 
 // RUMBLE:LIFETIME:end
 // RUMBLE:RENDER:start
