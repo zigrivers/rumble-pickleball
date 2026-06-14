@@ -1652,6 +1652,17 @@ function runSelfTests() {
     console.assert(normalizeStatRow("crown", { gamesWon: 2, gamesLost: 1, pointsScored: 33, pointDiff: 5 }).gamesPlayed === 3,
       "crown gamesPlayed = won + lost");
   }
+  // Lifetime A5 — aggregation
+  {
+    let L = emptyLedger();
+    L = ledgerPutRecord(L, { id: "a", completedAt: 1, revisedAt: 1, results: [
+      { phoneKey: "k", name: "K", gamesPlayed: 4, wins: 3, losses: 1, pointsFor: 40, pointDiff: 8, finalRank: 2, podium: 2, partial: false, status: "active" } ]});
+    L = ledgerPutRecord(L, { id: "b", completedAt: 2, revisedAt: 1, results: [
+      { phoneKey: "k", name: "K", gamesPlayed: 6, wins: 3, losses: 3, pointsFor: 55, pointDiff: -2, finalRank: 1, podium: 1, partial: false, status: "active" } ]});
+    const c = playerCareer(L, "k");
+    console.assert(c.tournaments === 2 && c.wins === 6 && c.games === 10, "career sums across records", c);
+    console.assert(Math.abs(c.winPct - 0.6) < 1e-9 && c.bestFinish === 1 && c.podiums[1] === 1 && c.podiums[2] === 1, "career derived fields", c);
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -8026,6 +8037,29 @@ function normalizeStatRow(format, st) {
   return { gamesPlayed: st.gp, wins: st.wins, losses: st.losses,   // rr / gauntlet (computeStats rows)
            pointsFor: st.points, pointDiff: st.diff };
 }
+
+// ---------- aggregation (derive on read) ----------
+function playerCareer(ledger, phoneKey) {
+  const recs = Object.values(ledger.tournaments).filter(t => t.results.some(r => r.phoneKey === phoneKey));
+  let wins = 0, losses = 0, games = 0, pointsFor = 0, diffSum = 0, best = null;
+  const podiums = { 1: 0, 2: 0, 3: 0 };
+  for (const t of recs) {
+    const r = t.results.find(x => x.phoneKey === phoneKey);
+    wins += r.wins; losses += r.losses; games += r.gamesPlayed;
+    pointsFor += r.pointsFor; diffSum += r.pointDiff;
+    if (r.finalRank && (best === null || r.finalRank < best)) best = r.finalRank;
+    if (r.podium) podiums[r.podium]++;
+  }
+  const player = ledger.players[phoneKey] || { phoneKey, displayName: phoneKey, aliases: [] };
+  return {
+    phoneKey, displayName: player.displayName, aliases: player.aliases || [],
+    tournaments: recs.length, wins, losses, games,
+    winPct: games ? wins / games : 0,
+    pointsFor, avgPointDiff: games ? diffSum / games : 0,
+    bestFinish: best, podiums,
+  };
+}
+function allCareers(ledger) { return Object.keys(ledger.players).map(k => playerCareer(ledger, k)); }
 
 // RUMBLE:LIFETIME:end
 // RUMBLE:RENDER:start
