@@ -1611,6 +1611,17 @@ function runSelfTests() {
     console.assert(Array.isArray(s.notifiedRounds) && s.notifiedRounds.length === 0,
       "newState.notifiedRounds=[]");
   }
+  // Lifetime A1 — state fields + tournamentId stability
+  {
+    const s2 = newState();
+    console.assert(s2.saveToLifetime === false, "newState.saveToLifetime defaults false");
+    const legacy = { phase: "playing", scheduleSeed: 42 };
+    backfillStateDefaults(legacy);
+    console.assert(legacy.tournamentId === "" && legacy.startedAt === 0,
+      "backfill does not invent tournamentId/startedAt (boot path does)", legacy);
+    backfillStateDefaults(legacy);
+    console.assert(legacy.startedAt === 0, "backfill idempotent / no clock read", legacy);
+  }
   // Accessibility/product Task 1 - preference defaults
   {
     const s = newState();
@@ -4420,6 +4431,9 @@ function newState() {
     winScore: 11,
     winBy: 2,
     scoringSystem: "sideout",
+    saveToLifetime: false,                           // opt-in: record this tournament to lifetime stats
+    startedAt: 0,                                     // epoch ms, stamped at startTournament; feeds tournamentId
+    tournamentId: "",                                // "<scheduleSeed>-<startedAt>", stamped once at start
     notifiedRounds: [],
     previousRanks: [],                               // stack: prior-round rank order (slots), drives trajectory arrows
     eventLog: [],
@@ -4758,6 +4772,9 @@ function backfillStateDefaults(obj) {
   if (typeof obj.winBy !== "number") obj.winBy = 2;
   if (obj.scoringSystem !== "sideout" && obj.scoringSystem !== "rally") obj.scoringSystem = "sideout";
   if (!Array.isArray(obj.notifiedRounds)) obj.notifiedRounds = [];
+  if (typeof obj.saveToLifetime !== "boolean") obj.saveToLifetime = false;
+  if (typeof obj.startedAt !== "number") obj.startedAt = 0;            // do NOT read the clock here (runs on display reads + undo)
+  if (typeof obj.tournamentId !== "string") obj.tournamentId = "";    // boot path stamps legacy in-progress tournaments
   if (!["rr","stack","crown","king","gauntlet"].includes(obj.format)) obj.format = "rr";
   if (!Number.isInteger(obj.courtCount) || obj.courtCount < 1 || obj.courtCount > 6) obj.courtCount = 2;
   if (!Number.isInteger(obj.scheduleSeed)) obj.scheduleSeed = makeScheduleSeed();
@@ -6148,6 +6165,8 @@ function finalRankingCrown() {
   entries.forEach(e => { if (e.name) phoneByName[e.name] = normalizePhone(e.phone || ""); });
 
   state.scheduleSeed = makeScheduleSeed();
+  state.startedAt = Date.now();
+  state.tournamentId = state.scheduleSeed + "-" + state.startedAt;   // stable id for lifetime records
   state.tiebreakRandom = shuffle(Array.from({ length: count }, (_, i) => i));
   state.currentRound = 1;
   if (state.timeBudget && state.timeBudget.enabled) {
@@ -7889,6 +7908,12 @@ function el(tag, props, ...children) {
 }
 
 // RUMBLE:STATS:end
+// RUMBLE:LIFETIME:start
+// Lifetime (permanent) player stats — identity, store, recording, aggregation.
+// Filled in across Phase A/B tasks. These are top-level function declarations
+// (hoisted), so they are callable from finish handlers and boot regardless of
+// their textual position here.
+// RUMBLE:LIFETIME:end
 // RUMBLE:RENDER:start
 function render() {
   // Dismiss any open dialog (settings/paste/etc.) on a full re-render so it can't
@@ -12958,6 +12983,12 @@ function setupDisplayModeRefresh() {
 
 // RUMBLE:MODALS:end
 // RUMBLE:BOOT:start
+// Legacy tournaments started before tournamentId existed: stamp once and persist.
+if (state && state.phase && state.phase !== "setup" && !state.tournamentId) {
+  if (!state.startedAt) state.startedAt = 0;
+  state.tournamentId = (state.scheduleSeed || 0) + "-" + state.startedAt;
+  save();
+}
 setupDisplayModeRefresh();
 render();
 window.addEventListener("hashchange", () => {

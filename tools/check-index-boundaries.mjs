@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 const html = fs.readFileSync("index.html", "utf8");
-const sections = ["STYLE", "STATE", "TESTS", "CORE", "FORMATS", "STATS", "RENDER", "MODALS", "BOOT"];
+const sections = ["STYLE", "STATE", "TESTS", "CORE", "FORMATS", "STATS", "LIFETIME", "RENDER", "MODALS", "BOOT"];
 let last = -1;
 const failures = [];
 
