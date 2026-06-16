@@ -344,6 +344,9 @@
     font-family: inherit;
   }
   .name-input:focus { outline: none; border-color: var(--accent); }
+  .name-input.invalid { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
+  .name-input.invalid:focus { border-color: var(--bad); }
+  #start-hint.is-error { color: var(--bad); font-weight: 600; }
   .court-summary {
     margin-top: 10px;
     padding: 10px 12px;
@@ -2079,6 +2082,16 @@ function runSelfTests() {
       "v4 storage key migration: writes current key");
     console.assert(localStorage.getItem("pb_tourney_v4") === null,
       "v4 storage key migration: clears old key");
+
+    // Partial/interrupted write: valid JSON in a rounds-based playing phase but no `rounds`.
+    // load() must reject it (→ null → clean setup) and clear the broken key, not return a blank state.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ phase: "playing", format: "rr", currentRound: 3 }));
+    const broken = load();
+    console.assert(broken === null, "partial playing state (no rounds) rejected by load()", broken);
+    console.assert(localStorage.getItem(STORAGE_KEY) === null, "broken state key cleared by load()");
+    console.assert(isLoadableState({ phase: "setup" }) === true, "setup state is loadable without rounds");
+    console.assert(isLoadableState({ phase: "playing", format: "crown", crownMatches: [] }) === true,
+      "crown playing state not gated on rounds");
 
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem("pb_tourney_v4");
@@ -4765,22 +4778,23 @@ function makeScheduleSeed() {
     const min = format === "crown" ? 4 : 4;
     const max = format === "crown" ? 4 : 24;
     if (playerCount < min || playerCount > max) {
-      return { ok: false, playerCount, effectiveCourtCount,
+      return { ok: false, playerCount, effectiveCourtCount, errorKind: "range",
         error: format === "crown" ? "Crown Court requires exactly 4 players." : "Use 4–24 players." };
     }
     const filled = trimmed.filter(Boolean).length;
     if (filled < playerCount) {
-      return { ok: false, playerCount, effectiveCourtCount,
+      return { ok: false, playerCount, effectiveCourtCount, errorKind: "incomplete",
         error: "Enter all " + playerCount + " player names to start (" + filled + "/" + playerCount + " so far)." };
     }
-    const seen = new Set();
-    for (const n of trimmed) {
-      const k = n.toLowerCase();
+    const seen = new Map();
+    for (let i = 0; i < trimmed.length; i++) {
+      const k = trimmed[i].toLowerCase();
       if (seen.has(k)) {
-        return { ok: false, playerCount, effectiveCourtCount,
-          error: "Duplicate name: “" + n + "”. Each player needs a unique name." };
+        return { ok: false, playerCount, effectiveCourtCount, errorKind: "duplicate",
+          invalidSlots: [seen.get(k), i],
+          error: "Duplicate name: “" + trimmed[i] + "”. Each player needs a unique name." };
       }
-      seen.add(k);
+      seen.set(k, i);
     }
     return { ok: true, names: trimmed, playerCount, effectiveCourtCount };
   }
@@ -5135,7 +5149,31 @@ function backfillStateDefaults(obj) {
   }
   return obj;
 }
+// A restored state is only usable if its phase's core structures are present.
+// Guards against a partial/interrupted write (valid JSON, missing `rounds`) that
+// would otherwise render a blank, unrecoverable playing screen.
+function isLoadableState(obj) {
+  if (!obj || typeof obj.phase !== "string") return false;
+  const needsRounds = obj.phase === "playing" || obj.phase === "finals" || obj.phase === "done";
+  // Crown carries its own `crownMatches` structure (backfilled to 3); other formats need real rounds.
+  if (needsRounds && obj.format !== "crown") {
+    if (!Array.isArray(obj.rounds) || obj.rounds.length === 0) return false;
+  }
+  return true;
+}
+
 function load() {
+  const obj = loadStoredState();
+  if (obj && !isLoadableState(obj)) {
+    // Structurally broken restore — discard it so we fall back to a clean setup
+    // instead of stranding the user on a blank screen.
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    return null;
+  }
+  return obj;
+}
+
+function loadStoredState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -8894,11 +8932,24 @@ function updateStartState() {
   if (!state) return;
   const btn = document.getElementById("start-btn");
   if (btn) btn.disabled = !canStart();
+  // Highlight the specific name inputs that fail validation (e.g. a duplicate pair),
+  // so the error is actionable next to the field rather than only at the bottom.
+  const validation = validateSetupConfig(state.format, setupNames(), state.courtCount);
+  const invalid = new Set(validation.invalidSlots || []);
+  document.querySelectorAll(".setup-list .name-input[id^='setup-name-']").forEach(inp => {
+    const idx = parseInt(inp.id.slice("setup-name-".length), 10);
+    const bad = invalid.has(idx);
+    inp.classList.toggle("invalid", bad);
+    if (bad) inp.setAttribute("aria-invalid", "true"); else inp.removeAttribute("aria-invalid");
+  });
   const hint = document.getElementById("start-hint");
   if (hint) {
     const reason = startBlockReason();
     hint.textContent = reason;
     hint.style.display = reason ? "" : "none";
+    // A duplicate/range problem is a real error (red); an incomplete count is neutral guidance.
+    const isError = !validation.ok && validation.errorKind && validation.errorKind !== "incomplete";
+    hint.classList.toggle("is-error", !!isError);
   }
 }
 
@@ -9726,6 +9777,15 @@ function updateTimeBudgetReadoutDOM(readout, isTight, hasError) {
     domEl.textContent = vals[i % 3];
   });
 
+  // Hide the Likely-done / Confidence rows entirely when there's no estimate
+  // (e.g. the budget can't be met) so we don't render dangling label-only lines.
+  [["tb-likely-done-row", readout.likelyDone], ["tb-confidence-row", readout.confidence],
+   ["tb-s-likely-done-row", readout.likelyDone], ["tb-s-confidence-row", readout.confidence]
+  ].forEach(([id, val]) => {
+    const row = document.getElementById(id);
+    if (row) row.style.display = val ? "" : "none";
+  });
+
   // tight banners
   ["tb-tight-banner", "tb-s-tight-banner"].forEach(id => {
     const el = document.getElementById(id);
@@ -9863,7 +9923,7 @@ function openShareCardsModal() {
   playerRow.appendChild(playerSelect);
   modal.appendChild(playerRow);
 
-  const preview = el("div", { class: "rules", style: "margin:10px 0 14px;padding:10px;" });
+  const preview = el("div", { style: "margin:12px auto 14px;max-width:240px;" });
   modal.appendChild(preview);
 
   const currentModel = () => buildShareCardModel(typeSelect.value, {
@@ -9874,7 +9934,17 @@ function openShareCardsModal() {
     roundRow.style.display = typeSelect.value === "round" ? "" : "none";
     playerRow.style.display = typeSelect.value === "player" ? "" : "none";
     const model = currentModel();
-    preview.textContent = model.title + "\n" + (model.lines || []).slice(0, 5).join("\n");
+    // Show the actual card the user will download/share, not just a text summary.
+    preview.innerHTML = renderShareCardSvg(model);
+    const svgEl = preview.querySelector("svg");
+    if (svgEl) {
+      svgEl.removeAttribute("width");
+      svgEl.removeAttribute("height");
+      svgEl.style.width = "100%";
+      svgEl.style.height = "auto";
+      svgEl.style.display = "block";
+      svgEl.style.borderRadius = "10px";
+    }
   };
   [typeSelect, roundSelect, playerSelect].forEach(sel => sel.addEventListener("change", refresh));
   refresh();
@@ -10007,10 +10077,10 @@ function renderTimeBudgetBlock() {
   readout.appendChild(el("div", null,
     "Will play: ", el("span", { id: "tb-will-play" }, "—")
   ));
-  readout.appendChild(el("div", null,
+  readout.appendChild(el("div", { id: "tb-likely-done-row" },
     "Likely done: ", el("span", { id: "tb-likely-done" }, "—")
   ));
-  readout.appendChild(el("div", null,
+  readout.appendChild(el("div", { id: "tb-confidence-row" },
     "Confidence: ", el("span", { id: "tb-confidence" }, "using defaults (no history)")
   ));
   details.appendChild(readout);
@@ -10194,6 +10264,7 @@ function renderSaveToLifetimeBlock() {
       const row = el("div", { class: "setup-row", style: "display:flex;gap:8px;" });
     const nameInput = el("input", {
       class: "name-input",
+      id: "setup-name-" + i,
       type: "text",
       placeholder: "Player " + (i + 1),
       "aria-label": "Player " + (i + 1) + " name",
@@ -10272,6 +10343,8 @@ function renderSaveToLifetimeBlock() {
   startHint.textContent = initialReason;
   startHint.style.display = initialReason ? "" : "none";
   wrap.appendChild(startHint);
+  // After mount, apply field-level validation highlighting + error styling.
+  requestAnimationFrame(updateStartState);
   return wrap;
 }
 
@@ -10706,7 +10779,7 @@ function renderCrownStandingsCard() {
     }, "🏆 Top 2") : null;
     tbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankCell(i),
-      el("td", { class: "name" }, s.name, top2badge),
+      el("td", { class: "name", title: s.name }, s.name, top2badge),
       el("td", { class: "num" }, s.matchPoints.toFixed(1)),
       el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
       el("td", { class: "num" }, "" + s.pointsScored),
@@ -11071,7 +11144,7 @@ function renderDoneScreenCrown() {
     }
     standingsTbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankCell(i),
-      el("td", { class: "name" }, s.name),
+      el("td", { class: "name", title: s.name }, s.name),
       el("td", { class: "num" }, s.matchPoints.toFixed(1)),
       el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
       el("td", { class: "num" }, "" + s.pointsScored),
@@ -11451,6 +11524,7 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
     inputmode: "numeric",
     pattern: "[0-9]*",
     min: "0",
+    max: "99",
     placeholder: "–",
     value: Number.isInteger(game[scoreKey]) ? String(game[scoreKey]) : "",
     "aria-label": "Score for " + nameOf(team[0]) + " and " + nameOf(team[1]),
@@ -11475,7 +11549,9 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
       game[scoreKey] = null;
     } else {
       const n = parseInt(v, 10);
-      if (!Number.isNaN(n) && n >= 0) game[scoreKey] = n;
+      // Floor at 0 and cap at 99 — a value above any real pickleball score is a typo,
+      // and an unbounded number produces nonsense like "win by 988". Blur re-syncs the field.
+      if (!Number.isNaN(n) && n >= 0) game[scoreKey] = Math.min(n, 99);
     }
     // Editing a decided game back to a tie/blank reopens it — clear the end
     // stamp so the clock resumes and a later re-decide records a fresh duration.
@@ -11579,7 +11655,7 @@ function standingsRowClass(rankClass, slot) {
 }
 function standingNameCell(s, ...extras) {
   const departed = departedText(s.slot);
-  return el("td", { class: "name" }, s.name,
+  return el("td", { class: "name", title: s.name }, s.name,
     departed ? el("span", { class: "departed-label" }, departed) : null,
     ...extras);
 }
@@ -12992,7 +13068,8 @@ function openSettings() {
 
   modal.appendChild(el("button", {
     style: "width: 100%; margin-bottom: 12px;",
-    onclick: () => { close(); openHowItWorksModal(); },
+    // Stack over Settings (mountModal handles topmost-wins) so closing returns here.
+    onclick: () => { openHowItWorksModal(); },
   }, "How this works"));
 
   modal.appendChild(el("button", {
@@ -13002,13 +13079,13 @@ function openSettings() {
 
   modal.appendChild(el("button", {
     style: "width: 100%; margin-bottom: 12px;",
-    onclick: () => { close(); openCareer(); },
+    onclick: () => { openCareer(); },
   }, "Lifetime Stats"));
 
   if (state.phase !== "setup") {
     modal.appendChild(el("button", {
       style: "width: 100%; margin-bottom: 12px;",
-      onclick: () => { close(); openScheduleModal(); },
+      onclick: () => { openScheduleModal(); },
     }, "View full schedule"));
   }
 
@@ -13337,8 +13414,8 @@ function openSettings() {
   // Read-out block
   const tbReadout = el("div", { class: "muted", style: "font-size:13px;margin:6px 0;" });
   tbReadout.appendChild(el("div", null, "Will play: ", el("span", { id: "tb-s-will-play" }, "—")));
-  tbReadout.appendChild(el("div", null, "Likely done: ", el("span", { id: "tb-s-likely-done" }, "—")));
-  tbReadout.appendChild(el("div", null, "Confidence: ", el("span", { id: "tb-s-confidence" }, "using defaults (no history)")));
+  tbReadout.appendChild(el("div", { id: "tb-s-likely-done-row" }, "Likely done: ", el("span", { id: "tb-s-likely-done" }, "—")));
+  tbReadout.appendChild(el("div", { id: "tb-s-confidence-row" }, "Confidence: ", el("span", { id: "tb-s-confidence" }, "using defaults (no history)")));
   tbDetails.appendChild(tbReadout);
 
   // Tight-budget banner (shown when solver picks the tightest config)
