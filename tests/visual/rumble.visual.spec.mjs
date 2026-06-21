@@ -108,6 +108,14 @@ test("text results", async ({ page }) => {
   await expect(page).toHaveScreenshot("text-results.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
 });
 
+test("standings points view", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await seedState(page, "playing-13p-3c");
+  await page.getByRole("button", { name: "Points" }).click();
+  await page.waitForTimeout(200);
+  await expect(page).toHaveScreenshot("standings-points.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
+});
+
 test("guide flex section", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.addInitScript(freezeTime);

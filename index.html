@@ -12165,7 +12165,11 @@ function renderFinalsScreen() {
 
   // Seeds card
   const seedsCard = el("div", { class: "card" });
-  seedsCard.appendChild(el("h3", null, "Seeds (after " + total + " rounds)"));
+  const seedsHead = el("div", { style: "display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px;gap:10px;flex-wrap:wrap;" },
+    el("h3", { style: "margin:0;" }, "Seeds (after " + total + " rounds)"),
+    guideButton(state.format),
+  );
+  seedsCard.appendChild(seedsHead);
   const grid = el("div", { class: "seeds-grid" });
   ranked.forEach((s, i) => {
     const meta = isStack
@@ -13026,7 +13030,7 @@ function renderDoneScreen() {
 
   const isStack = state.format === "stack";
   const isKing  = state.format === "king";
-  const colSpan = (isStack || isKing) ? 7 : 6;
+  const colSpan = (isStack || isKing) ? (isPointsView() ? 6 : 8) : 6;
   const dividerLabels = {};
   let dividerAt = 0;
   finalTiers().forEach((tier, i) => {
