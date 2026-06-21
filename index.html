@@ -439,6 +439,10 @@
   }
   .help-th .col-help-btn:hover, .help-th .col-help-btn:focus-visible { color: var(--text); }
   .col-help-modal { max-width: 360px; }
+  .guide-btn { background: none; border: 1px solid var(--muted); color: var(--muted); border-radius: 999px;
+    font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; cursor: pointer; }
+  .guide-btn:hover, .guide-btn:focus-visible { color: var(--text); border-color: var(--text); }
+  .col-guide-modal { max-width: 420px; max-height: 80vh; overflow-y: auto; }
   table.standings tr.r1 td.name { color: var(--gold); }
   table.standings .rank {
     text-align: center;
@@ -4423,6 +4427,20 @@ function runSelfTests() {
     console.assert(/What does AM mean/.test(btn.getAttribute("aria-label") || ""), "helpTh button has aria-label");
     const th2 = helpTh("winpct", "col-hide-mobile");
     console.assert(th2.className.indexOf("col-hide-mobile") !== -1, "helpTh applies extraClass");
+  }
+
+  // Standings — column guide modal lists grouped columns
+  {
+    document.querySelectorAll(".modal-bg").forEach(n => n.remove());
+    openColumnGuideModal("rr");
+    const modal = document.querySelector(".modal-bg .col-guide-modal");
+    console.assert(!!modal, "guide modal mounts");
+    const txt = modal ? modal.textContent : "";
+    console.assert(/Adjusted Margin/.test(txt) && /Total points/.test(txt) && /Games played/.test(txt),
+      "guide shows ranking + points + basics entries");
+    document.querySelectorAll(".modal-bg").forEach(n => n.remove());
+    const gb = guideButton("rr");
+    console.assert(gb.tagName === "BUTTON" && /Column guide/.test(gb.textContent), "guideButton label");
   }
 
     console.log(`[self-tests] complete — ${failures} failure(s)`);
@@ -11904,6 +11922,36 @@ function openColumnHelp(id, format) {
   bg.appendChild(modal);
   bg.addEventListener("click", (e) => { if (e.target === bg) bg.remove(); });
   mountModal(bg, modal);
+}
+function openColumnGuideModal(format) {
+  const groups = guideGroups(format || state.format);
+  const bg = el("div", { class: "modal-bg" });
+  const modal = el("div", { class: "modal col-guide-modal" });
+  modal.appendChild(el("h3", { style: "margin:0 0 12px;" }, "What the columns mean"));
+  Object.keys(groups).forEach(groupName => {
+    const ids = groups[groupName].filter(id => columnHelp(id));
+    if (!ids.length) return;
+    modal.appendChild(el("div", { class: "muted", style: "font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px;" }, groupName));
+    ids.forEach(id => {
+      const h = columnHelp(id);
+      modal.appendChild(el("div", { style: "margin:0 0 10px;" },
+        el("div", { style: "font-weight:700;" }, h.short + " · " + h.name),
+        el("div", { style: "color:var(--text);font-size:14px;" }, h.desc),
+        el("div", { class: "muted", style: "font-size:13px;font-style:italic;margin-top:2px;" }, h.example),
+      ));
+    });
+  });
+  const close = el("button", { class: "primary", style: "width:100%;margin-top:8px;" }, "Got it");
+  close.addEventListener("click", () => bg.remove());
+  modal.appendChild(close);
+  bg.appendChild(modal);
+  bg.addEventListener("click", (e) => { if (e.target === bg) bg.remove(); });
+  mountModal(bg, modal);
+}
+function guideButton(format) {
+  const btn = el("button", { class: "guide-btn", type: "button" }, "ⓘ Column guide");
+  btn.addEventListener("click", () => openColumnGuideModal(format || state.format));
+  return btn;
 }
 function renderStandingsCard(throughRound, opts) {
   if (state.format === "stack")    return renderStackStandingsCard(throughRound, opts);
