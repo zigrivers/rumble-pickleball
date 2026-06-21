@@ -433,6 +433,12 @@
   table.standings th.num { text-align: right; font-variant-numeric: tabular-nums; }
   table.standings td.num { font-size: 20px; font-weight: 700; }
   table.standings td.name { font-size: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .help-th .col-help-btn {
+    background: none; border: 0; color: var(--muted); font: inherit; font-weight: 600;
+    cursor: pointer; padding: 6px 2px; min-height: 32px; text-decoration: underline dotted; text-underline-offset: 3px;
+  }
+  .help-th .col-help-btn:hover, .help-th .col-help-btn:focus-visible { color: var(--text); }
+  .col-help-modal { max-width: 360px; }
   table.standings tr.r1 td.name { color: var(--gold); }
   table.standings .rank {
     text-align: center;
@@ -4406,6 +4412,17 @@ function runSelfTests() {
     console.assert(b.standingsView === "points", "backfill preserves valid standingsView");
     const c = { standingsView: "bogus" }; backfillStateDefaults(c);
     console.assert(c.standingsView === "ranking", "backfill repairs bad standingsView");
+  }
+
+  // Standings — helpTh builds a labeled help button
+  {
+    const th = helpTh("am");
+    console.assert(th.tagName === "TH", "helpTh returns a th");
+    const btn = th.querySelector("button.col-help-btn");
+    console.assert(btn && btn.textContent === "AM", "helpTh shows short label in a button", btn);
+    console.assert(/What does AM mean/.test(btn.getAttribute("aria-label") || ""), "helpTh button has aria-label");
+    const th2 = helpTh("winpct", "col-hide-mobile");
+    console.assert(th2.className.indexOf("col-hide-mobile") !== -1, "helpTh applies extraClass");
   }
 
     console.log(`[self-tests] complete — ${failures} failure(s)`);
@@ -11858,6 +11875,36 @@ function pointStatsFor(s, format) {
   return { gp, pts, net, ppg };
 }
 
+function plainTh(label, extraClass) {
+  return el("th", { class: (extraClass ? extraClass + " " : ""), style: label === "#" ? "text-align:center;" : "" }, label);
+}
+function helpTh(id, extraClass) {
+  const h = columnHelp(id) || { short: id };
+  const btn = el("button", {
+    class: "col-help-btn",
+    type: "button",
+    "aria-label": "What does " + h.short + " mean?",
+    onclick: (e) => { e.stopPropagation(); openColumnHelp(id, state.format); },
+  }, h.short);
+  return el("th", { class: "num help-th" + (extraClass ? " " + extraClass : "") }, btn);
+}
+function openColumnHelp(id, format) {
+  const h = columnHelp(id); if (!h) return;
+  const bg = el("div", { class: "modal-bg" });
+  const modal = el("div", { class: "modal col-help-modal" });
+  modal.appendChild(el("h3", { style: "margin:0 0 4px;" }, h.short + " · " + h.name));
+  modal.appendChild(el("p", { style: "margin:0 0 10px;color:var(--text);" }, h.desc));
+  modal.appendChild(el("p", { class: "muted", style: "margin:0 0 16px;font-style:italic;" }, h.example));
+  const seeAll = el("button", { class: "primary", style: "width:100%;margin-bottom:8px;" }, "See all columns →");
+  seeAll.addEventListener("click", () => { bg.remove(); openColumnGuideModal(format || state.format); });
+  const close = el("button", { style: "width:100%;" }, "Close");
+  close.addEventListener("click", () => bg.remove());
+  modal.appendChild(seeAll);
+  modal.appendChild(close);
+  bg.appendChild(modal);
+  bg.addEventListener("click", (e) => { if (e.target === bg) bg.remove(); });
+  mountModal(bg, modal);
+}
 function renderStandingsCard(throughRound, opts) {
   if (state.format === "stack")    return renderStackStandingsCard(throughRound, opts);
   if (state.format === "crown")    return renderCrownStandingsCard();
