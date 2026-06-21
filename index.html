@@ -10871,30 +10871,34 @@ function renderCrownStandingsCard() {
   const card = el("div", { class: "card" });
   card.appendChild(el("div", { style: "display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:10px;flex-wrap:wrap;" },
     el("h3", { style: "margin:0;" }, "Live Standings"),
-    el("span", { class: "muted" }, completedMatches + " of 3 matches complete"),
+    el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" },
+      el("span", { class: "muted" }, completedMatches + " of 3 matches complete"),
+      standingsViewToggle(), guideButton("crown")),
   ));
+  const points = isPointsView();
   const table = el("table", { class: "standings" });
+  const colgroup = el("colgroup", null,
+    el("col", { class: "c-rank" }),
+    el("col", { class: "c-name" }),
+    ...Array.from({ length: points ? 4 : 2 }, () => el("col", {})));
+  table.appendChild(colgroup);
+  const crownHeaderStatThs = points ? pointsHeaderThs()
+    : [helpTh("mp"), helpTh("gwl")];
   table.appendChild(el("thead", null, el("tr", null,
-    el("th", { style: "text-align:center;" }, "#"),
-    el("th", null, "Player"),
-    el("th", { class: "num", title: "Matches played" }, "MP"),
-    el("th", { class: "num", title: "Game win–loss" }, "G W–L"),
-    el("th", { class: "num", title: "Points scored" }, "PTS"),
-    el("th", { class: "num col-hide-mobile", title: "Points differential" }, "+/–"),
-  )));
+    plainTh("#"), plainTh("Player"), ...crownHeaderStatThs)));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
     const top2badge = i < 2 ? el("span", {
       style: "display:inline-block;margin-left:6px;font-size:11px;padding:2px 6px;border-radius:999px;background:rgba(251,191,36,0.15);color:var(--gold);font-weight:700;vertical-align:middle;"
     }, "🏆 Top 2") : null;
+    const statTds = points ? pointsBodyTds(s, "crown") : [
+      el("td", { class: "num" }, s.matchPoints.toFixed(1)),
+      el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
+    ];
     tbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankCell(i),
       el("td", { class: "name", title: s.name }, s.name, top2badge),
-      el("td", { class: "num" }, s.matchPoints.toFixed(1)),
-      el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
-      el("td", { class: "num" }, "" + s.pointsScored),
-      el("td", { class: "num col-hide-mobile", style: s.pointDiff > 0 ? "color:var(--good);" : (s.pointDiff < 0 ? "color:var(--bad);" : "") },
-        (s.pointDiff > 0 ? "+" : "") + s.pointDiff),
+      ...statTds,
     ));
   });
   table.appendChild(tbody);
@@ -11234,32 +11238,39 @@ function renderDoneScreenCrown() {
   wrap.appendChild(renderAwardsStrip());
 
   const standings = el("div", { class: "card", style: "margin-top:14px;" });
-  standings.appendChild(el("h3", { style: "margin:0 0 12px;" }, "Final Standings"));
+  standings.appendChild(el("div", { style: "display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:10px;flex-wrap:wrap;" },
+    el("h3", { style: "margin:0;" }, "Final Standings"),
+    el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" },
+      standingsViewToggle(), guideButton("crown")),
+  ));
+  const doneCrownPoints = isPointsView();
   const table = el("table", { class: "standings" });
+  const crownDoneColgroup = el("colgroup", null,
+    el("col", { class: "c-rank" }),
+    el("col", { class: "c-name" }),
+    ...Array.from({ length: doneCrownPoints ? 4 : 2 }, () => el("col", {})));
+  table.appendChild(crownDoneColgroup);
+  const crownDoneHeaderThs = doneCrownPoints ? pointsHeaderThs()
+    : [helpTh("mp"), helpTh("gwl")];
   table.appendChild(el("thead", null, el("tr", null,
-    el("th", { style: "text-align:center;" }, "#"),
-    el("th", null, "Player"),
-    el("th", { class: "num", title: "Total matches played" }, "Total MP"),
-    el("th", { class: "num", title: "Game win–loss" }, "G W–L"),
-    el("th", { class: "num", title: "Points scored" }, "PTS"),
-    el("th", { class: "num col-hide-mobile", title: "Points differential" }, "+/–"),
-  )));
+    plainTh("#"), plainTh("Player"), ...crownDoneHeaderThs)));
+  const dividerColspan = String(doneCrownPoints ? 6 : 4);
   const standingsTbody = el("tbody");
   ranking.forEach((s, i) => {
     if (i === 2) {
       standingsTbody.appendChild(el("tr", null,
-        el("td", { colspan: "6", style: "text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 0 4px;border-top:1px dashed var(--border);" },
+        el("td", { colspan: dividerColspan, style: "text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:8px 0 4px;border-top:1px dashed var(--border);" },
           "Crown Match Runners-Up")
       ));
     }
+    const crownDoneStatTds = doneCrownPoints ? pointsBodyTds(s, "crown") : [
+      el("td", { class: "num" }, s.matchPoints.toFixed(1)),
+      el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
+    ];
     standingsTbody.appendChild(el("tr", { class: "r" + (i + 1) },
       rankCell(i),
       el("td", { class: "name", title: s.name }, s.name),
-      el("td", { class: "num" }, s.matchPoints.toFixed(1)),
-      el("td", { class: "num" }, s.gamesWon + "–" + s.gamesLost),
-      el("td", { class: "num" }, "" + s.pointsScored),
-      el("td", { class: "num col-hide-mobile", style: s.pointDiff > 0 ? "color:var(--good);" : (s.pointDiff < 0 ? "color:var(--bad);" : "") },
-        (s.pointDiff > 0 ? "+" : "") + s.pointDiff),
+      ...crownDoneStatTds,
     ));
   });
   table.appendChild(standingsTbody);
@@ -11803,29 +11814,22 @@ function renderKingStandingsCard(throughRound, opts) {
   const card = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
     el("h3", { style: "margin: 0;" }, opts.title || "Live Standings"),
-    opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+    el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" },
+      opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+      standingsViewToggle(), guideButton("king")),
   );
   card.appendChild(head);
+  const points = isPointsView();
   const table = el("table", { class: "standings" + (vno.advancedStats ? "" : " hide-advanced") });
   const colgroup = el("colgroup", null,
     el("col", { class: "c-rank" }),
     el("col", { class: "c-name" }),
-    el("col", { class: "c-stack-extra" }),
-    el("col", { class: "c-pts" }),
-    el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
-    el("col", { class: "c-stack-extra" }),
-    el("col", { class: "c-stack-extra" }),
-  );
+    ...Array.from({ length: points ? 4 : RANKING_COLS.king.length }, () => el("col", {})));
   table.appendChild(colgroup);
+  const headerStatThs = points ? pointsHeaderThs()
+    : RANKING_COLS.king.map(c => helpTh(c.id, c.hideMobile ? "col-hide-mobile" : ""));
   table.appendChild(el("thead", null, el("tr", null,
-    el("th", { style: "text-align: center;" }, "#"),
-    el("th", null, "Player"),
-    el("th", { class: "num", title: "Games played" }, "GP"),
-    el("th", { class: "num", title: "King Score per game" }, "KS/G"),
-    el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
-    el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
-    el("th", { class: "num col-hide-mobile", title: "Points per game" }, "PPG"),
-  )));
+    plainTh("#"), plainTh("Player"), ...headerStatThs)));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
     const traj = vno.trajectory ? trajectorySpan(s.slot, i) : null;
@@ -11833,14 +11837,17 @@ function renderKingStandingsCard(throughRound, opts) {
     if (i < 3) rankTd.appendChild(el("span", { class: "rank-badge medal" }, MEDALS[i]));
     else       rankTd.appendChild(el("span", { class: "rank-badge" }, "" + (i + 1)));
     if (traj) rankTd.appendChild(traj);
-    tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
-      rankTd,
-      standingNameCell(s),
+    const statTds = points ? pointsBodyTds(s, "king") : [
       el("td", { class: "num" }, "" + s.gp),
       el("td", { class: "num" }, s.kingRate.toFixed(1)),
       el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
       el("td", { class: "num col-hide-mobile" }, "" + s.kingCourtWins),
       el("td", { class: "num col-hide-mobile" }, (s.pointsScored / Math.max(1, s.gp)).toFixed(1)),
+    ];
+    tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
+      rankTd,
+      standingNameCell(s),
+      ...statTds,
     ));
   });
   table.appendChild(tbody);
@@ -13065,37 +13072,31 @@ function renderDoneScreen() {
   } else if (isKing) {
     const kingStats = computeKingStats(state.rounds.length);
     const byKingSlot = new Map(kingStats.map(s => [s.slot, s]));
+    const doneKingPoints = isPointsView();
     const colgroup = el("colgroup", null,
       el("col", { class: "c-rank" }),
       el("col", { class: "c-name" }),
-      el("col", { class: "c-stack-extra" }),
-      el("col", { class: "c-pts" }),
-      el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
-      el("col", { class: "c-stack-extra" }),
-      el("col", { class: "c-stack-extra" }),
-    );
+      ...Array.from({ length: doneKingPoints ? 4 : RANKING_COLS.king.length }, () => el("col", {})));
     table.appendChild(colgroup);
+    const doneKingHeaderThs = doneKingPoints ? pointsHeaderThs()
+      : RANKING_COLS.king.map(c => helpTh(c.id, c.hideMobile ? "col-hide-mobile" : ""));
     table.appendChild(el("thead", null, el("tr", null,
-      el("th", { style: "text-align: center;" }, "#"),
-      el("th", null, "Player"),
-      el("th", { class: "num", title: "Games played" }, "GP"),
-      el("th", { class: "num", title: "King Score per game" }, "KS/G"),
-      el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
-      el("th", { class: "num col-hide-mobile", title: "Court 1 wins" }, "👑W"),
-      el("th", { class: "num col-hide-mobile", title: "Points per game" }, "PPG"),
-    )));
+      plainTh("#"), plainTh("Player"), ...doneKingHeaderThs)));
     const tbody = el("tbody");
     ranking.forEach((rs, i) => {
       if (dividerLabels[i]) tbody.appendChild(tierDividerRow(dividerLabels[i]));
       const s = byKingSlot.get(rs.slot);
-      tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
-        rankCell(i),
-        standingNameCell(s),
+      const statTds = doneKingPoints ? pointsBodyTds(s, "king") : [
         el("td", { class: "num" }, "" + s.gp),
         el("td", { class: "num" }, s.kingRate.toFixed(1)),
         el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
         el("td", { class: "num col-hide-mobile" }, "" + s.kingCourtWins),
         el("td", { class: "num col-hide-mobile" }, (s.pointsScored / Math.max(1, s.gp)).toFixed(1)),
+      ];
+      tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
+        rankCell(i),
+        standingNameCell(s),
+        ...statTds,
       ));
     });
     table.appendChild(tbody);
