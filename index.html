@@ -4354,6 +4354,23 @@ function runSelfTests() {
     console.assert(typeof applySetupRecommendation === "function", "applySetupRecommendation is available");
   }
 
+  // Standings — COLUMN_HELP completeness
+  {
+    console.assert(typeof columnHelp === "function", "columnHelp is available");
+    console.assert(columnHelp("zzz") === null, "columnHelp unknown → null");
+    const ids = new Set(["gp", "pts", "net", "ppg"]);
+    Object.values(RANKING_COLS).forEach(cols => cols.forEach(c => ids.add(c.id)));
+    ids.forEach(id => {
+      const h = columnHelp(id);
+      console.assert(h && h.short && h.name && h.desc && h.example,
+        "COLUMN_HELP has full entry for " + id, h);
+    });
+    console.assert(columnHelp("am").short === "AM" && /Adjusted Margin/.test(columnHelp("am").name),
+      "am entry shape");
+    console.assert(columnHelp("mp").short === "MP" && /Match Points/.test(columnHelp("mp").name),
+      "mp relabeled to Match Points");
+  }
+
   // Standings — King tracks pointsAgainst (for NET)
   {
     const _save = state;
@@ -11754,6 +11771,48 @@ function renderKingStandingsCard(throughRound, opts) {
   table.appendChild(tbody);
   card.appendChild(table);
   return card;
+}
+
+// === Standings column help — single source of truth for labels + explanations ===
+const COLUMN_HELP = {
+  // Basics
+  rank:   { short: "#",    name: "Rank",  desc: "Your standing. During play it's a live ranking that can change each round; on the results screen it's your final placement (bracket tier first, then tiebreakers).", example: "#1 = top of the standings right now." },
+  gp:     { short: "GP",   name: "Games played", desc: "How many games you've finished so far.", example: "GP 8 = you've played 8 games." },
+  wl:     { short: "W–L",  name: "Wins–Losses", desc: "Your record: games won, then games lost.", example: "6–2 = six wins, two losses." },
+  winpct: { short: "W%",   name: "Win percentage", desc: "The share of your games you've won.", example: "6 wins out of 8 games = 75%." },
+  // Points (toggle's Points view)
+  pts:    { short: "PTS",  name: "Total points", desc: "Every point you've scored, added up across all your games — win or lose. It just keeps growing.", example: "Scores of 11, 11, 9, 8… over 8 games → PTS 176." },
+  net:    { short: "NET",  name: "Net points", desc: "Points you scored minus points scored against you, for the whole tournament. Positive means you've outscored your opponents overall; negative means they've outscored you.", example: "Scored 176, gave up 163 → NET +13." },
+  ppg:    { short: "PPG",  name: "Points per game", desc: "Your average points scored per game (total points ÷ games played). A steadier number than the running total.", example: "176 points over 8 games → PPG 22.0." },
+  // RR / Gauntlet ranking
+  am:     { short: "AM",   name: "Adjusted Margin", desc: "Your ranking score (higher is better; it can go negative). It's based on how much you win or lose by, with two fairness twists: (1) blowouts have diminishing returns — winning 11–2 counts only a little more than 11–7, so running up the score doesn't pad your rank; (2) it adjusts for who you played — beating strong opponents (or carrying a weaker partner) earns more, beating weak opponents a bit less.", example: "Two players both 6–2 can differ: the one whose wins came against tougher opponents and by healthier margins ranks higher. AM only breaks ties WITHIN a finals tier — the bracket result (champion vs runner-up) comes first." },
+  diffg:  { short: "+/–G", name: "Point margin per game", desc: "On average, how many points you win or lose each game by. Positive means you usually outscore opponents; negative means you're usually outscored.", example: "+1.6 ≈ you outscore opponents by about 1.6 a game; −4.8 ≈ you're outscored by about 5 a game." },
+  // Stack ranking
+  ssg:    { short: "SS/G", name: "Stack Score per game", desc: "Your Stack ranking score per game (higher is better). Each game you earn points for the points you scored — worth more on the higher courts — plus a bonus for winning, and an extra bonus for winning on a lower court (which moves you up). So where you win matters, not just whether you win.", example: "Winning on Court 1 (the top court) is worth more than winning on Court 2, so two players with the same record can have different SS/G." },
+  climbs: { short: "Climbs", name: "Court climbs", desc: "How many times you won your way up to a higher court.", example: "Climbs 3 = you climbed up three times." },
+  c1:     { short: "C1",   name: "Games on Court 1", desc: "How many of your games were played on Court 1, the top court. You only reach it by winning, so more is better.", example: "C1 5 = five of your games were on the top court." },
+  // King ranking
+  ksg:    { short: "KS/G", name: "King Score per game", desc: "Your King ranking score per game (higher is better). It blends your wins, the points you scored, and your wins on the King's Court (the top court) — so winning up top counts most toward your rank.", example: "Two players with the same record rank differently if one won more games on the King's Court." },
+  kingw:  { short: "👑W",  name: "King's Court wins", desc: "Games you won on the King's Court (the top court).", example: "👑W 3 = you won three games up on the King's Court." },
+  // Crown ranking
+  mp:     { short: "MP",   name: "Match Points", desc: "Your Crown ranking score. You earn match points for winning your matches, with partial credit depending on how the match went. Crown standings are ordered by this — most match points wins.", example: "Win your match cleanly and you bank the full match points; a closer result earns a bit less." },
+  gwl:    { short: "G W–L", name: "Game win–loss", desc: "Individual games you won and lost across all your Crown matches (each match is a short series).", example: "G W–L 4–2 = you won four games and lost two across your matches." },
+};
+function columnHelp(id) { return Object.prototype.hasOwnProperty.call(COLUMN_HELP, id) ? COLUMN_HELP[id] : null; }
+const RANKING_COLS = {
+  rr:       [{ id: "gp" }, { id: "am" }, { id: "wl" }, { id: "winpct", hideMobile: true }, { id: "diffg", hideMobile: true }],
+  gauntlet: [{ id: "gp" }, { id: "am" }, { id: "wl" }, { id: "winpct", hideMobile: true }, { id: "diffg", hideMobile: true }],
+  stack:    [{ id: "gp" }, { id: "ssg" }, { id: "wl" }, { id: "winpct", hideMobile: true }, { id: "climbs", hideMobile: true }, { id: "c1", hideMobile: true }],
+  king:     [{ id: "gp" }, { id: "ksg" }, { id: "wl" }, { id: "winpct", hideMobile: true }, { id: "kingw", hideMobile: true }, { id: "ppg", hideMobile: true }],
+  crown:    [{ id: "mp" }, { id: "gwl" }],
+};
+const POINTS_COLS = ["gp", "pts", "net", "ppg"];
+function guideGroups(format) {
+  const rankIds = (RANKING_COLS[format] || RANKING_COLS.rr).map(c => c.id);
+  // Basics = rank + any of gp/wl/winpct present in the ranking set, shown first.
+  const basics = ["rank", "gp", "wl", "winpct"].filter(id => id === "rank" || id === "gp" || rankIds.includes(id));
+  const ranking = rankIds.filter(id => !["gp", "wl", "winpct"].includes(id));
+  return { Basics: basics, Ranking: ranking, Points: ["pts", "net", "ppg"] };
 }
 
 function renderStandingsCard(throughRound, opts) {
