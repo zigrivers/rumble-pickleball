@@ -12060,29 +12060,21 @@ function renderStackStandingsCard(throughRound, opts) {
   const card = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
     el("h3", { style: "margin: 0;" }, opts.title || "Live Standings"),
-    opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+    el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" },
+      opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+      standingsViewToggle(), guideButton("stack")),
   );
   card.appendChild(head);
+  const points = isPointsView();
   const table = el("table", { class: "standings" + (vno.advancedStats ? "" : " hide-advanced") });
   const colgroup = el("colgroup", null,
-    el("col", { class: "c-rank" }),
-    el("col", { class: "c-name" }),
-    el("col", { class: "c-stack-extra" }),
-    el("col", { class: "c-pts" }),
-    el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
-    el("col", { class: "c-stack-extra" }),
-    el("col", { class: "c-stack-extra" }),
-  );
+    el("col", { class: "c-rank" }), el("col", { class: "c-name" }),
+    ...Array.from({ length: points ? 4 : 6 }, () => el("col", {})));
   table.appendChild(colgroup);
+  const headerStatThs = points ? pointsHeaderThs()
+    : RANKING_COLS.stack.map(c => helpTh(c.id, c.hideMobile ? "col-hide-mobile" : ""));
   table.appendChild(el("thead", null, el("tr", null,
-    el("th", { style: "text-align: center;" }, "#"),
-    el("th", null, "Player"),
-    el("th", { class: "num", title: "Games played" }, "GP"),
-    el("th", { class: "num", title: "Stack Score per game" }, "SS/G"),
-    el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
-    el("th", { class: "num col-hide-mobile", title: "Court climbs (C2 → C1)" }, "Climbs"),
-    el("th", { class: "num col-hide-mobile", title: "Games on Court 1" }, "C1"),
-  )));
+    plainTh("#"), plainTh("Player"), ...headerStatThs)));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
     const traj = vno.trajectory ? trajectorySpan(s.slot, i) : null;
@@ -12090,14 +12082,17 @@ function renderStackStandingsCard(throughRound, opts) {
     if (i < 3) rankTd.appendChild(el("span", { class: "rank-badge medal" }, MEDALS[i]));
     else       rankTd.appendChild(el("span", { class: "rank-badge" }, "" + (i + 1)));
     if (traj) rankTd.appendChild(traj);
-    tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
-      rankTd,
-      standingNameCell(s),
+    const statTds = points ? pointsBodyTds(s, "stack") : [
       el("td", { class: "num" }, "" + s.gp),
       el("td", { class: "num" }, s.stackRate.toFixed(1)),
       el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
       el("td", { class: "num col-hide-mobile" }, "" + s.courtClimbs),
       el("td", { class: "num col-hide-mobile" }, "" + s.gamesOnCourt1),
+    ];
+    tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
+      rankTd,
+      standingNameCell(s),
+      ...statTds,
     ));
   });
   table.appendChild(tbody);
@@ -13040,37 +13035,30 @@ function renderDoneScreen() {
   if (isStack) {
     const stackStats = computeStackStats(state.rounds.length);
     const bySlot = new Map(stackStats.map(s => [s.slot, s]));
+    const doneStackPoints = isPointsView();
     const colgroup = el("colgroup", null,
-      el("col", { class: "c-rank" }),
-      el("col", { class: "c-name" }),
-      el("col", { class: "c-stack-extra" }),
-      el("col", { class: "c-pts" }),
-      el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
-      el("col", { class: "c-stack-extra" }),
-      el("col", { class: "c-stack-extra" }),
-    );
+      el("col", { class: "c-rank" }), el("col", { class: "c-name" }),
+      ...Array.from({ length: doneStackPoints ? 4 : 6 }, () => el("col", {})));
     table.appendChild(colgroup);
+    const doneStackHeaderThs = doneStackPoints ? pointsHeaderThs()
+      : RANKING_COLS.stack.map(c => helpTh(c.id, c.hideMobile ? "col-hide-mobile" : ""));
     table.appendChild(el("thead", null, el("tr", null,
-      el("th", { style: "text-align: center;" }, "#"),
-      el("th", null, "Player"),
-      el("th", { class: "num", title: "Games played" }, "GP"),
-      el("th", { class: "num", title: "Stack Score per game" }, "SS/G"),
-      el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
-      el("th", { class: "num col-hide-mobile", title: "Court climbs" }, "Climbs"),
-      el("th", { class: "num col-hide-mobile", title: "Games on Court 1" }, "C1"),
-    )));
+      plainTh("#"), plainTh("Player"), ...doneStackHeaderThs)));
     const tbody = el("tbody");
     ranking.forEach((rs, i) => {
       if (dividerLabels[i]) tbody.appendChild(tierDividerRow(dividerLabels[i]));
       const s = bySlot.get(rs.slot);
-      tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
-        rankCell(i),
-        standingNameCell(s),
+      const statTds = doneStackPoints ? pointsBodyTds(s, "stack") : [
         el("td", { class: "num" }, "" + s.gp),
         el("td", { class: "num" }, s.stackRate.toFixed(1)),
         el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
         el("td", { class: "num col-hide-mobile" }, "" + s.courtClimbs),
         el("td", { class: "num col-hide-mobile" }, "" + s.gamesOnCourt1),
+      ];
+      tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
+        rankCell(i),
+        standingNameCell(s),
+        ...statTds,
       ));
     });
     table.appendChild(tbody);
