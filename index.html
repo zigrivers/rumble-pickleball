@@ -374,16 +374,8 @@
     table.standings { max-width: 680px; margin-inline: auto; }
   }
   table.standings col.c-rank { width: 56px; }
-  table.standings col.c-pts,
-  table.standings col.c-w,
-  table.standings col.c-diff { width: 72px; }
-  table.standings col.c-stack-extra { width: 50px; }
   @media (max-width: 480px) {
     table.standings col.c-rank { width: 44px; }
-    table.standings col.c-pts,
-    table.standings col.c-w { width: 60px; }
-    table.standings col.c-diff { width: 0; }
-    table.standings col.c-stack-extra { width: 0; }
     table.standings th.col-hide-mobile,
     table.standings td.col-hide-mobile { display: none; padding: 0; }
   }
@@ -4458,6 +4450,14 @@ function runSelfTests() {
     console.assert(ths.length === 4 && ths.some(t => /PTS/.test(t.textContent)), "pointsHeaderThs labels");
     const tog = standingsViewToggle();
     console.assert(tog.querySelectorAll("button").length === 2, "toggle has two buttons");
+  }
+
+  // Standings — King column guide does not duplicate PPG
+  {
+    const g = guideGroups("king");
+    const all = [...g.Basics, ...g.Ranking, ...g.Points];
+    console.assert(all.filter(id => id === "ppg").length === 1, "king guide lists PPG exactly once", all);
+    console.assert(!g.Ranking.includes("ppg"), "ppg not in king Ranking group", g.Ranking);
   }
 
     console.log(`[self-tests] complete — ${failures} failure(s)`);
@@ -11893,7 +11893,7 @@ function guideGroups(format) {
   const rankIds = (RANKING_COLS[format] || RANKING_COLS.rr).map(c => c.id);
   // Basics = rank + any of gp/wl/winpct present in the ranking set, shown first.
   const basics = ["rank", "gp", "wl", "winpct"].filter(id => id === "rank" || id === "gp" || rankIds.includes(id));
-  const ranking = rankIds.filter(id => !["gp", "wl", "winpct"].includes(id));
+  const ranking = rankIds.filter(id => !["gp", "wl", "winpct", "pts", "net", "ppg"].includes(id));
   return { Basics: basics, Ranking: ranking, Points: ["pts", "net", "ppg"] };
 }
 
@@ -11918,7 +11918,7 @@ function pointStatsFor(s, format) {
 }
 
 function plainTh(label, extraClass) {
-  return el("th", { class: (extraClass ? extraClass + " " : ""), style: label === "#" ? "text-align:center;" : "" }, label);
+  return el("th", { class: extraClass || undefined, style: label === "#" ? "text-align:center;" : undefined }, label);
 }
 function helpTh(id, extraClass) {
   const h = columnHelp(id) || { short: id };
@@ -12076,7 +12076,7 @@ function renderStackStandingsCard(throughRound, opts) {
   const table = el("table", { class: "standings" + (vno.advancedStats ? "" : " hide-advanced") });
   const colgroup = el("colgroup", null,
     el("col", { class: "c-rank" }), el("col", { class: "c-name" }),
-    ...Array.from({ length: points ? 4 : 6 }, () => el("col", {})));
+    ...Array.from({ length: points ? 4 : RANKING_COLS.stack.length }, () => el("col", {})));
   table.appendChild(colgroup);
   const headerStatThs = points ? pointsHeaderThs()
     : RANKING_COLS.stack.map(c => helpTh(c.id, c.hideMobile ? "col-hide-mobile" : ""));
@@ -13030,7 +13030,7 @@ function renderDoneScreen() {
 
   const isStack = state.format === "stack";
   const isKing  = state.format === "king";
-  const colSpan = (isStack || isKing) ? (isPointsView() ? 6 : 8) : 6;
+  const colSpan = isPointsView() ? 6 : ((isStack || isKing) ? 8 : 7);
   const dividerLabels = {};
   let dividerAt = 0;
   finalTiers().forEach((tier, i) => {
@@ -13049,7 +13049,7 @@ function renderDoneScreen() {
     const doneStackPoints = isPointsView();
     const colgroup = el("colgroup", null,
       el("col", { class: "c-rank" }), el("col", { class: "c-name" }),
-      ...Array.from({ length: doneStackPoints ? 4 : 6 }, () => el("col", {})));
+      ...Array.from({ length: doneStackPoints ? 4 : RANKING_COLS.stack.length }, () => el("col", {})));
     table.appendChild(colgroup);
     const doneStackHeaderThs = doneStackPoints ? pointsHeaderThs()
       : RANKING_COLS.stack.map(c => helpTh(c.id, c.hideMobile ? "col-hide-mobile" : ""));
