@@ -4354,6 +4354,22 @@ function runSelfTests() {
     console.assert(typeof applySetupRecommendation === "function", "applySetupRecommendation is available");
   }
 
+  // Standings — King tracks pointsAgainst (for NET)
+  {
+    const _save = state;
+    state = newState();
+    state.format = "king";
+    state.slots = ["A", "B", "C", "D"];
+    state.rawNames = ["A", "B", "C", "D"];
+    const r = makeRound(1, [makeGame(1, [1, 2], [3, 4])], []);
+    r.games[0].score1 = 11; r.games[0].score2 = 6;
+    state.rounds = [r];
+    const ks = computeKingStats(1);
+    console.assert(ks[0].pointsScored === 11 && ks[0].pointsAgainst === 6, "king winner pointsAgainst", ks[0]);
+    console.assert(ks[2].pointsScored === 6 && ks[2].pointsAgainst === 11, "king loser pointsAgainst", ks[2]);
+    state = _save;
+  }
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6139,7 +6155,7 @@ function computeKingStats(throughRound) {
   const count = statsSlotCount(throughRound, false);
   const stats = [];
   for (let s = 1; s <= count; s++) {
-    stats.push({ slot: s, name: nameOf(s), wins: 0, pointsScored: 0, kingCourtWins: 0, kingScore: 0,
+    stats.push({ slot: s, name: nameOf(s), wins: 0, pointsScored: 0, pointsAgainst: 0, kingCourtWins: 0, kingScore: 0,
       gp: 0, kingRate: 0, winRate: 0 });
   }
   const upTo = Math.min(throughRound || 0, state.rounds.length);
@@ -6156,10 +6172,12 @@ function computeKingStats(throughRound) {
       for (const teamKey of ["team1", "team2"]) {
         const team = game[teamKey];
         const pts = teamKey === "team1" ? game.score1 : game.score2;
+        const ag  = teamKey === "team1" ? game.score2 : game.score1;
         const won = (teamKey === "team1" && t1Won) || (teamKey === "team2" && t2Won);
         for (const slot of team) {
           const st = stats[slot - 1];
           st.pointsScored += pts;
+          st.pointsAgainst += ag;
           st.gp++;
           if (won) {
             st.wins++;
