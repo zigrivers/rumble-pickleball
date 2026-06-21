@@ -4386,6 +4386,17 @@ function runSelfTests() {
     console.assert(ks[2].pointsScored === 6 && ks[2].pointsAgainst === 11, "king loser pointsAgainst", ks[2]);
     state = _save;
   }
+  // Standings — pointStatsFor per format
+  {
+    const rr = pointStatsFor({ gp: 8, points: 176, diff: 13 }, "rr");
+    console.assert(rr.gp === 8 && rr.pts === 176 && rr.net === 13 && rr.ppg === 22, "pointStatsFor rr", rr);
+    const st = pointStatsFor({ gp: 5, pointsScored: 50, pointsAgainst: 41 }, "stack");
+    console.assert(st.pts === 50 && st.net === 9 && st.ppg === 10, "pointStatsFor stack", st);
+    const kg = pointStatsFor({ gp: 4, pointsScored: 40, pointsAgainst: 31 }, "king");
+    console.assert(kg.pts === 40 && kg.net === 9 && kg.ppg === 10, "pointStatsFor king", kg);
+    const cr = pointStatsFor({ gamesWon: 2, gamesLost: 1, pointsScored: 33, pointDiff: 5 }, "crown");
+    console.assert(cr.gp === 3 && cr.pts === 33 && cr.net === 5 && cr.ppg === 11, "pointStatsFor crown", cr);
+  }
 
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
@@ -11813,6 +11824,26 @@ function guideGroups(format) {
   const basics = ["rank", "gp", "wl", "winpct"].filter(id => id === "rank" || id === "gp" || rankIds.includes(id));
   const ranking = rankIds.filter(id => !["gp", "wl", "winpct"].includes(id));
   return { Basics: basics, Ranking: ranking, Points: ["pts", "net", "ppg"] };
+}
+
+// Derive the three point stats (PTS/NET/PPG) for any format from its stat object.
+function pointStatsFor(s, format) {
+  let gp, pts, net;
+  if (format === "crown") {
+    gp = (s.gamesWon || 0) + (s.gamesLost || 0);
+    pts = s.pointsScored || 0;
+    net = s.pointDiff || 0;
+  } else if (format === "stack" || format === "king") {
+    gp = s.gp || 0;
+    pts = s.pointsScored || 0;
+    net = (s.pointsScored || 0) - (s.pointsAgainst || 0);
+  } else { // rr | gauntlet
+    gp = s.gp || 0;
+    pts = s.points || 0;
+    net = s.diff || 0;
+  }
+  const ppg = Math.round((pts / Math.max(1, gp)) * 10) / 10;
+  return { gp, pts, net, ppg };
 }
 
 function renderStandingsCard(throughRound, opts) {
