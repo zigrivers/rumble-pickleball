@@ -12009,27 +12009,23 @@ function renderStandingsCard(throughRound, opts) {
   const card = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;" },
     el("h3", { style: "margin: 0;" }, opts.title || "Live Standings"),
-    opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+    el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" },
+      opts.subtitle ? el("span", { class: "muted" }, opts.subtitle) : null,
+      standingsViewToggle(), guideButton(state.format)),
   );
   card.appendChild(head);
+  const points = isPointsView();
   const table = el("table", { class: "standings" + (vno.advancedStats ? "" : " hide-advanced") });
+  const colCount = points ? 4 : RANKING_COLS[state.format === "gauntlet" ? "gauntlet" : "rr"].length;
   const colgroup = el("colgroup", null,
-    el("col", { class: "c-rank" }),
-    el("col", { class: "c-name" }),
-    el("col", { class: "c-stack-extra" }),
-    el("col", { class: "c-pts" }),
-    el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
-    el("col", { class: "c-diff" }),
-  );
+    el("col", { class: "c-rank" }), el("col", { class: "c-name" }),
+    ...Array.from({ length: colCount }, () => el("col", {})));
   table.appendChild(colgroup);
+  const fmt = state.format === "gauntlet" ? "gauntlet" : "rr";
+  const headerStatThs = points ? pointsHeaderThs()
+    : RANKING_COLS[fmt].map(c => helpTh(c.id, c.hideMobile ? "col-hide-mobile" : ""));
   table.appendChild(el("thead", null, el("tr", null,
-    el("th", { style: "text-align: center;" }, "#"),
-    el("th", null, "Player"),
-    el("th", { class: "num", title: "Games played" }, "GP"),
-    el("th", { class: "num", title: "Adjusted Margin — diminishing-returns point margin, weighted by opponent and partner strength. Updates retroactively as the field's strength becomes clearer." }, "AM"),
-    el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
-    el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
-  )));
+    plainTh("#"), plainTh("Player"), ...headerStatThs)));
   const tbody = el("tbody");
   stats.forEach((s, i) => {
     const remaining = Math.max(0, playerCount() - 1 - s.partnersUsed.size);
@@ -12037,26 +12033,20 @@ function renderStandingsCard(throughRound, opts) {
       class: "partner-badge" + (remaining === 0 ? " done" : ""),
       title: "Partners remaining"
     }, remaining + " left");
-    // Next-round partner chip (only when applicable)
     const npi = nextPartnerInfo(s.slot);
     const partnerChip = (npi && vno.partnerChips) ? el("span", {
       class: "partner-chip " + (npi.bye ? "bye" : ("c" + npi.courtKey)),
       title: npi.bye ? "Sitting next round" : "Next round partner",
     }, npi.bye ? "→ sitting" : ("→ " + nameOf(npi.partner))) : null;
-    tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
-      rankCell(i),
-      standingNameCell(s, partnerChip, partnerBadge),
+    const statTds = points ? pointsBodyTds(s, fmt) : [
       el("td", { class: "num" }, "" + s.gp),
-      el("td", {
-        class: "num",
-        style: s.adjScore > 0 ? "color: var(--good);" : (s.adjScore < 0 ? "color: var(--bad);" : ""),
-      }, s.adjScore.toFixed(1)),
-      el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
-      el("td", {
-        class: "num col-hide-mobile",
-        style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : ""),
-      }, (s.avgDiff > 0 ? "+" : "") + s.avgDiff.toFixed(1)),
-    ));
+      el("td", { class: "num", style: s.adjScore > 0 ? "color: var(--good);" : (s.adjScore < 0 ? "color: var(--bad);" : "") }, s.adjScore.toFixed(1)),
+      el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)),
+      el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
+      el("td", { class: "num col-hide-mobile", style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : "") }, (s.avgDiff > 0 ? "+" : "") + s.avgDiff.toFixed(1)),
+    ];
+    tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
+      rankCell(i), standingNameCell(s, partnerChip, partnerBadge), ...statTds));
   });
   table.appendChild(tbody);
   card.appendChild(table);
@@ -13026,7 +13016,9 @@ function renderDoneScreen() {
   const finalCard = el("div", { class: "card" });
   const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; gap: 10px; flex-wrap: wrap;" },
     el("h3", { style: "margin: 0;" }, "Final Standings"),
-    el("span", { class: "muted" }, "Includes finals games"),
+    el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" },
+      el("span", { class: "muted" }, "Includes finals games"),
+      standingsViewToggle(), guideButton(state.format)),
   );
   finalCard.appendChild(head);
 
@@ -13123,30 +13115,22 @@ function renderDoneScreen() {
     const allStats = computeStats(totalRegularRounds(), true);
     const marginBySlot = new Map(
       computeMarginStats(totalRegularRounds()).map(s => [s.slot, s.adjScore]));
+    const fmt = state.format === "gauntlet" ? "gauntlet" : "rr";
+    const donePoints = isPointsView();
+    const doneColCount = donePoints ? 4 : RANKING_COLS[fmt].length;
     const colgroup = el("colgroup", null,
-      el("col", { class: "c-rank" }),
-      el("col", { class: "c-name" }),
-      el("col", { class: "c-stack-extra" }),
-      el("col", { class: "c-pts" }),
-      el("col", { class: "c-w" }), el("col", { class: "c-w col-hide-mobile" }),
-      el("col", { class: "c-diff" }),
-    );
+      el("col", { class: "c-rank" }), el("col", { class: "c-name" }),
+      ...Array.from({ length: doneColCount }, () => el("col", {})));
     table.appendChild(colgroup);
+    const doneHeaderStatThs = donePoints ? pointsHeaderThs()
+      : RANKING_COLS[fmt].map(c => helpTh(c.id, c.hideMobile ? "col-hide-mobile" : ""));
     table.appendChild(el("thead", null, el("tr", null,
-      el("th", { style: "text-align: center;" }, "#"),
-      el("th", null, "Player"),
-      el("th", { class: "num", title: "Games played" }, "GP"),
-      el("th", { class: "num", title: "Adjusted Margin (regular rounds)" }, "AM"),
-      el("th", { class: "num", title: "Win–loss record" }, "W–L"), el("th", { class: "num col-hide-mobile", title: "Win percentage" }, "W%"),
-      el("th", { class: "num col-hide-mobile", title: "Point differential per game" }, "+/–G"),
-    )));
+      plainTh("#"), plainTh("Player"), ...doneHeaderStatThs)));
     const tbody = el("tbody");
     ranking.forEach((rs, i) => {
       if (dividerLabels[i]) tbody.appendChild(tierDividerRow(dividerLabels[i]));
       const s = allStats.find(x => x.slot === rs.slot);
-      tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
-        rankCell(i),
-        standingNameCell(s),
+      const statTds = donePoints ? pointsBodyTds(s, fmt) : [
         el("td", { class: "num" }, "" + s.gp),
         el("td", {
           class: "num",
@@ -13156,6 +13140,11 @@ function renderDoneScreen() {
         el("td", { class: "num" }, s.wins + "–" + (s.gp - s.wins)), el("td", { class: "num col-hide-mobile" }, Math.round(s.winRate * 100) + "%"),
         el("td", { class: "num col-hide-mobile", style: s.avgDiff > 0 ? "color: var(--good);" : (s.avgDiff < 0 ? "color: var(--bad);" : "") },
           (s.avgDiff > 0 ? "+" : "") + s.avgDiff.toFixed(1)),
+      ];
+      tbody.appendChild(el("tr", { class: standingsRowClass("r" + (i + 1), s.slot) },
+        rankCell(i),
+        standingNameCell(s),
+        ...statTds,
       ));
     });
     table.appendChild(tbody);
