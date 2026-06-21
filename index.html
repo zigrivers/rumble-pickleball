@@ -417,6 +417,10 @@
   .rank-trajectory.up   { color: var(--good); }
   .rank-trajectory.down { color: var(--bad); }
   .rank-trajectory.same { color: var(--muted); }
+  .standings-view-toggle { display: inline-flex; border: 1px solid var(--muted); border-radius: 999px; overflow: hidden; }
+  .standings-view-toggle .seg-btn { background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px;
+    font-weight: 600; padding: 5px 14px; min-height: 32px; cursor: pointer; }
+  .standings-view-toggle .seg-btn.active { background: var(--accent); color: #1a1207; }
   table.standings th, table.standings td {
     text-align: left;
     padding: 10px 6px;
@@ -4441,6 +4445,19 @@ function runSelfTests() {
     document.querySelectorAll(".modal-bg").forEach(n => n.remove());
     const gb = guideButton("rr");
     console.assert(gb.tagName === "BUTTON" && /Column guide/.test(gb.textContent), "guideButton label");
+  }
+
+  // Standings — points cells + toggle
+  {
+    const tds = pointsBodyTds({ gp: 8, points: 176, diff: -3 }, "rr");
+    console.assert(tds.length === 4, "pointsBodyTds has GP+PTS+NET+PPG", tds);
+    console.assert(tds[1].textContent === "176", "PTS cell value");
+    console.assert(tds[2].textContent === "-3" && /var\(--bad\)/.test(tds[2].getAttribute("style") || ""),
+      "NET negative is red", tds[2]);
+    const ths = pointsHeaderThs();
+    console.assert(ths.length === 4 && ths.some(t => /PTS/.test(t.textContent)), "pointsHeaderThs labels");
+    const tog = standingsViewToggle();
+    console.assert(tog.querySelectorAll("button").length === 2, "toggle has two buttons");
   }
 
     console.log(`[self-tests] complete — ${failures} failure(s)`);
@@ -11952,6 +11969,34 @@ function guideButton(format) {
   const btn = el("button", { class: "guide-btn", type: "button" }, "ⓘ Column guide");
   btn.addEventListener("click", () => openColumnGuideModal(format || state.format));
   return btn;
+}
+function isPointsView() { return state.standingsView === "points"; }
+function pointsHeaderThs() {
+  return POINTS_COLS.map(id => helpTh(id)); // gp, pts, net, ppg — all visible (4 fit on mobile)
+}
+function pointsBodyTds(s, format) {
+  const p = pointStatsFor(s, format);
+  const netStyle = p.net > 0 ? "color: var(--good);" : (p.net < 0 ? "color: var(--bad);" : "");
+  return [
+    el("td", { class: "num" }, "" + p.gp),
+    el("td", { class: "num" }, "" + p.pts),
+    el("td", { class: "num", style: netStyle }, (p.net > 0 ? "+" : "") + p.net),
+    el("td", { class: "num" }, p.ppg.toFixed(1)),
+  ];
+}
+function setStandingsView(v) { state.standingsView = v; save(); render(); }
+function standingsViewToggle() {
+  const mk = (label, v) => {
+    const b = el("button", {
+      class: "seg-btn" + (state.standingsView === v ? " active" : ""),
+      type: "button",
+      "aria-pressed": state.standingsView === v ? "true" : "false",
+    }, label);
+    b.addEventListener("click", () => { if (state.standingsView !== v) setStandingsView(v); });
+    return b;
+  };
+  return el("div", { class: "standings-view-toggle", role: "group", "aria-label": "Standings columns" },
+    mk("Ranking", "ranking"), mk("Points", "points"));
 }
 function renderStandingsCard(throughRound, opts) {
   if (state.format === "stack")    return renderStackStandingsCard(throughRound, opts);
