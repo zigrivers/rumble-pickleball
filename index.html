@@ -4397,6 +4397,16 @@ function runSelfTests() {
     const cr = pointStatsFor({ gamesWon: 2, gamesLost: 1, pointsScored: 33, pointDiff: 5 }, "crown");
     console.assert(cr.gp === 3 && cr.pts === 33 && cr.net === 5 && cr.ppg === 11, "pointStatsFor crown", cr);
   }
+  // Standings — standingsView default + backfill
+  {
+    console.assert(newState().standingsView === "ranking", "newState.standingsView=ranking");
+    const a = {}; backfillStateDefaults(a);
+    console.assert(a.standingsView === "ranking", "backfill defaults standingsView");
+    const b = { standingsView: "points" }; backfillStateDefaults(b);
+    console.assert(b.standingsView === "points", "backfill preserves valid standingsView");
+    const c = { standingsView: "bogus" }; backfillStateDefaults(c);
+    console.assert(c.standingsView === "ranking", "backfill repairs bad standingsView");
+  }
 
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
@@ -4731,6 +4741,7 @@ function newState() {
     finals: null,                                    // {tiers, unseated}; legacy championship/consolation retained during v5 transition
     tiebreakRandom: [],                              // stable per-tournament random for final tiebreak
     awardsShown: false,
+    standingsView: "ranking",                        // "ranking" | "points" — Live/Final standings stat columns
     winScore: 11,
     winBy: 2,
     scoringSystem: "sideout",
@@ -5072,6 +5083,7 @@ function migrateV4toV5(obj) {
 // Apply field defaults to any persisted state (used by both v2 load and v1 migration).
 function backfillStateDefaults(obj) {
   if (typeof obj.awardsShown !== "boolean") obj.awardsShown = false;
+  if (obj.standingsView !== "ranking" && obj.standingsView !== "points") obj.standingsView = "ranking";
   if (typeof obj.winScore !== "number") obj.winScore = 11;
   if (typeof obj.winBy !== "number") obj.winBy = 2;
   if (obj.scoringSystem !== "sideout" && obj.scoringSystem !== "rally") obj.scoringSystem = "sideout";
