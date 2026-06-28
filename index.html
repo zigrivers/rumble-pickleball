@@ -4541,6 +4541,42 @@ function runSelfTests() {
     state = newState();
   })();
 
+  // ---- Mixed mode: pairMixedAware ----
+  (function pairMixedAwareTests() {
+    state.mixedMode = true;
+
+    // 2A+2B court → both teams mixed
+    state.slotGroups = ["a","a","b","b"];  // slots 1=a, 2=a, 3=b, 4=b
+    const [t1, t2] = pairMixedAware([1,2,3,4], {});
+    console.assert(isMixedTeam(t1) && isMixedTeam(t2),
+      "pairMixed: 2A+2B produces two mixed teams", { t1, t2 });
+
+    // 3A+1B court → one mixed, one same-group (unavoidable)
+    state.slotGroups = ["a","a","a","b"];  // slots 1,2,3=a; 4=b
+    const [t1b, t2b] = pairMixedAware([1,2,3,4], {});
+    const mixedCount = [t1b, t2b].filter(isMixedTeam).length;
+    console.assert(mixedCount === 1, "pairMixed: 3A+1B produces exactly 1 mixed team", { t1b, t2b });
+
+    // Mixed off → behaves like today (any split, no preference)
+    state.mixedMode = false;
+    state.slotGroups = ["a","a","a","a"];
+    const [t1c, t2c] = pairMixedAware([1,2,3,4], {});
+    console.assert(t1c.length === 2 && t2c.length === 2,
+      "pairMixed: mixed-off still returns two teams of 2");
+
+    // Pairing cost with repeat avoidance (RR-style)
+    state.mixedMode = true;
+    state.slotGroups = ["a","b","a","b"];
+    state.rounds = [{ round: 1, games: [{ court: 1, team1: [1,4], team2: [2,3], score1: 11, score2: 5 }], byes: [] }];
+    const [t1d, t2d] = pairMixedAware([1,2,3,4], { history: state.rounds, chosen: [], court: 1 });
+    // Should avoid repeating [1,4] as partners since they partnered last round
+    const isRepeat = (t) => t.includes(1) && t.includes(4);
+    console.assert(!isRepeat(t1d) && !isRepeat(t2d),
+      "pairMixed: avoids repeating last round's partnership when mixed split allows", { t1d, t2d });
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6145,6 +6181,50 @@ function dealBalancedCourts(playing, activeCourts, rng) {
     while (courts[c].length < 4 && surplus.length) courts[c].push(surplus.pop());
   }
   return courts;
+}
+// Computes the within-court pairing cost for a proposed team split.
+// Lower = better. Used by pairMixedAware as the secondary sort key.
+//   opts.history:  prior rounds (for repeat partner/opponent cost)
+//   opts.chosen:   games already chosen this round (for intra-round cost)
+//   opts.court:    court number for the game being formed
+//   opts.stackBySlot: Map<slot, stackScore> (Stack format only)
+//   opts.prevSameCourt: previous round's game on this court (Stack repeat check)
+function pairingCost(t1, t2, opts) {
+  opts = opts || {};
+  // RR / King / Gauntlet: use the existing repeat-partner/opponent cost
+  if (opts.stackBySlot) {
+    // Stack: measure skill imbalance between teams + repeat penalty
+    const s1 = (opts.stackBySlot.get(t1[0]) || 0) + (opts.stackBySlot.get(t1[1]) || 0);
+    const s2 = (opts.stackBySlot.get(t2[0]) || 0) + (opts.stackBySlot.get(t2[1]) || 0);
+    let cost = Math.abs(s1 - s2);
+    if (opts.prevSameCourt) {
+      const wasPair = (a, b) => {
+        for (const t of [opts.prevSameCourt.team1, opts.prevSameCourt.team2]) {
+          if (t.includes(a) && t.includes(b)) return true;
+        }
+        return false;
+      };
+      if (wasPair(t1[0], t1[1]) || wasPair(t2[0], t2[1])) cost += 1000;
+    }
+    return cost;
+  }
+  // Default: repeat cost via rrRoundCost
+  const game = { court: opts.court || 1, team1: t1, team2: t2 };
+  return rrRoundCost([...(opts.chosen || []), game], opts.history || []);
+}
+
+// Returns [team1, team2] — mixed-aware pairing for 4 slots on a court.
+// Sorts candidate splits lexicographically: (badTeams, cost).
+// When mixedMode is off, badTeams is always 0 → reduces to pure cost (byte-identical).
+function pairMixedAware(four, opts) {
+  const splits = rrTeamSplits(four);
+  const scored = splits.map(([team1, team2]) => ({
+    teams: [team1, team2],
+    badTeams: mixedModeBadTeamCount([team1, team2]),
+    cost: pairingCost(team1, team2, opts),
+  }));
+  scored.sort((a, b) => a.badTeams - b.badTeams || a.cost - b.cost);
+  return scored[0].teams;
 }
 function computeStackStats(throughRound) {
   const upTo = Math.min(throughRound || 0, state.rounds.length);
