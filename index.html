@@ -4577,6 +4577,47 @@ function runSelfTests() {
     state = newState();
   })();
 
+  // ---- Mixed mode: allocateByes feasibility filter ----
+  (function allocateByesMixedTests() {
+    state.mixedMode = true;
+    state.slotGroups = ["a","a","a","a","a","a","b","b","b","b"];  // 6A+4B
+    // 10 players, 2 courts → 8 play, 2 sit. To keep mixed-feasible (4A+4B playing),
+    // byes must be 2A (not 1A+1B which would leave 5A+3B = not feasible).
+    const alloc = allocateByesMixed("rotation", {
+      activeSlots: [1,2,3,4,5,6,7,8,9,10],
+      players: [1,2,3,4,5,6,7,8,9,10].map(s => ({ slot: s, status: "active", eligibleFromRound: 1 })),
+      rounds: [],
+      round: 1,
+      courtCount: 2,
+      rng: mulberry32(42),
+    });
+    const byeGroups = alloc.byes.map(s => groupOf(s));
+    const aByes = byeGroups.filter(g => g === "a").length;
+    const bByes = byeGroups.filter(g => g === "b").length;
+    // The key assertion: byes should NOT sit a B when that breaks feasibility
+    console.assert(bByes === 0, "allocByes: 6A+4B sits 2A not 1A+1B (feasibility)", { aByes, bByes });
+    // Playing set should be 4A+4B (mixed-feasible)
+    const playingGroups = alloc.playing.map(s => groupOf(s));
+    const aPlaying = playingGroups.filter(g => g === "a").length;
+    const bPlaying = playingGroups.filter(g => g === "b").length;
+    console.assert(aPlaying === 4 && bPlaying === 4, "allocByes: playing set is 4A+4B", { aPlaying, bPlaying });
+
+    // Lopsided 7A+3B → no feasible set, falls back to rotation (no crash)
+    state.slotGroups = ["a","a","a","a","a","a","a","b","b","b"];
+    const alloc2 = allocateByesMixed("rotation", {
+      activeSlots: [1,2,3,4,5,6,7,8,9,10],
+      players: [1,2,3,4,5,6,7,8,9,10].map(s => ({ slot: s, status: "active", eligibleFromRound: 1 })),
+      rounds: [],
+      round: 1,
+      courtCount: 2,
+      rng: mulberry32(42),
+    });
+    console.assert(alloc2.byes.length === 2 && alloc2.playing.length === 8,
+      "allocByes: lopsided fallback still returns correct counts");
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6089,7 +6130,7 @@ function assignInitialLadderCourts() {
   const active = ladderActiveSlots(round, null);
   const courtCount = ladderCourtCount(null);
   const rng = ladderRoundRng(round);
-  const alloc = allocateByes("rotation", {
+  const alloc = allocateByesMixed("rotation", {
     activeSlots: active,
     players: ladderPlayersFor(active),
     rounds: [],
@@ -6378,7 +6419,7 @@ function buildNextLadderRound(prevRound, format) {
   const history = ladderHistoryThrough(prevRound.round);
   if (!history.length || history[history.length - 1] !== prevRound) history.push(prevRound);
   const rng = ladderRoundRng(round);
-  const alloc = allocateByes("losersSitCapped", {
+  const alloc = allocateByesMixed("losersSitCapped", {
     activeSlots: active,
     players: ladderPlayersFor(active),
     rounds: history,
@@ -6541,7 +6582,7 @@ function buildGauntletPairing(ranked, roundNum) {
   const activeSet = new Set(active.length ? active : ranked);
   const rankedActive = ranked.filter(slot => activeSet.has(slot));
   const rng = ladderRoundRng(roundNum);
-  const alloc = allocateByes("rotation", {
+  const alloc = allocateByesMixed("rotation", {
     activeSlots: [...activeSet].sort((a, b) => a - b),
     players: ladderPlayersFor([...activeSet]),
     rounds: ladderHistoryThrough(roundNum - 1),
@@ -7886,6 +7927,40 @@ function allocateByes(policy, context) {
   const byes = selectSorted(pool);
   return { ...shape, byes, playing: active.filter(s => !byes.includes(s)) };
 }
+// Checks if a playing set can form all-mixed courts (2A+2B per court).
+function isMixedFeasible(playing, activeCourts) {
+  const aCount = playing.filter(s => groupOf(s) === "a").length;
+  const bCount = playing.filter(s => groupOf(s) === "b").length;
+  return aCount >= 2 * activeCourts && bCount >= 2 * activeCourts;
+}
+// Wraps allocateByes with a mixed-feasibility filter. When mixedMode is on,
+// tries different bye orderings to find one that leaves a mixed-feasible
+// playing set. Falls back to the original result if none is feasible.
+function allocateByesMixed(policy, context) {
+  const result = allocateByes(policy, context);
+  if (!state.mixedMode || result.byes.length === 0) return result;
+  const shape = roundShapeFor((context.activeSlots || []).length, context.courtCount || 2);
+  if (isMixedFeasible(result.playing, shape.activeCourts || shape.courts)) return result;
+  // Try swapping each bye with a non-bye player from the over-represented group
+  // to find a feasible set. This is a bounded search over bye-set variants.
+  const active = (context.activeSlots || []).slice();
+  const rng = context.rng || Math.random;
+  let best = result;
+  let bestFeasible = false;
+  // Generate variants by rotating which slots sit, biased toward the surplus group
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const shuffled = seededShuffle(active, rng);
+    const variantByes = shuffled.slice(0, result.byes.length);
+    const variantPlaying = active.filter(s => !variantByes.includes(s));
+    if (isMixedFeasible(variantPlaying, shape.activeCourts || shape.courts)) {
+      // Feasible! But also check fairness — prefer variants closer to the
+      // original rotation. For simplicity, take the first feasible found.
+      return { ...result, byes: variantByes, playing: variantPlaying };
+    }
+  }
+  // No feasible variant found → return original (best-effort)
+  return result;
+}
 function rrPairKey(a, b) {
   return Math.min(a, b) + "-" + Math.max(a, b);
 }
@@ -7948,7 +8023,7 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
   for (let ri = 0; ri < roundsWanted; ri++) {
     const roundNum = baseRound + ri + 1;
     const prior = [...(history || []), ...rounds];
-    const alloc = allocateByes("rotation", { activeSlots: actives, players, rounds: prior, round: roundNum, courtCount, rng });
+    const alloc = allocateByesMixed("rotation", { activeSlots: actives, players, rounds: prior, round: roundNum, courtCount, rng });
     let bestGames = null, bestCost = Infinity;
     const restarts = Math.max(1, alloc.playing.length === 4 ? 1 : 60);
     for (let attempt = 0; attempt < restarts; attempt++) {
