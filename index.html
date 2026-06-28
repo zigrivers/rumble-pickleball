@@ -4687,6 +4687,49 @@ function runSelfTests() {
     state = newState();
   })();
 
+  // ---- Mixed mode: ladder round-1 dealing ----
+  (function ladderRound1MixedTests() {
+    // Stack 8/2, 4A+4B → round 1 courts are 2A+2B, all teams mixed
+    state = newState();
+    state.format = "stack";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 999;
+    writePlayersFromSlots(8);
+    startTournament();
+    const r1 = state.rounds[0];
+    for (const game of gamesOf(r1)) {
+      for (const team of [game.team1, game.team2]) {
+        console.assert(isMixedTeam(team), "Stack r1: team is mixed", { team });
+      }
+    }
+
+    // King 8/2, 4A+4B → same
+    state = newState();
+    state.format = "king";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 999;
+    writePlayersFromSlots(8);
+    startTournament();
+    const r1k = state.rounds[0];
+    for (const game of gamesOf(r1k)) {
+      for (const team of [game.team1, game.team2]) {
+        console.assert(isMixedTeam(team), "King r1: team is mixed", { team });
+      }
+    }
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6207,13 +6250,21 @@ function assignInitialLadderCourts() {
     courtCount,
     rng,
   });
-  const preserveLegacyShuffle = active.length === 8 && courtCount === 2 && alloc.byes.length === 0;
-  const ordered = preserveLegacyShuffle ? shuffle(alloc.playing) : seededShuffle(alloc.playing, rng);
+  const preserveLegacyShuffle = !state.mixedMode && active.length === 8 && courtCount === 2 && alloc.byes.length === 0;
   const games = [];
-  for (let c = 0; c < alloc.activeCourts; c++) {
-    const four = ordered.slice(c * 4, c * 4 + 4);
-    const courtSlots = preserveLegacyShuffle ? shuffle(four) : seededShuffle(four, rng);
-    games.push(makeGame(c + 1, [courtSlots[0], courtSlots[1]], [courtSlots[2], courtSlots[3]]));
+  if (state.mixedMode) {
+    const courts = dealBalancedCourts(alloc.playing, alloc.activeCourts, rng);
+    for (let c = 0; c < alloc.activeCourts; c++) {
+      const [t1, t2] = pairMixedAware(courts[c], {});
+      games.push(makeGame(c + 1, t1, t2));
+    }
+  } else {
+    const ordered = preserveLegacyShuffle ? shuffle(alloc.playing) : seededShuffle(alloc.playing, rng);
+    for (let c = 0; c < alloc.activeCourts; c++) {
+      const four = ordered.slice(c * 4, c * 4 + 4);
+      const courtSlots = preserveLegacyShuffle ? shuffle(four) : seededShuffle(four, rng);
+      games.push(makeGame(c + 1, [courtSlots[0], courtSlots[1]], [courtSlots[2], courtSlots[3]]));
+    }
   }
   return makeRound(round, games, alloc.byes);
 }
