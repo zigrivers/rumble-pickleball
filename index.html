@@ -4508,6 +4508,39 @@ function runSelfTests() {
     state = newState();
   })();
 
+  // ---- Mixed mode: dealBalancedCourts ----
+  (function dealBalancedCourtsTests() {
+    const rng = mulberry32(42);
+
+    // Balanced 4A+4B, 2 courts → each court gets 2A+2B
+    state.mixedMode = true;
+    state.slotGroups = ["a","a","a","a","b","b","b","b"];
+    const courts = dealBalancedCourts([1,2,3,4,5,6,7,8], 2, rng);
+    console.assert(courts.length === 2, "deal: 2 courts");
+    console.assert(courts[0].length === 4 && courts[1].length === 4, "deal: 4 per court");
+    for (const court of courts) {
+      const aCount = court.filter(s => groupOf(s) === "a").length;
+      const bCount = court.filter(s => groupOf(s) === "b").length;
+      console.assert(aCount === 2 && bCount === 2, "deal: court is 2A+2B", { aCount, bCount });
+    }
+
+    // Lopsided 7A+3B, 2 courts → no undefined, no player dropped
+    state.slotGroups = ["a","a","a","a","a","a","a","b","b","b"];
+    const courts2 = dealBalancedCourts([1,2,3,4,5,6,7,8,9,10], 2, rng);
+    const allSlots2 = courts2.flat();
+    console.assert(allSlots2.length === 8, "deal: 8 slots placed (2 courts × 4)");
+    console.assert(!allSlots2.includes(undefined), "deal: no undefined slots");
+    console.assert(new Set(allSlots2).size === 8, "deal: no duplicate slots");
+
+    // Unset groups → players placed in surplus, no crash
+    state.slotGroups = ["a","a","","","b","b","",""];
+    const courts3 = dealBalancedCourts([1,2,3,4,5,6,7,8], 2, rng);
+    console.assert(courts3.flat().length === 8, "deal: unset groups still placed");
+    console.assert(!courts3.flat().includes(undefined), "deal: no undefined with unset groups");
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6088,6 +6121,30 @@ function mixedModeBadTeamCount(teams) {
 function isMixedTeam(team) {
   const g0 = groupOf(team[0]), g1 = groupOf(team[1]);
   return !g0 || !g1 || g0 !== g1;
+}
+// Deals players to courts prioritizing 2A+2B per court. Safely handles empty
+// pools (lopsided rosters) and unset groups — never returns undefined.
+//   playing:      Array of slot numbers (the active/playing set)
+//   activeCourts: Number of courts to fill
+//   rng:          Seeded RNG function (e.g. mulberry32(seed))
+// Returns: Array of arrays, one per court, each with 4 slot numbers.
+function dealBalancedCourts(playing, activeCourts, rng) {
+  const shuffle = (arr) => seededShuffle(arr.slice(), rng);
+  const aPool = shuffle(playing.filter(s => groupOf(s) === "a"));
+  const bPool = shuffle(playing.filter(s => groupOf(s) === "b"));
+  const unset = shuffle(playing.filter(s => groupOf(s) === ""));
+  const courts = Array.from({ length: activeCourts }, () => []);
+  // Deal 2A + 2B per court
+  for (let c = 0; c < activeCourts; c++) {
+    while (courts[c].length < 2 && aPool.length) courts[c].push(aPool.pop());
+    while (courts[c].length < 4 && bPool.length) courts[c].push(bPool.pop());
+  }
+  // Fill remaining seats from surplus (leftover A, B, then unset)
+  const surplus = [...aPool, ...bPool, ...unset];
+  for (let c = 0; c < activeCourts && surplus.length; c++) {
+    while (courts[c].length < 4 && surplus.length) courts[c].push(surplus.pop());
+  }
+  return courts;
 }
 function computeStackStats(throughRound) {
   const upTo = Math.min(throughRound || 0, state.rounds.length);
