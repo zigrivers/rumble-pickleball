@@ -6558,7 +6558,7 @@ function mixedBadgeForTeam(team) {
 // Returns: Array of arrays, one per court, each with 4 slot numbers.
 // Note: surplus players beyond activeCourts × 4 are dropped (truncated); the
 // caller guarantees `playing` is sized to the exact court seat count.
-function dealBalancedCourts(playing, activeCourts, rng) {
+function dealBalancedCourts(playing, activeCourts, rng, priorRounds) {
   const shuffle = (arr) => seededShuffle(arr.slice(), rng);
   const aPool = shuffle(playing.filter(s => groupOf(s) === "a"));
   const bPool = shuffle(playing.filter(s => groupOf(s) === "b"));
@@ -6573,6 +6573,43 @@ function dealBalancedCourts(playing, activeCourts, rng) {
   const surplus = [...aPool, ...bPool, ...unset];
   for (let c = 0; c < activeCourts && surplus.length; c++) {
     while (courts[c].length < 4 && surplus.length) courts[c].push(surplus.pop());
+  }
+  // Court-balance pass: swap same-group players between courts to balance
+  // court usage based on prior rounds.
+  const history = priorRounds || state.rounds || [];
+  if (activeCourts >= 2 && history.length > 0) {
+    const hist = {};  // slot → { courtNum: count }
+    for (const r of history) {
+      for (const g of gamesOf(r)) {
+        const c = g.court || 1;
+        for (const s of [...g.team1, ...g.team2]) {
+          if (!hist[s]) hist[s] = {};
+          hist[s][c] = (hist[s][c] || 0) + 1;
+        }
+      }
+    }
+    for (let c1 = 0; c1 < activeCourts - 1; c1++) {
+      for (let c2 = c1 + 1; c2 < activeCourts; c2++) {
+        for (const grp of ["a", "b"]) {
+          const onC1 = courts[c1].filter(s => groupOf(s) === grp);
+          const onC2 = courts[c2].filter(s => groupOf(s) === grp);
+          let bestGain = 0, bestSwap = null;
+          for (const s1 of onC1) {
+            for (const s2 of onC2) {
+              const h1 = (hist[s1] || {}), h2 = (hist[s2] || {});
+              const c1Num = c1 + 1, c2Num = c2 + 1;
+              const gain = ((h1[c1Num]||0) - (h1[c2Num]||0)) + ((h2[c2Num]||0) - (h2[c1Num]||0));
+              if (gain > bestGain) { bestGain = gain; bestSwap = [s1, s2]; }
+            }
+          }
+          if (bestSwap) {
+            const [s1, s2] = bestSwap;
+            courts[c1] = courts[c1].map(s => s === s1 ? s2 : s);
+            courts[c2] = courts[c2].map(s => s === s2 ? s1 : s);
+          }
+        }
+      }
+    }
   }
   return courts;
 }
@@ -8485,11 +8522,22 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
     const roundNum = baseRound + ri + 1;
     const prior = [...(history || []), ...rounds];
     const alloc = allocateByesMixed("rotation", { activeSlots: actives, players, rounds: prior, round: roundNum, courtCount, rng });
+    // Build court history for balance penalty
+    const courtHistory = {};  // slot → { courtNum: count }
+    for (const r of prior) {
+      for (const g of gamesOf(r)) {
+        const c = g.court || 1;
+        for (const s of [...g.team1, ...g.team2]) {
+          if (!courtHistory[s]) courtHistory[s] = {};
+          courtHistory[s][c] = (courtHistory[s][c] || 0) + 1;
+        }
+      }
+    }
     let bestGames = null, bestCost = Infinity;
     const restarts = Math.max(1, alloc.playing.length === 4 ? 1 : 60);
     for (let attempt = 0; attempt < restarts; attempt++) {
       const courts = state.mixedMode
-        ? dealBalancedCourts(alloc.playing, alloc.activeCourts, rng)
+        ? dealBalancedCourts(alloc.playing, alloc.activeCourts, rng, prior)
         : null;
       const shuffled = courts ? null : seededShuffle(alloc.playing, rng);
       const games = [];
@@ -8497,10 +8545,68 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
         const four = courts ? courts[c] : shuffled.slice(c * 4, c * 4 + 4);
         if (four && four.length === 4) games.push(bestRRSplit(four, c + 1, prior, games));
       }
-      const cost = rrRoundCost(games, prior);
+      let cost = rrRoundCost(games, prior);
+      // Court-balance penalty: discourage assigning players to courts they've used most
+      for (const g of games) {
+        const c = g.court || 1;
+        for (const s of [...g.team1, ...g.team2]) {
+          const hist = courtHistory[s] || {};
+          const maxCourt = Math.max(0, ...Object.values(hist));
+          if (hist[c] && hist[c] >= maxCourt && maxCourt > 0) cost += 200 * hist[c];
+        }
+      }
       if (cost < bestCost) { bestGames = games; bestCost = cost; }
     }
     rounds.push(makeRound(roundNum, bestGames || [], alloc.byes));
+  }
+  // Post-schedule court balancing: for each round, swap courts 1↔2 if it
+  // reduces the total court-count imbalance across all players. RR courts
+  // are interchangeable, so relabeling doesn't change pairings.
+  for (let pass = 0; pass < rounds.length; pass++) {
+    let improved = false;
+    for (let ri = 0; ri < rounds.length; ri++) {
+      // Compute per-player court counts with current arrangement
+      const counts = {};  // slot → { 1: n, 2: n }
+      for (const r of rounds) {
+        for (const g of gamesOf(r)) {
+          const c = g.court || 1;
+          for (const s of [...g.team1, ...g.team2]) {
+            if (!counts[s]) counts[s] = { 1: 0, 2: 0 };
+            counts[s][c]++;
+          }
+        }
+      }
+      // Compute imbalance cost (sum of squared deviations from 50/50)
+      const imbalance = () => {
+        let cost = 0;
+        for (const s in counts) cost += (counts[s][1] - counts[s][2]) ** 2;
+        return cost;
+      };
+      const before = imbalance();
+      // Swap courts for this round
+      const riGames = gamesOf(rounds[ri]);
+      for (const g of riGames) {
+        const oldC = g.court || 1;
+        const newC = oldC === 1 ? 2 : 1;
+        for (const s of [...g.team1, ...g.team2]) {
+          counts[s][oldC]--;
+          counts[s][newC]++;
+        }
+        g.court = newC;
+      }
+      const after = imbalance();
+      if (after >= before) {
+        // Swap back — didn't improve
+        for (const g of riGames) {
+          const oldC = g.court || 1;
+          const newC = oldC === 1 ? 2 : 1;
+          g.court = newC;
+        }
+      } else {
+        improved = true;
+      }
+    }
+    if (!improved) break;
   }
   return rounds;
 }
@@ -8689,7 +8795,14 @@ function buildFinals() {
   const tiers = [];
   for (let i = 0; i < tierCount; i++) {
     const block = ranked.slice(i * 4, i * 4 + 4);
-    tiers.push(makeFinalTier(FINAL_TIER_NAMES[i], i + 1, [block[0], block[3]], [block[1], block[2]]));
+    let team1, team2;
+    if (state.mixedMode) {
+      [team1, team2] = pairMixedAware(block, {});
+    } else {
+      team1 = [block[0], block[3]];
+      team2 = [block[1], block[2]];
+    }
+    tiers.push(makeFinalTier(FINAL_TIER_NAMES[i], i + 1, team1, team2));
   }
   state.finals = {
     tiers,
