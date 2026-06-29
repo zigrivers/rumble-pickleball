@@ -4528,7 +4528,40 @@ function runSelfTests() {
     state = newState();
   })();
 
-  // ---- Mixed mode: dealBalancedCourts ----
+  // ---- Pairing presets ----
+  (function pairingPresetTests() {
+    // applyPairingPreset sets labels
+    state = newState();
+    applyPairingPreset("gender");
+    console.assert(state.mixedGroupLabels.a === "Men" && state.mixedGroupLabels.b === "Women",
+      "preset: gender sets Men/Women");
+
+    applyPairingPreset("skill");
+    console.assert(state.mixedGroupLabels.a === "Advanced" && state.mixedGroupLabels.b === "Social",
+      "preset: skill sets Advanced/Social");
+
+    // detectPreset matches known presets
+    state.mixedGroupLabels = { a: "Men", b: "Women" };
+    console.assert(detectPreset() === "gender", "detectPreset: Men/Women → gender");
+
+    state.mixedGroupLabels = { a: "Advanced", b: "Social" };
+    console.assert(detectPreset() === "skill", "detectPreset: Advanced/Social → skill");
+
+    // detectPreset normalizes case/whitespace
+    state.mixedGroupLabels = { a: " men ", b: "WOMEN" };
+    console.assert(detectPreset() === "gender", "detectPreset: normalizes case/space");
+
+    // detectPreset returns custom for unknown
+    state.mixedGroupLabels = { a: "Club A", b: "Club B" };
+    console.assert(detectPreset() === "custom", "detectPreset: unknown → custom");
+
+    // mixedToggleLabels with Advanced/Social
+    state.mixedGroupLabels = { a: "Advanced", b: "Social" };
+    const tl = mixedToggleLabels();
+    console.assert(tl.a === "A" && tl.b === "S", "toggleLabels: Advanced→A, Social→S");
+
+    state = newState();
+  })();
   (function dealBalancedCourtsTests() {
     const rng = mulberry32(42);
 
@@ -6503,7 +6536,6 @@ function stackScoreGain(pts, court, courtCount, won) {
   return gain;
 }
 
-// Collision-safe toggle labels for the two mixed-mode groups.
 function mixedToggleLabels() {
   const a = (state.mixedGroupLabels || {}).a || "A";
   const b = (state.mixedGroupLabels || {}).b || "B";
@@ -6522,6 +6554,28 @@ function mixedToggleLabels() {
 function groupOf(slot) {
   return (state.slotGroups || [])[slot - 1] || "";
 }
+
+const PAIRING_PRESETS = [
+  { id: "gender", label: "Men / Women",       a: "Men",      b: "Women" },
+  { id: "skill",  label: "Advanced / Social",  a: "Advanced",  b: "Social" },
+];
+function detectPreset() {
+  const labels = state.mixedGroupLabels || {};
+  const norm = s => (s || "").trim().toLowerCase();
+  for (const p of PAIRING_PRESETS) {
+    if (norm(labels.a) === norm(p.a) && norm(labels.b) === norm(p.b)) return p.id;
+  }
+  return "custom";
+}
+function applyPairingPreset(presetId) {
+  const preset = PAIRING_PRESETS.find(p => p.id === presetId);
+  if (preset) {
+    state.mixedGroupLabels = { a: preset.a, b: preset.b };
+    save();
+    render();
+  }
+}
+
 // Returns the count of teams in the proposed pairing that are NOT mixed (0, 1, or 2).
 // Returns 0 unconditionally when mixed mode is off (byte-identical to pre-feature behavior).
 function mixedModeBadTeamCount(teams) {
@@ -8189,7 +8243,7 @@ function buildFairnessExplanation(type, opts) {
     const names = team.map(nameOf).filter(Boolean).join(" & ");
     return {
       title: "Same-group team",
-      body: "Rumble keeps teams mixed (1 + 1) when the roster allows. This round, the roster math forced one same-group team.",
+      body: "Rumble pairs across groups (1 " + ((state.mixedGroupLabels||{}).a||"A") + " + 1 " + ((state.mixedGroupLabels||{}).b||"B") + ") when the roster allows. This round, the roster math forced one same-group team.",
       facts: [
         names ? "Team: " + names : "This team pairs two players from the same group.",
         "Mixed mode pairs one player from each group per team when counts allow.",
@@ -10156,6 +10210,29 @@ function renderMixedModeToggle() {
     }, state.mixedMode ? "ON" : "OFF")
   ));
   if (state.mixedMode) {
+    const presetId = detectPreset();
+    const presetRow = el("div", { style: "display:flex;align-items:center;gap:8px;margin-top:6px;" },
+      el("span", { style: "font-size:14px;color:var(--muted);" }, "Pair by:")
+    );
+    const sel = el("select", {
+      style: "flex:1;min-height:36px;font-size:14px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px 8px;",
+      onchange: () => {
+        if (sel.value === "custom") openEditGroupLabelsModal();
+        else applyPairingPreset(sel.value);
+      },
+    });
+    for (const p of PAIRING_PRESETS) {
+      sel.appendChild(el("option", { value: p.id, selected: presetId === p.id }, p.label));
+    }
+    if (presetId === "custom") {
+      const lbls = state.mixedGroupLabels || { a: "A", b: "B" };
+      sel.appendChild(el("option", { value: "custom", selected: true },
+        "Custom (" + lbls.a + " / " + lbls.b + ")"));
+    } else {
+      sel.appendChild(el("option", { value: "custom" }, "Custom…"));
+    }
+    presetRow.appendChild(sel);
+    wrap.appendChild(presetRow);
     wrap.appendChild(el("div", { style: "margin-top:4px;" },
       el("a", {
         href: "#",
@@ -11408,7 +11485,7 @@ function renderSaveToLifetimeBlock() {
       const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
       card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
         aCount + " " + labels.a + " / " + bCount + " " + labels.b +
-        ": some same-gender teams needed. Up to " + (activeCourts * 4) + " players may play per round."));
+        ": some same-group teams needed. Up to " + (activeCourts * 4) + " players may play per round."));
     }
   }
 
