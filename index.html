@@ -10735,36 +10735,9 @@ function renderFormatChooser() {
     row.appendChild(btn);
     });
     wrap.appendChild(row);
-    const crownCourts = state.format === "crown";
-    const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
-    const courtRow = el("div", { class: "setup-control-row" });
-    courtRow.appendChild(el("div", null,
-      el("div", { style: "font-weight:700;" }, "Courts"),
-      el("div", { class: "muted", style: "font-size:12px;" },
-        crownCourts ? "Crown Court always uses one court." : "Courts available for this event.")
-    ));
-    const stepper = el("div", { class: "stepper" });
-    const minus = el("button", { "aria-label": "Use fewer courts", disabled: crownCourts || courtDisplay <= 1 }, "-");
-    const plus = el("button", { "aria-label": "Use more courts", disabled: crownCourts || courtDisplay >= 6 }, "+");
-    minus.addEventListener("click", () => {
-      setCourtCount(courtDisplay - 1);
-      save();
-      render();
-    });
-    plus.addEventListener("click", () => {
-      setCourtCount(courtDisplay + 1);
-      save();
-      render();
-    });
-    stepper.appendChild(minus);
-    stepper.appendChild(el("span", { class: "stepper-value" }, "" + courtDisplay));
-    stepper.appendChild(plus);
-    courtRow.appendChild(stepper);
-    wrap.appendChild(courtRow);
-    const fitCount = setupRosterCount();
-    const fitMessage = fitLineText(fitCount, courtDisplay);
-    wrap.appendChild(el("div", { class: "fit-line" + (fitMessage.includes(">1/3") ? " warning" : "") }, fitMessage));
 
+
+    const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
     const rrSetupCount = setupRosterCount();
     if (state.format === "rr" && !(rrSetupCount === 8 && courtDisplay === 2)) {
       const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
@@ -11512,7 +11485,7 @@ function renderSaveToLifetimeBlock() {
     const tabPlayersBtn = el("button", {
       class: "setup-tab-btn" + (_activeSetupTab === "players" ? " active" : ""),
       "data-tab": "players"
-    }, "👥 Players (" + playerCount + ")");
+    }, "👥 Players & Courts (" + playerCount + ")");
     const tabFormatBtn = el("button", {
       class: "setup-tab-btn" + (_activeSetupTab === "format" ? " active" : ""),
       "data-tab": "format"
@@ -11536,7 +11509,42 @@ function renderSaveToLifetimeBlock() {
     const contentFormat = el("div", { class: "setup-tab-content" + (_activeSetupTab === "format" ? " active" : "") });
     const contentTiming = el("div", { class: "setup-tab-content" + (_activeSetupTab === "timing" ? " active" : "") });
 
-    // --- Tab 1: Players Roster ---
+    // --- Tab 1: Players & Courts ---
+    // Courts Card
+    const crownCourts = state.format === "crown";
+    const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
+    const courtCard = el("div", { class: "card" });
+    const courtRow = el("div", { class: "setup-control-row", style: "margin-top:0;" });
+    courtRow.appendChild(el("div", null,
+      el("div", { style: "font-weight:700;" }, "Courts"),
+      el("div", { class: "muted", style: "font-size:12px;" },
+        crownCourts ? "Crown Court always uses one court." : "Courts available for this event.")
+    ));
+    const stepper = el("div", { class: "stepper" });
+    const minus = el("button", { "aria-label": "Use fewer courts", disabled: crownCourts || courtDisplay <= 1 }, "-");
+    const plus = el("button", { "aria-label": "Use more courts", disabled: crownCourts || courtDisplay >= 6 }, "+");
+    minus.addEventListener("click", () => {
+      setCourtCount(courtDisplay - 1);
+      save();
+      render();
+    });
+    plus.addEventListener("click", () => {
+      setCourtCount(courtDisplay + 1);
+      save();
+      render();
+    });
+    stepper.appendChild(minus);
+    stepper.appendChild(el("span", { class: "stepper-value" }, "" + courtDisplay));
+    stepper.appendChild(plus);
+    courtRow.appendChild(stepper);
+    courtCard.appendChild(courtRow);
+
+    const fitMessage = fitLineText(playerCount, courtDisplay);
+    courtCard.appendChild(el("div", { class: "fit-line" + (fitMessage.includes(">1/3") ? " warning" : "") }, fitMessage));
+
+    contentPlayers.appendChild(courtCard);
+
+    // --- Players Roster Card ---
     const subtitleMap = {
       stack: "Names are randomly assigned to courts when the tournament starts.",
       crown: "Names are randomly assigned to slots 1–4 when the tournament starts.",
