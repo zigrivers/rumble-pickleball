@@ -10023,31 +10023,35 @@ function renderRulesBlock() {
               style: "color: var(--accent); font-weight: 600;" },
       "install & getting-started guide"),
     "."));
-  if (state.format !== "crown") {
-    body.appendChild(el("label", { class: "rule-row", style: "display:flex;align-items:center;gap:8px;margin-top:12px;" },
-      el("span", { style: "flex:1;" }, "Mixed mode (pair 1 + 1)"),
-      el("button", {
-        class: state.mixedMode ? "primary" : "",
-        style: "min-height:40px;padding:8px 16px;font-size:16px;",
-        onclick: () => {
-          state.mixedMode = !state.mixedMode;
-          save();
-          render();
-        },
-      }, state.mixedMode ? "ON" : "OFF")
-    ));
-    if (state.mixedMode) {
-      body.appendChild(el("div", { style: "margin-top:4px;" },
-        el("a", {
-          href: "#",
-          style: "color: var(--accent); font-size: 13px; font-weight: 600;",
-          onclick: (e) => { e.preventDefault(); openEditGroupLabelsModal(); },
-        }, "Edit labels")
-      ));
-    }
-  }
   details.appendChild(body);
   return details;
+}
+
+function renderMixedModeToggle() {
+  if (state.format === "crown") return null;
+  const wrap = el("div", { class: "card", style: "padding:12px 16px;" });
+  wrap.appendChild(el("label", { class: "rule-row", style: "display:flex;align-items:center;gap:8px;" },
+    el("span", { style: "flex:1;" }, "Mixed mode (pair 1 + 1)"),
+    el("button", {
+      class: state.mixedMode ? "primary" : "",
+      style: "min-height:40px;padding:8px 16px;font-size:16px;",
+      onclick: () => {
+        state.mixedMode = !state.mixedMode;
+        save();
+        render();
+      },
+    }, state.mixedMode ? "ON" : "OFF")
+  ));
+  if (state.mixedMode) {
+    wrap.appendChild(el("div", { style: "margin-top:4px;" },
+      el("a", {
+        href: "#",
+        style: "color: var(--accent); font-size: 13px; font-weight: 600;",
+        onclick: (e) => { e.preventDefault(); openEditGroupLabelsModal(); },
+      }, "Edit labels")
+    ));
+  }
+  return wrap;
 }
 
 // Returns { ok: true, names: string[] } or { ok: false, count: number, error: string }.
@@ -11163,6 +11167,8 @@ function renderSaveToLifetimeBlock() {
     wrap.appendChild(renderRulesBlock());
     wrap.appendChild(renderTimeBudgetBlock());
     wrap.appendChild(renderFormatChooser());
+    const mixedToggle = renderMixedModeToggle();
+    if (mixedToggle) wrap.appendChild(mixedToggle);
     const subtitleMap = {
       stack: "Names are randomly assigned to courts when the tournament starts.",
       crown: "Names are randomly assigned to slots 1–4 when the tournament starts.",
