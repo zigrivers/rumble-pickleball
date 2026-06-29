@@ -5255,14 +5255,17 @@ function makeScheduleSeed() {
   function ensureSetupRosterArrays(count) {
     if (!Array.isArray(state.rawNames)) state.rawNames = [];
     if (!Array.isArray(state.rawPhones)) state.rawPhones = [];
+    if (!Array.isArray(state.rawGroups)) state.rawGroups = [];
     while (state.rawNames.length < count) state.rawNames.push("");
     while (state.rawPhones.length < count) state.rawPhones.push("");
+    while (state.rawGroups.length < count) state.rawGroups.push("");
   }
   function setSetupRosterCount(count) {
     const next = clampSetupRosterCount(count);
     ensureSetupRosterArrays(next);
     state.rawNames.length = next;
     state.rawPhones.length = next;
+    if (Array.isArray(state.rawGroups)) state.rawGroups.length = next;
     if (Array.isArray(_phoneAutofilled)) _phoneAutofilled.length = next;
   }
   function setupNames(count = setupRosterCount()) {
@@ -6416,6 +6419,17 @@ function stackScoreGain(pts, court, courtCount, won) {
 }
 
 // Per-player stack stats through the given round (1-based, inclusive).
+function mixedToggleLabels() {
+  const a = (state.mixedGroupLabels || {}).a || "A";
+  const b = (state.mixedGroupLabels || {}).b || "B";
+  const aChar = a.charAt(0).toUpperCase();
+  const bChar = b.charAt(0).toUpperCase();
+  if (aChar !== bChar) return { a: aChar, b: bChar };
+  const aTrunc = a.substring(0, 4);
+  const bTrunc = b.substring(0, 4);
+  if (aTrunc !== bTrunc) return { a: aTrunc, b: bTrunc };
+  return { a: "1", b: "2" };
+}
 // RUMBLE:CORE:end
 // RUMBLE:FORMATS:start
 // === Mixed mode helpers ===
@@ -9854,6 +9868,20 @@ function renderRulesBlock() {
               style: "color: var(--accent); font-weight: 600;" },
       "install & getting-started guide"),
     "."));
+  if (state.format !== "crown") {
+    body.appendChild(el("label", { class: "rule-row", style: "display:flex;align-items:center;gap:8px;margin-top:12px;" },
+      el("span", { style: "flex:1;" }, "Mixed mode (pair 1 + 1)"),
+      el("button", {
+        class: state.mixedMode ? "primary" : "",
+        style: "min-height:40px;padding:8px 16px;font-size:16px;",
+        onclick: () => {
+          state.mixedMode = !state.mixedMode;
+          save();
+          render();
+        },
+      }, state.mixedMode ? "ON" : "OFF")
+    ));
+  }
   details.appendChild(body);
   return details;
 }
@@ -11045,6 +11073,28 @@ function renderSaveToLifetimeBlock() {
     });
       row.appendChild(nameInput);
       row.appendChild(phoneInput);
+      if (state.mixedMode) {
+        const groupBtn = (groupVal, label) => {
+          const isSet = (state.rawGroups[i] || "") === groupVal;
+          return el("button", {
+            class: isSet ? "primary" : "",
+            style: "min-height:40px;min-width:40px;padding:4px 8px;font-size:14px;",
+            "aria-label": "Set group " + label + " for player " + (i + 1),
+            onclick: () => {
+              state.rawGroups[i] = isSet ? "" : groupVal;
+              save();
+              render();
+            },
+          }, label);
+        };
+        const labels = mixedToggleLabels();
+        const groupWrap = el("div", { style: "display:flex;gap:4px;" },
+          groupBtn("a", labels.a),
+          groupBtn("b", labels.b)
+        );
+        groupWrap.style.cssText = "flex:0.6;display:flex;gap:4px;";
+        row.appendChild(groupWrap);
+      }
       if (!isCrown && playerCount > 4) {
         row.appendChild(el("button", {
           class: "remove-player",
@@ -11052,6 +11102,7 @@ function renderSaveToLifetimeBlock() {
           onclick: () => {
             state.rawNames.splice(i, 1);
             state.rawPhones.splice(i, 1);
+            if (Array.isArray(state.rawGroups)) state.rawGroups.splice(i, 1);
             if (Array.isArray(_phoneAutofilled)) _phoneAutofilled.splice(i, 1);
             save();
             render();
@@ -11061,6 +11112,22 @@ function renderSaveToLifetimeBlock() {
       list.appendChild(row);
     }
   card.appendChild(list);
+  if (state.mixedMode) {
+    const groups = (state.rawGroups || []).slice(0, playerCount);
+    const aCount = groups.filter(g => g === "a").length;
+    const bCount = groups.filter(g => g === "b").length;
+    const unsetCount = groups.filter(g => !g).length;
+    const activeCourts = effectiveCourtCountForFormat(state.format, state.courtCount);
+    if (unsetCount > 0) {
+      card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
+        "Set a group for all players, or mixed pairing may be uneven."));
+    } else if (Math.min(aCount, bCount) < activeCourts * 2) {
+      const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
+      card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
+        aCount + " " + labels.a + " / " + bCount + " " + labels.b +
+        ": some same-gender teams needed. Up to " + (activeCourts * 4) + " players may play per round."));
+    }
+  }
 
   const startBtn = el("button", {
     id: "start-btn",
