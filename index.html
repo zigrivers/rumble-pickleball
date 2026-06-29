@@ -934,6 +934,26 @@
   .partner-chip.c5 { color: var(--court5); background: rgba(245, 158, 11, 0.15); }
   .partner-chip.c6 { color: var(--court6); background: rgba(34, 211, 238, 0.15); }
   .partner-chip.bye { color: var(--muted); background: var(--panel-2); }
+  .mixed-badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 999px;
+    margin-left: 6px;
+    color: var(--good);
+    background: rgba(16, 185, 129, 0.15);
+  }
+  .same-group-team {
+    border: 1px dashed var(--muted);
+    border-radius: 8px;
+    padding: 2px 4px;
+  }
+  .bye-group-tally {
+    font-size: 14px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
   /* Tap-winner quick-fill pill */
   .team-row {
     /* override existing 1fr 110px to allow pill column */
@@ -6453,6 +6473,18 @@ function isMixedTeam(team) {
   const g0 = groupOf(team[0]), g1 = groupOf(team[1]);
   return !g0 || !g1 || g0 !== g1;
 }
+// Returns an inline badge suffix for a team on court cards when mixed mode is on.
+// Empty for same-group teams (the dashed .same-group-team border conveys those).
+function mixedBadgeForTeam(team) {
+  if (!state.mixedMode) return "";
+  if (isMixedTeam(team)) {
+    const labels = mixedToggleLabels();
+    const g0 = groupOf(team[0]), g1 = groupOf(team[1]);
+    if (g0 && g1) return " " + (g0 === "a" ? labels.a : labels.b) + "·" + (g1 === "a" ? labels.a : labels.b);
+    return " ✓";  // mixed with a wildcard
+  }
+  return "";  // same-group team — indicator added by caller
+}
 // Deals players to courts prioritizing 2A+2B per court. Safely handles empty
 // pools (lopsided rosters) and unset groups — never returns undefined.
 //   playing:      Array of slot numbers (the active/playing set)
@@ -7331,6 +7363,7 @@ function buildPersonalRecap(slot, opts) {
   let bestWin = null;
   let closestLoss = null;
   let byeCount = 0;
+  let sameGroupPartnerSlot = null;  // first same-group partner (mixed best-effort fallback)
   const scanRound = (round, roundNum) => {
     if (byesOf(round).includes(slot)) byeCount++;
     gamesOf(round).forEach(g => {
@@ -7340,6 +7373,9 @@ function buildPersonalRecap(slot, opts) {
       const team = on1 ? g.team1 : g.team2;
       const partner = team.find(s => s !== slot);
       if (partner) partners.set(partner, (partners.get(partner) || 0) + 1);
+      if (state.mixedMode && !isMixedTeam(team) && partner && sameGroupPartnerSlot === null) {
+        sameGroupPartnerSlot = partner;
+      }
       if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) return;
       if (g.score1 === g.score2) { ties++; return; }
       const myScore = on1 ? g.score1 : g.score2;
@@ -7377,6 +7413,7 @@ function buildPersonalRecap(slot, opts) {
     slot, name, rank, fieldSize, gp, wins, losses, ties, record,
     avgPoints, avgDiff, bestWin, closestLoss,
     mostCommonPartner: mostCommonPartnerSlot ? { slot: mostCommonPartnerSlot[0], name: partnerName, games: mostCommonPartnerSlot[1] } : null,
+    sameGroupPartner: sameGroupPartnerSlot ? { slot: sameGroupPartnerSlot, name: nameOf(sameGroupPartnerSlot) } : null,
     byeCount, headline: headlineBits.join(", ") + ".", awards: []
   };
 }
@@ -7421,6 +7458,7 @@ function buildShareCardModel(type, opts) {
     lines.push("Record: " + recap.record + " · GP " + recap.gp);
     if (recap.bestWin) lines.push("Best win: Round " + recap.bestWin.round + " (" + recap.bestWin.score + ")");
     if (recap.mostCommonPartner) lines.push("Most common partner: " + recap.mostCommonPartner.name);
+    if (recap.sameGroupPartner) lines.push("You teamed with " + recap.sameGroupPartner.name + " (same group — not enough of the other group to pair everyone).");
     if (recap.byeCount) lines.push("Byes: " + recap.byeCount);
   } else {
     const ranking = state.format === "crown" ? finalRankingCrown() : finalRanking();
@@ -12031,9 +12069,18 @@ function renderPlaying() {
 
   const roundByes = byesOf(round);
   if (roundByes.length) {
+    let tallyNode = null;
+    if (state.mixedMode) {
+      const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
+      const aByes = roundByes.filter(s => groupOf(s) === "a").length;
+      const bByes = roundByes.filter(s => groupOf(s) === "b").length;
+      tallyNode = el("div", { class: "bye-group-tally" },
+        aByes + " " + labels.a + " · " + bByes + " " + labels.b);
+    }
     scoreSection.appendChild(el("div", { class: "bye-banner" },
       "☕ Sitting this round: " + roundByes.map(nameOf).join(", ") + " — back next round.",
-      whyButton("bye", { slots: roundByes.slice(), round: round.round || state.currentRound })));
+      whyButton("bye", { slots: roundByes.slice(), round: round.round || state.currentRound }),
+      tallyNode));
   }
   scoreSection.appendChild(renderRoundCourts(round, false, refreshes));
 
@@ -12319,16 +12366,22 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
   const crownMatchIdx = opts && opts.matchIdx != null ? opts.matchIdx : null;
 
   const node = el("div", { class: "team-row" });
+  // Mixed-mode badge ("M·W" or "✓") + dashed outline for same-group fallback teams.
+  const badgeText = mixedBadgeForTeam(team);
+  const nameClass = "team-name" + (state.mixedMode && !isMixedTeam(team) ? " same-group-team" : "");
   if (seeds) {
-    const nameNode = el("div", { class: "team-name" });
+    const nameNode = el("div", { class: nameClass });
     nameNode.appendChild(seedPill(seeds.get(team[0]), kind));
     nameNode.appendChild(document.createTextNode(nameOf(team[0])));
     nameNode.appendChild(document.createTextNode(" & "));
     nameNode.appendChild(seedPill(seeds.get(team[1]), kind));
     nameNode.appendChild(document.createTextNode(nameOf(team[1])));
+    if (badgeText) nameNode.appendChild(el("span", { class: "mixed-badge" }, badgeText.trim()));
     node.appendChild(nameNode);
   } else {
-    node.appendChild(el("div", { class: "team-name" }, nameOf(team[0]) + " & " + nameOf(team[1])));
+    node.appendChild(el("div", { class: nameClass },
+      nameOf(team[0]) + " & " + nameOf(team[1]),
+      badgeText ? el("span", { class: "mixed-badge" }, badgeText.trim()) : null));
   }
 
   // Quick-fill pill: shown only when both scores are null.
