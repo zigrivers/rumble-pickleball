@@ -4867,6 +4867,50 @@ function runSelfTests() {
     state = newState();
   })();
 
+  // ---- Mixed mode: edge cases ----
+  (function mixedEdgeCaseTests() {
+    // All players unset group → no crash, schedule generates normally
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["","","","","","","",""];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 111;
+    writePlayersFromSlots(8);
+    startTournament();
+    console.assert(state.rounds.length > 0, "edge: unset groups generates schedule");
+
+    // 7A+3B lopsided → schedule generates, mixed maximized, no crash
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H","I","J"];
+    state.rawGroups = ["a","a","a","a","a","a","a","b","b","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 222;
+    writePlayersFromSlots(10);
+    startTournament();
+    console.assert(state.rounds.length > 0, "edge: lopsided 7A+3B generates schedule");
+
+    // Mixed off → identical to pre-feature (regression golden)
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.slots = state.rawNames.slice();
+    state.scheduleSeed = 12345;
+    writePlayersFromSlots(8);
+    startTournament();
+    console.assert(state.rrScheduleMode === "wh8", "edge: mixed-off 8/2 uses Wh(8)");
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
