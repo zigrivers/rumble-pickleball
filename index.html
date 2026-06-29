@@ -11296,12 +11296,120 @@ function renderShareCardsButtonCard() {
 
 function renderTimeBudgetBlock() {
   const enabled = !!(state.timeBudget && state.timeBudget.enabled);
+  const cal = readCalibration();
+  const isCrown = state.format === "crown";
 
-  // Header
+  // Solve/Calculate based on mode
+  let config = null, error = null, isTight = false, suggestion = null;
+  if (enabled) {
+    const solve = applyTimeBudgetSolve();
+    config = solve.config;
+    error = solve.error;
+    isTight = solve.isTight;
+    suggestion = solve.suggestion;
+  } else {
+    config = { target: state.winScore, winBy: state.winBy, scoring: state.scoringSystem };
+    error = null;
+    isTight = false;
+    suggestion = null;
+  }
+
+  const readout = formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion);
+
+  // Estimate total minutes
+  let loMin = null, hiMin = null;
+  if (config) {
+    if (state.format === "crown") {
+      const presetName = config.preset || "Standard";
+      const presetObj = CROWN_PRESETS.find(p => p.name === presetName) || CROWN_PRESETS[1];
+      let lo = 0, hi = 0;
+      presetObj.matches.forEach(m => {
+        const [glo, ghi] = estimateGameMinutes(m.target, m.winBy, m.scoring, cal);
+        lo += 2.3 * glo + 3;
+        hi += 2.3 * ghi + 3;
+      });
+      loMin = Math.round(lo);
+      hiMin = Math.round(hi);
+    } else {
+      const rounds = getTimeBudgetRounds();
+      const activeCourts = timeBudgetActiveCourtsFor(state);
+      const [roundLo, roundHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, activeCourts, cal);
+      const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
+      loMin = rounds * roundLo + finLo + 5;
+      hiMin = rounds * roundHi + finHi + 5;
+    }
+  }
+
   const card = el("div", { class: "card" });
-  card.appendChild(el("h3", null, "Time Budget"));
+  card.appendChild(el("h3", null, "Tournament Timing"));
 
-  // Toggle row
+  // 1. Premium Estimate Banner
+  const estBanner = el("div", {
+    style: "background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:16px;margin:12px 0 16px;text-align:center;"
+  });
+  
+  const estTitle = el("div", { class: "muted", style: "font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;" }, "Estimated Duration");
+  estBanner.appendChild(estTitle);
+
+  let durationText = "—";
+  if (config && loMin != null && hiMin != null) {
+    const formatHours = mins => {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    };
+    durationText = `~${loMin}–${hiMin} min (${formatHours(loMin)} – ${formatHours(hiMin)})`;
+  } else if (error) {
+    durationText = "Budget Too Tight";
+  }
+  
+  const estValue = el("div", {
+    style: "font-size:24px;font-weight:800;color:var(--accent);margin:6px 0;"
+  }, durationText);
+  estBanner.appendChild(estValue);
+
+  // Status Badge (Fit, Tight, Over)
+  let badgeText = "";
+  let badgeStyle = "display:inline-block;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;";
+  if (enabled) {
+    if (error) {
+      badgeText = "⚠️ Exceeds Budget";
+      badgeStyle += "background:#3d1a1a;color:#ff6b6b;border:1px solid #5a2424;";
+    } else if (isTight) {
+      badgeText = "⚠️ Tight Budget";
+      badgeStyle += "background:#3d301a;color:#ffb86c;border:1px solid #5a4524;";
+    } else {
+      badgeText = "✅ Fits Budget";
+      badgeStyle += "background:#1a3d24;color:#50fa7b;border:1px solid #245a33;";
+    }
+  } else {
+    badgeText = "ℹ️ Manual Scoring Estimate";
+    badgeStyle += "background:var(--panel);color:var(--muted);border:1px solid var(--border);";
+  }
+  const estBadge = el("span", { style: badgeStyle }, badgeText);
+  estBanner.appendChild(estBadge);
+  card.appendChild(estBanner);
+
+  // 2. Readout details row
+  const readoutWrap = el("div", { class: "tb-readout", style: "margin-bottom:16px;" });
+  
+  // Will Play
+  const playRow = el("div", null, "Will play: ", el("span", { id: "tb-will-play", style: "font-weight:600;" }, readout.willPlay));
+  readoutWrap.appendChild(playRow);
+
+  // Likely Done
+  const doneRow = el("div", { id: "tb-likely-done-row", style: readout.likelyDone ? "" : "display:none;" }, "Likely done: ", el("span", { id: "tb-likely-done", style: "font-weight:600;" }, readout.likelyDone));
+  readoutWrap.appendChild(doneRow);
+
+  // Confidence
+  const confRow = el("div", { id: "tb-confidence-row", style: readout.confidence ? "" : "display:none;" }, "Confidence: ", el("span", { id: "tb-confidence", class: "muted" }, readout.confidence));
+  readoutWrap.appendChild(confRow);
+
+  card.appendChild(readoutWrap);
+
+  // 3. Time Budget Toggle and Inputs
+  const tbCard = el("div", { style: "border-top:1px solid var(--border);padding-top:16px;margin-bottom:20px;" });
+  
   const toggleLabel = el("label", { class: "tb-toggle-row", style: "cursor:pointer;font-size:16px;min-height:44px;" });
   const toggleChk = el("input", {
     type: "checkbox",
@@ -11310,25 +11418,18 @@ function renderTimeBudgetBlock() {
   });
   if (enabled) toggleChk.setAttribute("checked", "checked");
   toggleLabel.appendChild(toggleChk);
-  toggleLabel.appendChild(document.createTextNode("Set a time budget"));
-  card.appendChild(toggleLabel);
-
-  if (state.format === "crown") {
-    card.appendChild(el("p", { class: "muted", style: "font-size:13px;margin:4px 0 8px;" },
-      "Crown events typically run 100–165 minutes."));
-  }
-
-  // Detail section (hidden by default unless already enabled)
+  toggleLabel.appendChild(document.createTextNode("Automatically manage time (Time Budget)"));
+  tbCard.appendChild(toggleLabel);
+  
   const details = el("div", {
     id: "tb-details",
-    style: "display:" + (enabled ? "block" : "none") + ";margin-top:8px;",
+    style: "display:" + (enabled ? "block" : "none") + ";margin-top:12px;"
   });
 
-  // Time row
+  // Time target row
   const timeRow = el("div", { class: "tb-row" });
-  timeRow.appendChild(el("label", { for: "tb-minutes" }, "Event time:"));
+  timeRow.appendChild(el("label", { for: "tb-minutes" }, "Target Event time:"));
   const minutesSel = el("select", { id: "tb-minutes" });
-  const isCrown = state.format === "crown";
   const timeOptions = isCrown
     ? [90, 105, 120, 150, 180]
     : [
@@ -11351,67 +11452,142 @@ function renderTimeBudgetBlock() {
   timeRow.appendChild(minutesSel);
   details.appendChild(timeRow);
 
-  // Read-out row
-  const readout = el("div", { class: "tb-readout" });
-  readout.appendChild(el("div", null,
-    "Will play: ", el("span", { id: "tb-will-play" }, "—")
-  ));
-  readout.appendChild(el("div", { id: "tb-likely-done-row" },
-    "Likely done: ", el("span", { id: "tb-likely-done" }, "—")
-  ));
-  readout.appendChild(el("div", { id: "tb-confidence-row" },
-    "Confidence: ", el("span", { id: "tb-confidence" }, "using defaults (no history)")
-  ));
-  details.appendChild(readout);
-
-  // Tight-budget banner (shown when solver picks the tightest config)
-  const tightBanner = el("div", {
-    id: "tb-tight-banner",
-    class: "tb-tight-banner",
-    style: "display:none;",
-  }, "This budget is tight — even our shortest games may run over.");
-  details.appendChild(tightBanner);
-
   // Auto-tighten row
-  const autoRow = el("div", { class: "tb-toggle-row" });
+  const autoRow = el("div", { class: "tb-toggle-row", style: "margin-top:8px;" });
   const autoChk = el("input", { type: "checkbox", id: "tb-auto-tighten" });
   if (state.timeBudget && state.timeBudget.autoTighten) autoChk.setAttribute("checked", "checked");
   autoRow.appendChild(autoChk);
   const autoLabelText = el("div");
   autoLabelText.appendChild(document.createTextNode("Auto-tighten if running long"));
-  autoLabelText.appendChild(el("span", { class: "tb-subtext" }, "(default: prompt before tightening)"));
+  autoLabelText.appendChild(el("span", { class: "tb-subtext" }, " (default: prompt before tightening)"));
   autoRow.appendChild(autoLabelText);
   details.appendChild(autoRow);
 
-  card.appendChild(details);
+  const tbExplanation = el("p", { class: "muted", style: "font-size:12px;margin-top:10px;line-height:1.4;" },
+    "🎯 When enabled, Rumble adjusts the scoring system (Rally vs Side-out) and target scores automatically to fit the selected time constraint."
+  );
+  details.appendChild(tbExplanation);
+
+  // Tight banner
+  const tightBanner = el("div", {
+    id: "tb-tight-banner",
+    class: "tb-tight-banner",
+    style: "display:" + (isTight && !error ? "block" : "none") + ";margin-top:10px;",
+  }, "This budget is tight — even our shortest games may run over.");
+  details.appendChild(tightBanner);
+
+  tbCard.appendChild(details);
+  card.appendChild(tbCard);
+
+  // 4. Scoring Mechanic Panel (Manual Controls)
+  const scoringCard = el("div", { style: "border-top:1px solid var(--border);padding-top:16px;" });
+  scoringCard.appendChild(el("h4", { style: "margin:0 0 10px;font-size:15px;" }, "Manual Scoring Rules"));
+  
+  if (enabled) {
+    scoringCard.appendChild(el("p", { class: "muted", style: "font-size:13px;font-style:italic;margin:0 0 8px;" },
+      "🔒 Locked: Scoring rules are currently managed by the Time Budget solver. Turn off Time Budget above to customize scoring rules manually."
+    ));
+  }
+  
+  // Scoring Type (Traditional vs Rally)
+  const typeRow = el("div", { class: "settings-row", style: enabled ? "opacity:0.5;pointer-events:none;" : "" });
+  typeRow.appendChild(el("label", null, "Scoring System"));
+  
+  const typeBtns = el("div", { class: "setup-tabs", style: "margin:0;flex:1;max-width:240px;height:36px;padding:2px;background:var(--panel);" });
+  const traditionalBtn = el("button", {
+    class: "setup-tab-btn" + (state.scoringSystem === "sideout" ? " active" : ""),
+    style: "font-size:12px;padding:4px 8px;border-radius:6px;min-height:auto;",
+    disabled: enabled
+  }, "Traditional");
+  const rallyBtn = el("button", {
+    class: "setup-tab-btn" + (state.scoringSystem === "rally" ? " active" : ""),
+    style: "font-size:12px;padding:4px 8px;border-radius:6px;min-height:auto;",
+    disabled: enabled
+  }, "Rally");
+  
+  traditionalBtn.addEventListener("click", () => {
+    state.scoringSystem = "sideout";
+    save();
+    render();
+  });
+  rallyBtn.addEventListener("click", () => {
+    state.scoringSystem = "rally";
+    save();
+    render();
+  });
+  typeBtns.appendChild(traditionalBtn);
+  typeBtns.appendChild(rallyBtn);
+  typeRow.appendChild(typeBtns);
+  scoringCard.appendChild(typeRow);
+
+  // Short Explanations for scoring systems
+  const typeDesc = el("p", { class: "muted", style: "font-size:12px;margin:4px 0 12px;line-height:1.45;" },
+    state.scoringSystem === "rally"
+      ? "⚡ Rally: A point is scored on every single rally. Fast-paced, games typically take 7–10 minutes."
+      : "🐢 Traditional (Side-out): Points can only be scored when your team is serving. Typical games take 15–20 minutes."
+  );
+  scoringCard.appendChild(typeDesc);
+
+  // Win Score selector
+  const scoreRow = el("div", { class: "settings-row", style: (enabled || state.format === "crown") ? "opacity:0.5;pointer-events:none;" : "" });
+  scoreRow.appendChild(el("label", null, "Target Score"));
+  const scoreSel = el("select", { disabled: enabled || state.format === "crown" });
+  [11, 15, 21].forEach(v => {
+    const opt = el("option", { value: String(v) }, String(v));
+    if (state.winScore === v) opt.setAttribute("selected", "selected");
+    scoreSel.appendChild(opt);
+  });
+  scoreSel.addEventListener("change", () => {
+    state.winScore = parseInt(scoreSel.value, 10);
+    save();
+    render();
+  });
+  scoreRow.appendChild(scoreSel);
+  scoringCard.appendChild(scoreRow);
+
+  // Win By selector
+  const winByRow = el("div", { class: "settings-row", style: enabled ? "opacity:0.5;pointer-events:none;" : "" });
+  winByRow.appendChild(el("label", null, "Win By"));
+  const winBySel = el("select", { disabled: enabled });
+  [[1, "Win by 1"], [2, "Win by 2"]].forEach(([v, lbl]) => {
+    const opt = el("option", { value: String(v) }, lbl);
+    if (state.winBy === v) opt.setAttribute("selected", "selected");
+    winBySel.appendChild(opt);
+  });
+  winBySel.addEventListener("change", () => {
+    state.winBy = parseInt(winBySel.value, 10);
+    save();
+    render();
+  });
+  winByRow.appendChild(winBySel);
+  scoringCard.appendChild(winByRow);
+
+  card.appendChild(scoringCard);
 
   // Wire time minutes dropdown
   minutesSel.addEventListener("change", () => {
     state.timeBudget.minutes = parseInt(minutesSel.value, 10);
-    const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-    if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+    const { config: c, error: err } = applyTimeBudgetSolve();
+    if (c && c.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
       showRallyAckDialog(
         () => {
           state.timeBudget.rallyAcknowledged = true;
           save();
-          updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+          render();
         },
         () => {
           const STEPS = [60, 75, 90, 105, 120, 150, 180];
           const idx = STEPS.indexOf(state.timeBudget.minutes);
           if (idx < STEPS.length - 1) {
             state.timeBudget.minutes = STEPS[idx + 1];
-            const sel = document.getElementById("tb-minutes") || document.getElementById("tb-s-minutes");
-            if (sel) sel.value = String(state.timeBudget.minutes);
-            const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
             save();
-            updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+            render();
           }
         }
       );
     } else {
       save();
-      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+      render();
     }
   });
 
@@ -11419,52 +11595,41 @@ function renderTimeBudgetBlock() {
   autoChk.addEventListener("change", () => {
     state.timeBudget.autoTighten = autoChk.checked;
     save();
+    render();
   });
 
   // Wire toggle
   toggleChk.addEventListener("change", () => {
     state.timeBudget.enabled = toggleChk.checked;
-    details.style.display = toggleChk.checked ? "block" : "none";
     if (toggleChk.checked) {
-      const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-      if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+      const { config: c } = applyTimeBudgetSolve();
+      if (c && c.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
         showRallyAckDialog(
           () => {
             state.timeBudget.rallyAcknowledged = true;
             save();
-            updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+            render();
           },
           () => {
             const STEPS = [60, 75, 90, 105, 120, 150, 180];
             const idx = STEPS.indexOf(state.timeBudget.minutes);
             if (idx < STEPS.length - 1) {
               state.timeBudget.minutes = STEPS[idx + 1];
-              const sel = document.getElementById("tb-minutes") || document.getElementById("tb-s-minutes");
-              if (sel) sel.value = String(state.timeBudget.minutes);
-              const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
               save();
-              updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+              render();
             }
           }
         );
       } else {
         save();
-        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+        render();
       }
     } else {
       state.timeBudget.plannedConfig = null;
       save();
-      updateStartState();
+      render();
     }
   });
-
-  // Populate read-out on initial render if already enabled (deferred so card is in DOM first)
-  if (enabled) {
-    requestAnimationFrame(() => {
-      const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
-    });
-  }
 
   return card;
 }
