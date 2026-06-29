@@ -10361,7 +10361,17 @@ function renderMixedModeToggle() {
       },
     }, state.mixedMode ? "ON" : "OFF")
   ));
-  if (state.mixedMode) {
+  if (!state.mixedMode) {
+    const desc = el("p", { class: "muted", style: "font-size:13px; margin:6px 0 0; line-height:1.45;" },
+      "Pairs one player from Group A with one from Group B on every team (e.g. Men + Women).");
+    wrap.appendChild(desc);
+  } else {
+    const desc = el("div", { class: "muted", style: "font-size:13px; margin:8px 0 12px; line-height:1.45; border-left:2px solid var(--accent); padding-left:8px;" });
+    desc.appendChild(el("strong", null, "Mixed Doubles Rules:"));
+    desc.appendChild(el("div", { style: "margin-top:4px;" }, "Forces teams to be comprised of exactly one player from Group A and one from Group B."));
+    desc.appendChild(el("div", { style: "margin-top:4px;" }, "Assign players to their groups (A/B) on the ", el("strong", null, "Players & Courts"), " tab."));
+    wrap.appendChild(desc);
+
     const presetId = detectPreset();
     const presetRow = el("div", { style: "display:flex;align-items:center;gap:8px;margin-top:6px;" },
       el("span", { style: "font-size:14px;color:var(--muted);" }, "Pair by:")
@@ -10691,25 +10701,7 @@ function openSetupAssistant() {
 function renderFormatChooser() {
   const wrap = el("div", { class: "format-chooser" });
 
-  // Quick templates block
-  wrap.appendChild(el("div", { class: "format-chooser-label" }, "Quick templates"));
-  const tplRow = el("div", { class: "format-options" });
-  TOURNAMENT_TEMPLATES.forEach(t => {
-    const active = state.lastAppliedTemplate === t.id;
-    const btn = el("button", { class: "format-option" + (active ? " active" : "") });
-    btn.appendChild(el("div", { class: "format-option-title" }, t.title));
-    btn.appendChild(el("div", { class: "format-option-blurb" }, t.blurb));
-    btn.addEventListener("click", () => { applyTournamentTemplate(t.id); render(); });
-    tplRow.appendChild(btn);
-  });
-  wrap.appendChild(tplRow);
-  if (state.lastAppliedTemplate) {
-    const cur = TOURNAMENT_TEMPLATES.find(t => t.id === state.lastAppliedTemplate);
-    if (cur) wrap.appendChild(el("div", { class: "muted", style: "font-size:12px;margin:4px 0 10px;" },
-      "Applied: " + cur.title + " — edit anything below."));
-  }
-  wrap.appendChild(el("button", { class: "secondary", style: "margin-bottom:12px;", onclick: openSetupAssistant }, "Setup Assistant"));
-
+  // Format selection first
   wrap.appendChild(el("div", { class: "format-chooser-label" }, "Format"));
   const row = el("div", { class: "format-options" });
   const opts = [
@@ -10733,14 +10725,14 @@ function renderFormatChooser() {
     btn.appendChild(el("div", { class: "format-option-title" }, opt.title));
     btn.appendChild(el("div", { class: "format-option-blurb" }, opt.blurb));
     row.appendChild(btn);
-    });
-    wrap.appendChild(row);
+  });
+  wrap.appendChild(row);
 
-
-    const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
-    const rrSetupCount = setupRosterCount();
-    if (state.format === "rr" && !(rrSetupCount === 8 && courtDisplay === 2)) {
-      const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
+  // Rounds configuration based on format
+  const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
+  const rrSetupCount = setupRosterCount();
+  if (state.format === "rr" && !(rrSetupCount === 8 && courtDisplay === 2)) {
+    const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
     sub.appendChild(el("label", null, "Rounds"));
     const sel = el("select");
     [4,5,6,7,8,9,10,11,12].forEach(v => {
@@ -10819,6 +10811,43 @@ function renderFormatChooser() {
     sub.appendChild(sel);
     wrap.appendChild(sub);
   }
+
+  // Collapsible Presets & Setup Assistant at the bottom
+  const templatesDetails = el("details", { class: "rules", style: "margin-top:16px; margin-bottom:0;" });
+  if (state.lastAppliedTemplate) {
+    templatesDetails.setAttribute("open", "open");
+  }
+  templatesDetails.appendChild(el("summary", null, "Presets & Quick Setup"));
+  
+  const templatesBody = el("div", { class: "rules-body" });
+  templatesBody.appendChild(el("div", { class: "format-chooser-label", style: "margin-top:4px;" }, "Quick templates"));
+  
+  const tplRow = el("div", { class: "format-options" });
+  TOURNAMENT_TEMPLATES.forEach(t => {
+    const active = state.lastAppliedTemplate === t.id;
+    const btn = el("button", { class: "format-option" + (active ? " active" : "") });
+    btn.appendChild(el("div", { class: "format-option-title" }, t.title));
+    btn.appendChild(el("div", { class: "format-option-blurb" }, t.blurb));
+    btn.addEventListener("click", () => { applyTournamentTemplate(t.id); render(); });
+    tplRow.appendChild(btn);
+  });
+  templatesBody.appendChild(tplRow);
+
+  if (state.lastAppliedTemplate) {
+    const cur = TOURNAMENT_TEMPLATES.find(t => t.id === state.lastAppliedTemplate);
+    if (cur) templatesBody.appendChild(el("div", { class: "muted", style: "font-size:12px;margin:4px 0 10px;" },
+      "Applied: " + cur.title + " — edit anything below."));
+  }
+
+  templatesBody.appendChild(el("button", {
+    class: "secondary",
+    style: "width:100%;margin-top:12px;",
+    onclick: openSetupAssistant
+  }, "Setup Assistant"));
+
+  templatesDetails.appendChild(templatesBody);
+  wrap.appendChild(templatesDetails);
+
   return wrap;
 }
 
