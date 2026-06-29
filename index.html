@@ -543,6 +543,145 @@
   }
   .winning-team { color: var(--good); font-weight: 700; }
 
+  /* Redesigned Tabbed Setup Styles */
+  .setup-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+  }
+  .setup-tab-btn {
+    flex: 1;
+    min-height: 52px;
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    font-weight: 700;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .setup-tab-btn.active {
+    background: var(--accent);
+    color: #1a1207;
+    border-color: var(--accent);
+  }
+  .setup-tab-btn.has-error::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 10px;
+    height: 10px;
+    background-color: var(--bad);
+    border-radius: 50%;
+    border: 2px solid var(--panel);
+  }
+  .setup-tab-btn.active.has-error::after {
+    border-color: var(--accent);
+  }
+  
+  .setup-tab-content {
+    display: none;
+  }
+  .setup-tab-content.active {
+    display: block;
+  }
+
+  .setup-bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 1200px;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    z-index: 100;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+    box-sizing: border-box;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+  
+  .setup-bottom-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .setup-summary-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .setup-summary-details {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  
+  .setup-bottom-bar-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  .setup-bottom-bar-right button.primary {
+    min-height: 52px;
+    padding: 12px 24px;
+    font-size: 18px;
+    border-radius: 12px;
+    white-space: nowrap;
+  }
+  
+  /* Additional spacing to prevent bottom bar from overlapping content */
+  .setup-container {
+    padding-bottom: 120px;
+  }
+
+  @media (max-width: 580px) {
+    .setup-tabs {
+      gap: 4px;
+    }
+    .setup-tab-btn {
+      font-size: 13px;
+      min-height: 48px;
+      padding: 4px 6px;
+      border-radius: 8px;
+    }
+    .setup-bottom-bar {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 12px 14px;
+      gap: 10px;
+    }
+    .setup-bottom-bar-right {
+      align-items: stretch;
+      width: 100%;
+    }
+    .setup-bottom-bar-right button.primary {
+      width: 100%;
+      min-height: 48px;
+      font-size: 18px;
+    }
+    .setup-container {
+      padding-bottom: 160px;
+    }
+    .setup-bottom-summary {
+      text-align: center;
+    }
+  }
+
   .setup-list { display: grid; gap: 10px; margin-bottom: 14px; }
   .format-chooser {
     background: var(--panel);
@@ -5273,6 +5412,7 @@ function runSimulation() {
   return failures;
 }
 let state = isSnapshotRoute() ? newState() : (isDisplayMode() ? (readDisplayState() || newState()) : (load() || newState()));
+let _activeSetupTab = "players";
 let displayRefreshStarted = false;
 let displayLastSaved = null;
 
@@ -9978,6 +10118,18 @@ function updateStartState() {
     inp.classList.toggle("invalid", bad);
     if (bad) inp.setAttribute("aria-invalid", "true"); else inp.removeAttribute("aria-invalid");
   });
+  
+  // Highlight tab buttons that have validation errors
+  const playersTabBtn = document.querySelector(".setup-tab-btn[data-tab='players']");
+  if (playersTabBtn) {
+    playersTabBtn.classList.toggle("has-error", !validation.ok);
+  }
+  const timingTabBtn = document.querySelector(".setup-tab-btn[data-tab='timing']");
+  if (timingTabBtn) {
+    const timingError = state.timeBudget && state.timeBudget.enabled && !state.timeBudget.plannedConfig;
+    timingTabBtn.classList.toggle("has-error", !!timingError);
+  }
+
   const hint = document.getElementById("start-hint");
   if (hint) {
     const reason = startBlockReason();
@@ -11353,12 +11505,38 @@ function renderSaveToLifetimeBlock() {
     const playerCount = setupRosterCount();
     ensureSetupRosterArrays(playerCount);
     const isCrown = state.format === "crown";
-    const wrap = el("div");
-    wrap.appendChild(renderRulesBlock());
-    wrap.appendChild(renderTimeBudgetBlock());
-    wrap.appendChild(renderFormatChooser());
-    const mixedToggle = renderMixedModeToggle();
-    if (mixedToggle) wrap.appendChild(mixedToggle);
+    const wrap = el("div", { class: "setup-container" });
+
+    // 1. Tab Bar
+    const tabsContainer = el("div", { class: "setup-tabs" });
+    const tabPlayersBtn = el("button", {
+      class: "setup-tab-btn" + (_activeSetupTab === "players" ? " active" : ""),
+      "data-tab": "players"
+    }, "👥 Players (" + playerCount + ")");
+    const tabFormatBtn = el("button", {
+      class: "setup-tab-btn" + (_activeSetupTab === "format" ? " active" : ""),
+      "data-tab": "format"
+    }, "📋 Format");
+    const tabTimingBtn = el("button", {
+      class: "setup-tab-btn" + (_activeSetupTab === "timing" ? " active" : ""),
+      "data-tab": "timing"
+    }, "⏱️ Timing & Rules");
+
+    tabPlayersBtn.addEventListener("click", () => { _activeSetupTab = "players"; render(); });
+    tabFormatBtn.addEventListener("click", () => { _activeSetupTab = "format"; render(); });
+    tabTimingBtn.addEventListener("click", () => { _activeSetupTab = "timing"; render(); });
+
+    tabsContainer.appendChild(tabPlayersBtn);
+    tabsContainer.appendChild(tabFormatBtn);
+    tabsContainer.appendChild(tabTimingBtn);
+    wrap.appendChild(tabsContainer);
+
+    // 2. Tab Contents
+    const contentPlayers = el("div", { class: "setup-tab-content" + (_activeSetupTab === "players" ? " active" : "") });
+    const contentFormat = el("div", { class: "setup-tab-content" + (_activeSetupTab === "format" ? " active" : "") });
+    const contentTiming = el("div", { class: "setup-tab-content" + (_activeSetupTab === "timing" ? " active" : "") });
+
+    // --- Tab 1: Players Roster ---
     const subtitleMap = {
       stack: "Names are randomly assigned to courts when the tournament starts.",
       crown: "Names are randomly assigned to slots 1–4 when the tournament starts.",
@@ -11385,54 +11563,52 @@ function renderSaveToLifetimeBlock() {
     }, "Paste " + playerCount + " names");
     actions.appendChild(pasteLink);
     card.appendChild(actions);
+
     const list = el("div", { class: "setup-list" });
-    // Display only playerCount inputs; extra saved rows are preserved on Crown format switches.
     for (let i = 0; i < playerCount; i++) {
       const row = el("div", { class: "setup-row", style: "display:flex;gap:8px;" });
-    const nameInput = el("input", {
-      class: "name-input",
-      id: "setup-name-" + i,
-      type: "text",
-      placeholder: "Player " + (i + 1),
-      "aria-label": "Player " + (i + 1) + " name",
-      value: state.rawNames[i] || "",
-      autocomplete: "off",
-      autocapitalize: "words",
-      autocorrect: "off",
-      spellcheck: "false",
-      style: "flex:1.4;",
-    });
-    const phoneInput = el("input", {
-      class: "name-input",
-      type: "tel",
-      inputmode: "tel",
-      placeholder: "📱 optional",
-      "aria-label": "Phone number for player " + (i + 1),
-      value: state.rawPhones[i] || "",
-      autocomplete: "off",
-      style: "flex:1.4;font-size:15px;",
-    });
-    nameInput.addEventListener("input", () => {
-      state.rawNames[i] = nameInput.value;
-      // Auto-fill phone from roster when the field is empty or still roster-filled
-      // (and not since hand-edited), so "Ken" → "Kenneth" re-resolves instead of
-      // stranding Ken's number on Kenneth's row.
-      if (!state.rawPhones[i] || _phoneAutofilled[i]) {
-        const filled = rosterPhoneFor(nameInput.value);
-        state.rawPhones[i] = filled;
-        phoneInput.value = filled;
-        _phoneAutofilled[i] = !!filled;
-      }
-      save();
-      updateStartState();
-    });
-    phoneInput.addEventListener("input", () => {
-      state.rawPhones[i] = phoneInput.value;
-      _phoneAutofilled[i] = false;   // manual edit locks the value
-      save();
-    });
+      const nameInput = el("input", {
+        class: "name-input",
+        id: "setup-name-" + i,
+        type: "text",
+        placeholder: "Player " + (i + 1),
+        "aria-label": "Player " + (i + 1) + " name",
+        value: state.rawNames[i] || "",
+        autocomplete: "off",
+        autocapitalize: "words",
+        autocorrect: "off",
+        spellcheck: "false",
+        style: "flex:1.4;",
+      });
+      const phoneInput = el("input", {
+        class: "name-input",
+        type: "tel",
+        inputmode: "tel",
+        placeholder: "📱 optional",
+        "aria-label": "Phone number for player " + (i + 1),
+        value: state.rawPhones[i] || "",
+        autocomplete: "off",
+        style: "flex:1.4;font-size:15px;",
+      });
+      nameInput.addEventListener("input", () => {
+        state.rawNames[i] = nameInput.value;
+        if (!state.rawPhones[i] || _phoneAutofilled[i]) {
+          const filled = rosterPhoneFor(nameInput.value);
+          state.rawPhones[i] = filled;
+          phoneInput.value = filled;
+          _phoneAutofilled[i] = !!filled;
+        }
+        save();
+        updateStartState();
+      });
+      phoneInput.addEventListener("input", () => {
+        state.rawPhones[i] = phoneInput.value;
+        _phoneAutofilled[i] = false;
+        save();
+      });
       row.appendChild(nameInput);
       row.appendChild(phoneInput);
+
       if (state.mixedMode) {
         const groupBtn = (groupVal, label) => {
           const isSet = (state.rawGroups[i] || "") === groupVal;
@@ -11471,48 +11647,82 @@ function renderSaveToLifetimeBlock() {
       }
       list.appendChild(row);
     }
-  card.appendChild(list);
-  if (state.mixedMode) {
-    const groups = (state.rawGroups || []).slice(0, playerCount);
-    const aCount = groups.filter(g => g === "a").length;
-    const bCount = groups.filter(g => g === "b").length;
-    const unsetCount = groups.filter(g => !g).length;
-    const activeCourts = effectiveCourtCountForFormat(state.format, state.courtCount);
-    if (unsetCount > 0) {
-      card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
-        "Set a group for all players, or mixed pairing may be uneven."));
-    } else if (Math.min(aCount, bCount) < activeCourts * 2) {
-      const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
-      card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
-        aCount + " " + labels.a + " / " + bCount + " " + labels.b +
-        ": some same-group teams needed. Up to " + (activeCourts * 4) + " players may play per round."));
+    card.appendChild(list);
+
+    if (state.mixedMode) {
+      const groups = (state.rawGroups || []).slice(0, playerCount);
+      const aCount = groups.filter(g => g === "a").length;
+      const bCount = groups.filter(g => g === "b").length;
+      const unsetCount = groups.filter(g => !g).length;
+      const activeCourts = effectiveCourtCountForFormat(state.format, state.courtCount);
+      if (unsetCount > 0) {
+        card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
+          "Set a group for all players, or mixed pairing may be uneven."));
+      } else if (Math.min(aCount, bCount) < activeCourts * 2) {
+        const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
+        card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
+          aCount + " " + labels.a + " / " + bCount + " " + labels.b +
+          ": some same-group teams needed. Up to " + (activeCourts * 4) + " players may play per round."));
+      }
     }
+    contentPlayers.appendChild(card);
+    contentPlayers.appendChild(renderSaveToLifetimeBlock());
+
+    // --- Tab 2: Format & Courts ---
+    contentFormat.appendChild(renderFormatChooser());
+    const mixedToggle = renderMixedModeToggle();
+    if (mixedToggle) contentFormat.appendChild(mixedToggle);
+
+    // --- Tab 3: Timing & Rules ---
+    contentTiming.appendChild(renderTimeBudgetBlock());
+    contentTiming.appendChild(renderRulesBlock());
+
+    wrap.appendChild(contentPlayers);
+    wrap.appendChild(contentFormat);
+    wrap.appendChild(contentTiming);
+
+    // --- Sticky Bottom Bar ---
+    let formatLabel = "";
+    if (state.format === "rr") formatLabel = "Round Robin";
+    else if (state.format === "stack") formatLabel = "Stack Format";
+    else if (state.format === "king") formatLabel = "King of the Court";
+    else if (state.format === "gauntlet") formatLabel = "Gauntlet";
+    else if (state.format === "crown") formatLabel = "Crown Court";
+
+    const activeCourts = effectiveCourtCountForFormat(state.format, state.courtCount);
+
+    const bottomBar = el("div", { class: "setup-bottom-bar" });
+    const summaryEl = el("div", { class: "setup-bottom-summary" });
+    const summaryTitle = el("div", { class: "setup-summary-title" }, playerCount + " Players · " + formatLabel);
+    const summaryDetails = el("div", { class: "setup-summary-details" },
+      (state.format === "crown" ? "1 court" : activeCourts + (activeCourts === 1 ? " court" : " courts")) +
+      " · " + (state.mixedMode ? "Mixed mode" : "Standard")
+    );
+    summaryEl.appendChild(summaryTitle);
+    summaryEl.appendChild(summaryDetails);
+    bottomBar.appendChild(summaryEl);
+
+    const rightEl = el("div", { class: "setup-bottom-bar-right" });
+    const startBtn = el("button", {
+      id: "start-btn",
+      class: "primary",
+      onclick: () => { if (canStart()) openPreStartSummary(); }
+    }, "Start Tournament");
+    startBtn.disabled = !canStart();
+    rightEl.appendChild(startBtn);
+
+    const startHint = el("div", {
+      id: "start-hint",
+      class: "muted",
+    });
+    rightEl.appendChild(startHint);
+    bottomBar.appendChild(rightEl);
+
+    wrap.appendChild(bottomBar);
+
+    requestAnimationFrame(updateStartState);
+    return wrap;
   }
-
-  const startBtn = el("button", {
-    id: "start-btn",
-    class: "primary",
-    style: "width: 100%;",
-    onclick: () => { if (canStart()) openPreStartSummary(); }
-  }, "Start Tournament");
-  startBtn.disabled = !canStart();
-
-  wrap.appendChild(card);
-  wrap.appendChild(renderSaveToLifetimeBlock());
-  wrap.appendChild(startBtn);
-  const startHint = el("div", {
-    id: "start-hint",
-    class: "muted",
-    style: "text-align:center;margin-top:8px;font-size:13px;",
-  });
-  const initialReason = startBlockReason();
-  startHint.textContent = initialReason;
-  startHint.style.display = initialReason ? "" : "none";
-  wrap.appendChild(startHint);
-  // After mount, apply field-level validation highlighting + error styling.
-  requestAnimationFrame(updateStartState);
-  return wrap;
-}
 
 // ---------- playing screens ----------
 function isGameDecided(g) { return isGameComplete(g) && g.score1 !== g.score2; }
