@@ -122,6 +122,17 @@ export function setupLifetimeToggleState() {
   return s;
 }
 
+// Setup view with mixed mode ON: per-player M/W group toggles are visible and
+// the roster is imbalanced (5 Men / 3 Women) so the "some same-gender teams
+// needed" warning renders with the group labels.
+export function setupMixedState() {
+  const s = baseState();
+  s.mixedMode = true;
+  s.mixedGroupLabels = { a: "Men", b: "Women" };
+  s.rawGroups = ["a", "a", "a", "a", "a", "b", "b", "b"];
+  return s;
+}
+
 // A fully-populated pb_lifetime_v1 store: 3 players (Ava/Ben/Cy) across 2 tournaments,
 // with realistic wins/losses/finalRank/podium so the leaderboard renders with content.
 // FIXED timestamps only — never Date.now().
@@ -171,11 +182,12 @@ export function stateForVisual(name) {
   if (name === "finals-13p-3c") return finals13p3cState();
   if (name === "text-results") return doneTextResultsState();
   if (name === "setup-lifetime-toggle") return setupLifetimeToggleState();
+  if (name === "setup-mixed") return setupMixedState();
   throw new Error("Unknown visual state: " + name);
 }
 
 export function listVisualStates() {
-  return ["setup-desktop", "setup-mobile", "playing-13p-3c", "settings-modal", "finals-13p-3c", "text-results", "setup-lifetime-toggle", "career-empty", "career-populated"];
+  return ["setup-desktop", "setup-mobile", "playing-13p-3c", "settings-modal", "finals-13p-3c", "text-results", "setup-lifetime-toggle", "setup-mixed", "career-empty", "career-populated"];
 }
 
 if (process.argv[1] && process.argv[1].endsWith("visual-state-fixtures.mjs")) {

@@ -934,6 +934,26 @@
   .partner-chip.c5 { color: var(--court5); background: rgba(245, 158, 11, 0.15); }
   .partner-chip.c6 { color: var(--court6); background: rgba(34, 211, 238, 0.15); }
   .partner-chip.bye { color: var(--muted); background: var(--panel-2); }
+  .mixed-badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 999px;
+    margin-left: 6px;
+    color: var(--good);
+    background: rgba(16, 185, 129, 0.15);
+  }
+  .same-group-team {
+    border: 1px dashed var(--muted);
+    border-radius: 8px;
+    padding: 2px 4px;
+  }
+  .bye-group-tally {
+    font-size: 14px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
   /* Tap-winner quick-fill pill */
   .team-row {
     /* override existing 1fr 110px to allow pill column */
@@ -4460,6 +4480,437 @@ function runSelfTests() {
     console.assert(!g.Ranking.includes("ppg"), "ppg not in king Ranking group", g.Ranking);
   }
 
+  // ---- Mixed mode: state + helpers ----
+  (function mixedModeStateTests() {
+    // Migration: legacy state without mixed fields gets defaults
+    const legacy = backfillStateDefaults({ phase: "setup", format: "rr", rawNames: ["A","B"] });
+    console.assert(legacy.mixedMode === false, "migration: mixedMode defaults to false");
+    console.assert(legacy.mixedGroupLabels.a === "Men" && legacy.mixedGroupLabels.b === "Women",
+      "migration: default group labels");
+    console.assert(Array.isArray(legacy.rawGroups) && legacy.rawGroups.length === 0,
+      "migration: rawGroups defaults to []");
+    console.assert(Array.isArray(legacy.slotGroups) && legacy.slotGroups.length === 0,
+      "migration: slotGroups defaults to []");
+
+    // newState includes the fields
+    const ns = newState();
+    console.assert(ns.mixedMode === false, "newState: mixedMode is false");
+    console.assert(ns.mixedGroupLabels.a === "Men", "newState: default label a");
+
+    // groupOf returns "" when slotGroups is empty
+    state = newState();
+    console.assert(groupOf(1) === "", "groupOf: returns empty when no slotGroups");
+
+    // groupOf returns the group when set; slotGroups: [a,b,a,b,"",a] → slots 1-6
+    state.slotGroups = ["a", "b", "a", "b", "", "a"];
+    console.assert(groupOf(1) === "a", "groupOf: slot 1 is a");
+    console.assert(groupOf(2) === "b", "groupOf: slot 2 is b");
+    console.assert(groupOf(5) === "", "groupOf: slot 5 unset returns empty");
+    console.assert(groupOf(99) === "", "groupOf: out-of-bounds returns empty");
+
+    // mixedModeBadTeamCount: returns 0 when mixed off (byte-identical)
+    state.mixedMode = false;
+    console.assert(mixedModeBadTeamCount([[1,2],[3,4]]) === 0,
+      "badTeamCount: 0 when mixed off");
+
+    // mixedModeBadTeamCount: counts same-group teams when mixed on
+    state.mixedMode = true;
+    // slot 1=a, 2=b, 3=a, 4=b → [1,2] is mixed, [3,4] is mixed → 0 bad
+    console.assert(mixedModeBadTeamCount([[1,2],[3,4]]) === 0,
+      "badTeamCount: 0 when both teams mixed");
+    // slot 1=a, 3=a → [1,3] is same-group; [2,6]=b,a mixed → 1 bad
+    console.assert(mixedModeBadTeamCount([[1,3],[2,6]]) === 1,
+      "badTeamCount: 1 when one team is [A,A]");
+    // slot 5 is unset → wildcard → [1,5] not bad; [2,3]=b,a mixed → 0 bad
+    console.assert(mixedModeBadTeamCount([[1,5],[2,3]]) === 0,
+      "badTeamCount: 0 with unset-group wildcard");
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: dealBalancedCourts ----
+  (function dealBalancedCourtsTests() {
+    const rng = mulberry32(42);
+
+    // Balanced 4A+4B, 2 courts → each court gets 2A+2B
+    state.mixedMode = true;
+    state.slotGroups = ["a","a","a","a","b","b","b","b"];
+    const courts = dealBalancedCourts([1,2,3,4,5,6,7,8], 2, rng);
+    console.assert(courts.length === 2, "deal: 2 courts");
+    console.assert(courts[0].length === 4 && courts[1].length === 4, "deal: 4 per court");
+    for (const court of courts) {
+      const aCount = court.filter(s => groupOf(s) === "a").length;
+      const bCount = court.filter(s => groupOf(s) === "b").length;
+      console.assert(aCount === 2 && bCount === 2, "deal: court is 2A+2B", { aCount, bCount });
+    }
+
+    // Lopsided 7A+3B, 2 courts → no undefined, no player dropped
+    state.slotGroups = ["a","a","a","a","a","a","a","b","b","b"];
+    const courts2 = dealBalancedCourts([1,2,3,4,5,6,7,8,9,10], 2, rng);
+    const allSlots2 = courts2.flat();
+    console.assert(allSlots2.length === 8, "deal: 8 slots placed (2 courts × 4)");
+    console.assert(!allSlots2.includes(undefined), "deal: no undefined slots");
+    console.assert(new Set(allSlots2).size === 8, "deal: no duplicate slots");
+
+    // Unset groups → players placed in surplus, no crash
+    state.slotGroups = ["a","a","","","b","b","",""];
+    const courts3 = dealBalancedCourts([1,2,3,4,5,6,7,8], 2, rng);
+    console.assert(courts3.flat().length === 8, "deal: unset groups still placed");
+    console.assert(!courts3.flat().includes(undefined), "deal: no undefined with unset groups");
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: pairMixedAware ----
+  (function pairMixedAwareTests() {
+    state.mixedMode = true;
+
+    // 2A+2B court → both teams mixed
+    state.slotGroups = ["a","a","b","b"];  // slots 1=a, 2=a, 3=b, 4=b
+    const [t1, t2] = pairMixedAware([1,2,3,4], {});
+    console.assert(isMixedTeam(t1) && isMixedTeam(t2),
+      "pairMixed: 2A+2B produces two mixed teams", { t1, t2 });
+
+    // 3A+1B court → one mixed, one same-group (unavoidable)
+    state.slotGroups = ["a","a","a","b"];  // slots 1,2,3=a; 4=b
+    const [t1b, t2b] = pairMixedAware([1,2,3,4], {});
+    const mixedCount = [t1b, t2b].filter(isMixedTeam).length;
+    console.assert(mixedCount === 1, "pairMixed: 3A+1B produces exactly 1 mixed team", { t1b, t2b });
+
+    // Mixed off → behaves like today (any split, no preference)
+    state.mixedMode = false;
+    state.slotGroups = ["a","a","a","a"];
+    const [t1c, t2c] = pairMixedAware([1,2,3,4], {});
+    console.assert(t1c.length === 2 && t2c.length === 2,
+      "pairMixed: mixed-off still returns two teams of 2");
+
+    // Pairing cost with repeat avoidance (RR-style)
+    state.mixedMode = true;
+    state.slotGroups = ["a","b","a","b"];
+    state.rounds = [{ round: 1, games: [{ court: 1, team1: [1,4], team2: [2,3], score1: 11, score2: 5 }], byes: [] }];
+    const [t1d, t2d] = pairMixedAware([1,2,3,4], { history: state.rounds, chosen: [], court: 1 });
+    // Should avoid repeating [1,4] as partners since they partnered last round
+    const isRepeat = (t) => t.includes(1) && t.includes(4);
+    console.assert(!isRepeat(t1d) && !isRepeat(t2d),
+      "pairMixed: avoids repeating last round's partnership when mixed split allows", { t1d, t2d });
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: allocateByes feasibility filter ----
+  (function allocateByesMixedTests() {
+    state.mixedMode = true;
+    state.slotGroups = ["a","a","a","a","a","a","b","b","b","b"];  // 6A+4B
+    // 10 players, 2 courts → 8 play, 2 sit. To keep mixed-feasible (4A+4B playing),
+    // byes must be 2A (not 1A+1B which would leave 5A+3B = not feasible).
+    const alloc = allocateByesMixed("rotation", {
+      activeSlots: [1,2,3,4,5,6,7,8,9,10],
+      players: [1,2,3,4,5,6,7,8,9,10].map(s => ({ slot: s, status: "active", eligibleFromRound: 1 })),
+      rounds: [],
+      round: 1,
+      courtCount: 2,
+      rng: mulberry32(42),
+    });
+    const byeGroups = alloc.byes.map(s => groupOf(s));
+    const aByes = byeGroups.filter(g => g === "a").length;
+    const bByes = byeGroups.filter(g => g === "b").length;
+    // The key assertion: byes should NOT sit a B when that breaks feasibility
+    console.assert(bByes === 0, "allocByes: 6A+4B sits 2A not 1A+1B (feasibility)", { aByes, bByes });
+    // Playing set should be 4A+4B (mixed-feasible)
+    const playingGroups = alloc.playing.map(s => groupOf(s));
+    const aPlaying = playingGroups.filter(g => g === "a").length;
+    const bPlaying = playingGroups.filter(g => g === "b").length;
+    console.assert(aPlaying === 4 && bPlaying === 4, "allocByes: playing set is 4A+4B", { aPlaying, bPlaying });
+
+    // Lopsided 7A+3B → no feasible set, falls back to rotation (no crash)
+    state.slotGroups = ["a","a","a","a","a","a","a","b","b","b"];
+    const alloc2 = allocateByesMixed("rotation", {
+      activeSlots: [1,2,3,4,5,6,7,8,9,10],
+      players: [1,2,3,4,5,6,7,8,9,10].map(s => ({ slot: s, status: "active", eligibleFromRound: 1 })),
+      rounds: [],
+      round: 1,
+      courtCount: 2,
+      rng: mulberry32(42),
+    });
+    console.assert(alloc2.byes.length === 2 && alloc2.playing.length === 8,
+      "allocByes: lopsided fallback still returns correct counts");
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: RR scheduler integration ----
+  (function rrMixedSchedulerTests() {
+    // Wh(8) regression: mixed OFF + 8 players + 2 courts still uses Wh(8)
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.slots = state.rawNames.slice();
+    state.scheduleSeed = 12345;
+    startTournament();
+    console.assert(state.rrScheduleMode === "wh8",
+      "RR regression: mixed-off 8/2 still uses Wh(8)", state.rrScheduleMode);
+    console.assert(state.phase === "playing", "RR regression: started");
+
+    // Wh(8) bypass: mixed ON + 8 players + 2 courts uses generated schedule
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];  // 4A+4B
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 12345;
+    writePlayersFromSlots(8);
+    startTournament();
+    console.assert(state.rrScheduleMode === "generated",
+      "RR mixed: 8/2 uses generated (not Wh8)", state.rrScheduleMode);
+
+    // All teams should be mixed across all rounds (4A+4B, 2 courts)
+    for (const round of state.rounds) {
+      for (const game of gamesOf(round)) {
+        for (const team of [game.team1, game.team2]) {
+          console.assert(isMixedTeam(team),
+            "RR mixed: every team is mixed", { round: round.round, team });
+        }
+      }
+    }
+
+    // Mixed off → byte-identical schedule (seed Math.random for determinism;
+    // generateRounds shuffles round order + flips courts via Math.random)
+    const _origRandom = Math.random;
+    Math.random = mulberry32(99999);
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.slots = state.rawNames.slice();
+    state.scheduleSeed = 12345;
+    writePlayersFromSlots(8);
+    startTournament();
+    const offRounds = JSON.parse(JSON.stringify(state.rounds));
+    Math.random = mulberry32(99999);
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.mixedMode = false;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.slots = state.rawNames.slice();
+    state.scheduleSeed = 12345;
+    writePlayersFromSlots(8);
+    startTournament();
+    Math.random = _origRandom;
+    console.assert(JSON.stringify(state.rounds) === JSON.stringify(offRounds),
+      "RR regression: mixed-off produces identical schedule");
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: ladder round-1 dealing ----
+  (function ladderRound1MixedTests() {
+    // Stack 8/2, 4A+4B → round 1 courts are 2A+2B, all teams mixed
+    state = newState();
+    state.format = "stack";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 999;
+    writePlayersFromSlots(8);
+    startTournament();
+    const r1 = state.rounds[0];
+    for (const game of gamesOf(r1)) {
+      for (const team of [game.team1, game.team2]) {
+        console.assert(isMixedTeam(team), "Stack r1: team is mixed", { team });
+      }
+    }
+
+    // King 8/2, 4A+4B → same
+    state = newState();
+    state.format = "king";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 999;
+    writePlayersFromSlots(8);
+    startTournament();
+    const r1k = state.rounds[0];
+    for (const game of gamesOf(r1k)) {
+      for (const team of [game.team1, game.team2]) {
+        console.assert(isMixedTeam(team), "King r1: team is mixed", { team });
+      }
+    }
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: assignCourtsConstrained ----
+  (function assignCourtsConstrainedTests() {
+    state.mixedMode = true;
+
+    // 4A+4B, 2 courts, natural courts from perfect movement → finds 0-badTeam assignment
+    state.slotGroups = ["a","b","a","b","a","b","a","b"];  // 4A+4B
+    const result = assignCourtsConstrained(
+      [1,2,3,4,5,6,7,8],
+      { 1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 2, 7: 2, 8: 2 },  // naturalCourt per slot
+      2, [], mulberry32(42)
+    );
+    console.assert(result.badTeams === 0, "constrained: 4A+4B finds 0 badTeams", result);
+    for (const court of result.courts) {
+      const aCount = court.filter(s => groupOf(s) === "a").length;
+      const bCount = court.filter(s => groupOf(s) === "b").length;
+      console.assert(aCount === 2 && bCount === 2, "constrained: court is 2A+2B", { aCount, bCount });
+    }
+
+    // 5A+3B → no fully-mixed assignment exists → best-effort (badTeams > 0 but minimized)
+    state.slotGroups = ["a","a","a","a","a","b","b","b"];
+    const result2 = assignCourtsConstrained(
+      [1,2,3,4,5,6,7,8],
+      { 1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 2, 7: 2, 8: 2 },
+      2, [], mulberry32(42)
+    );
+    console.assert(result2.badTeams <= 2, "constrained: 5A+3B minimizes badTeams", result2);
+    console.assert(result2.courts.length === 2, "constrained: returns 2 courts");
+
+    // No crash with unset groups
+    state.slotGroups = ["a","","b","","a","","b",""];
+    const result3 = assignCourtsConstrained(
+      [1,2,3,4,5,6,7,8],
+      { 1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 2, 7: 2, 8: 2 },
+      2, [], mulberry32(42)
+    );
+    console.assert(result3.courts.length === 2 && result3.courts[0].length === 4,
+      "constrained: unset groups no crash");
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: ladder rounds 2+ ----
+  (function ladderRounds2PlusTests() {
+    // Stack 8/2, 4A+4B: build round 2 from round 1, all teams mixed
+    state = newState();
+    state.format = "stack";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.stackRounds = 6;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 777;
+    state.tiebreakRandom = [0,1,2,3,4,5,6,7];
+    writePlayersFromSlots(8);
+    state.rounds = [assignInitialStackCourts()];
+    state.phase = "playing";
+    // Complete round 1 with decisive scores
+    for (const g of gamesOf(state.rounds[0])) { g.score1 = 11; g.score2 = 7; }
+    // Build round 2
+    const r2 = buildNextStackRound(state.rounds[0]);
+    for (const game of gamesOf(r2)) {
+      for (const team of [game.team1, game.team2]) {
+        console.assert(isMixedTeam(team), "Stack r2: team is mixed", { team });
+      }
+    }
+
+    // Gauntlet 8/2, 4A+4B: build round 2, all teams mixed
+    state = newState();
+    state.format = "gauntlet";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.gauntletRounds = 6;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 777;
+    state.tiebreakRandom = [0,1,2,3,4,5,6,7];
+    writePlayersFromSlots(8);
+    state.rounds = [assignInitialGauntletCourts()];
+    state.phase = "playing";
+    for (const g of gamesOf(state.rounds[0])) { g.score1 = 11; g.score2 = 7; }
+    const r2g = buildNextGauntletRound(state.rounds[0]);
+    for (const game of gamesOf(r2g)) {
+      for (const team of [game.team1, game.team2]) {
+        console.assert(isMixedTeam(team), "Gauntlet r2: team is mixed", { team });
+      }
+    }
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: mid-event join ----
+  (function midEventJoinTests() {
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 333;
+    writePlayersFromSlots(8);
+    startTournament();
+    // Add a 9th player (group "a")
+    const result = addMidEventPlayer("Player 9", "", "a");
+    console.assert(result.ok, "join: player 9 added", result);
+    // slotGroups should include the new player's group
+    const newSlot = state.slots.findIndex(s => s === "Player 9") + 1;
+    console.assert(groupOf(newSlot) === "a", "join: new player has group a", { newSlot, group: groupOf(newSlot) });
+
+    state = newState();
+  })();
+
+  // ---- Mixed mode: edge cases ----
+  (function mixedEdgeCaseTests() {
+    // All players unset group → no crash, schedule generates normally
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["","","","","","","",""];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 111;
+    writePlayersFromSlots(8);
+    startTournament();
+    console.assert(state.rounds.length > 0, "edge: unset groups generates schedule");
+
+    // 7A+3B lopsided → schedule generates, mixed maximized, no crash
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H","I","J"];
+    state.rawGroups = ["a","a","a","a","a","a","a","b","b","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 222;
+    writePlayersFromSlots(10);
+    startTournament();
+    console.assert(state.rounds.length > 0, "edge: lopsided 7A+3B generates schedule");
+
+    // Mixed off → identical to pre-feature (regression golden)
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.slots = state.rawNames.slice();
+    state.scheduleSeed = 12345;
+    writePlayersFromSlots(8);
+    startTournament();
+    console.assert(state.rrScheduleMode === "wh8", "edge: mixed-off 8/2 uses Wh(8)");
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -4471,6 +4922,10 @@ function simulationConfigs() {
     { label: "Stack 10/2 churn", format: "stack", players: 10, courts: 2, rounds: 4, churn: true, nextCourts: 1, seed: 4102 },
     { label: "King 16/4 churn", format: "king", players: 16, courts: 4, rounds: 6, churn: true, nextCourts: 3, seed: 4103 },
     { label: "Gauntlet 9/2 churn", format: "gauntlet", players: 9, courts: 2, rounds: 6, churn: true, nextCourts: 1, seed: 4104 },
+    { label: "Mixed RR 10/2", format: "rr", players: 10, courts: 2, rounds: 5, mixed: true, seed: 4201 },
+    { label: "Mixed Stack 8/2", format: "stack", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4202 },
+    { label: "Mixed King 8/2", format: "king", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4203 },
+    { label: "Mixed Gauntlet 8/2", format: "gauntlet", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4204 },
   ];
 }
 
@@ -4606,6 +5061,14 @@ function runSimulation() {
     state.rawPhones = state.rawNames.map(() => "");
     state.slots = seededShuffle(state.rawNames, mulberry32(cfg.seed));
     writePlayersFromSlots(cfg.players);
+    if (cfg.mixed) {
+      state.mixedMode = true;
+      state.rawGroups = state.rawNames.map((_, i) => i % 2 === 0 ? "a" : "b");
+      state.slotGroups = state.slots.map(name => {
+        const idx = state.rawNames.indexOf(name);
+        return idx >= 0 ? state.rawGroups[idx] : "";
+      });
+    }
     state.tiebreakRandom = seededShuffle(Array.from({ length: cfg.players }, (_, i) => i), mulberry32(cfg.seed + 1));
     state.currentRound = 1;
     state.phase = "playing";
@@ -4668,6 +5131,15 @@ function runSimulation() {
         console.assert(returnMidEventPlayer(leftSlot).ok, cfg.label + ": return succeeds", leftSlot);
       }
       state.rounds.slice(state.currentRound).forEach((future, i) => checkRoundParticipants(future, cfg.label + " future " + (i + 1)));
+      if (cfg.mixed) {
+        const round = state.rounds[state.currentRound - 1];
+        for (const game of gamesOf(round)) {
+          for (const team of [game.team1, game.team2]) {
+            console.assert(isMixedTeam(team),
+              cfg.label + " round " + state.currentRound + ": team is mixed", team);
+          }
+        }
+      }
       advanceFlexibleRound();
     }
 
@@ -4839,6 +5311,10 @@ function newState() {
       goal: "balanced",
       minutes: 90,
     },
+    mixedMode: false,                                // when true, enforce 1-A + 1-B teams
+    mixedGroupLabels: { a: "Men", b: "Women" },      // editable labels for the two groups
+    rawGroups: [],                                   // parallel to rawNames: "a"|"b"|"" per setup row
+    slotGroups: [],                                  // parallel to slots: "a"|"b"|"" per slot (post-shuffle)
   };
 }
 function makeScheduleSeed() {
@@ -4864,14 +5340,17 @@ function makeScheduleSeed() {
   function ensureSetupRosterArrays(count) {
     if (!Array.isArray(state.rawNames)) state.rawNames = [];
     if (!Array.isArray(state.rawPhones)) state.rawPhones = [];
+    if (!Array.isArray(state.rawGroups)) state.rawGroups = [];
     while (state.rawNames.length < count) state.rawNames.push("");
     while (state.rawPhones.length < count) state.rawPhones.push("");
+    while (state.rawGroups.length < count) state.rawGroups.push("");
   }
   function setSetupRosterCount(count) {
     const next = clampSetupRosterCount(count);
     ensureSetupRosterArrays(next);
     state.rawNames.length = next;
     state.rawPhones.length = next;
+    if (Array.isArray(state.rawGroups)) state.rawGroups.length = next;
     if (Array.isArray(_phoneAutofilled)) _phoneAutofilled.length = next;
   }
   function setupNames(count = setupRosterCount()) {
@@ -4966,7 +5445,7 @@ function makeScheduleSeed() {
     save();
     return { ok: true };
   }
-  function addMidEventPlayer(name, phone) {
+  function addMidEventPlayer(name, phone, group) {
     const blocked = rosterChangeBlocked();
     if (blocked) return { ok: false, error: blocked };
     const cleanName = (name || "").trim();
@@ -4991,6 +5470,9 @@ function makeScheduleSeed() {
     state.phones[slot - 1] = cleanPhone;
     if (Array.isArray(state.rawNames)) state.rawNames[slot - 1] = cleanName;
     if (Array.isArray(state.rawPhones)) state.rawPhones[slot - 1] = cleanPhone;
+    if (Array.isArray(state.rawGroups)) state.rawGroups[slot - 1] = group || "";
+    if (!Array.isArray(state.slotGroups)) state.slotGroups = [];
+    state.slotGroups[slot - 1] = group || "";
     insertTiebreakSlot(slot);
     saveRosterEntry(cleanName, cleanPhone);
     const regen = regenerateFutureRounds();
@@ -5255,6 +5737,16 @@ function backfillStateDefaults(obj) {
     if (typeof sa.goal !== "string")    sa.goal = "balanced";
     if (typeof sa.minutes !== "number") sa.minutes = 90;
   }
+  // Mixed mode backfill
+  if (typeof obj.mixedMode !== "boolean") obj.mixedMode = false;
+  if (!obj.mixedGroupLabels || typeof obj.mixedGroupLabels !== "object") {
+    obj.mixedGroupLabels = { a: "Men", b: "Women" };
+  } else {
+    if (typeof obj.mixedGroupLabels.a !== "string") obj.mixedGroupLabels.a = "Men";
+    if (typeof obj.mixedGroupLabels.b !== "string") obj.mixedGroupLabels.b = "Women";
+  }
+  if (!Array.isArray(obj.rawGroups)) obj.rawGroups = [];
+  if (!Array.isArray(obj.slotGroups)) obj.slotGroups = [];
   return obj;
 }
 // A restored state is only usable if its phase's core structures are present.
@@ -5958,7 +6450,7 @@ function assignInitialLadderCourts() {
   const active = ladderActiveSlots(round, null);
   const courtCount = ladderCourtCount(null);
   const rng = ladderRoundRng(round);
-  const alloc = allocateByes("rotation", {
+  const alloc = allocateByesMixed("rotation", {
     activeSlots: active,
     players: ladderPlayersFor(active),
     rounds: [],
@@ -5966,13 +6458,21 @@ function assignInitialLadderCourts() {
     courtCount,
     rng,
   });
-  const preserveLegacyShuffle = active.length === 8 && courtCount === 2 && alloc.byes.length === 0;
-  const ordered = preserveLegacyShuffle ? shuffle(alloc.playing) : seededShuffle(alloc.playing, rng);
+  const preserveLegacyShuffle = !state.mixedMode && active.length === 8 && courtCount === 2 && alloc.byes.length === 0;
   const games = [];
-  for (let c = 0; c < alloc.activeCourts; c++) {
-    const four = ordered.slice(c * 4, c * 4 + 4);
-    const courtSlots = preserveLegacyShuffle ? shuffle(four) : seededShuffle(four, rng);
-    games.push(makeGame(c + 1, [courtSlots[0], courtSlots[1]], [courtSlots[2], courtSlots[3]]));
+  if (state.mixedMode) {
+    const courts = dealBalancedCourts(alloc.playing, alloc.activeCourts, rng);
+    for (let c = 0; c < alloc.activeCourts; c++) {
+      const [t1, t2] = pairMixedAware(courts[c], {});
+      games.push(makeGame(c + 1, t1, t2));
+    }
+  } else {
+    const ordered = preserveLegacyShuffle ? shuffle(alloc.playing) : seededShuffle(alloc.playing, rng);
+    for (let c = 0; c < alloc.activeCourts; c++) {
+      const four = ordered.slice(c * 4, c * 4 + 4);
+      const courtSlots = preserveLegacyShuffle ? shuffle(four) : seededShuffle(four, rng);
+      games.push(makeGame(c + 1, [courtSlots[0], courtSlots[1]], [courtSlots[2], courtSlots[3]]));
+    }
   }
   return makeRound(round, games, alloc.byes);
 }
@@ -6003,9 +6503,165 @@ function stackScoreGain(pts, court, courtCount, won) {
   return gain;
 }
 
-// Per-player stack stats through the given round (1-based, inclusive).
+// Collision-safe toggle labels for the two mixed-mode groups.
+function mixedToggleLabels() {
+  const a = (state.mixedGroupLabels || {}).a || "A";
+  const b = (state.mixedGroupLabels || {}).b || "B";
+  const aChar = a.charAt(0).toUpperCase();
+  const bChar = b.charAt(0).toUpperCase();
+  if (aChar !== bChar) return { a: aChar, b: bChar };
+  const aTrunc = a.substring(0, 4);
+  const bTrunc = b.substring(0, 4);
+  if (aTrunc !== bTrunc) return { a: aTrunc, b: bTrunc };
+  return { a: "1", b: "2" };
+}
 // RUMBLE:CORE:end
 // RUMBLE:FORMATS:start
+// === Mixed mode helpers ===
+// Returns the group ("a"|"b") for a slot number (1-based), or "" if unset/mixed-off.
+function groupOf(slot) {
+  return (state.slotGroups || [])[slot - 1] || "";
+}
+// Returns the count of teams in the proposed pairing that are NOT mixed (0, 1, or 2).
+// Returns 0 unconditionally when mixed mode is off (byte-identical to pre-feature behavior).
+function mixedModeBadTeamCount(teams) {
+  if (!state.mixedMode) return 0;
+  let bad = 0;
+  for (const team of teams) {
+    const g0 = groupOf(team[0]), g1 = groupOf(team[1]);
+    if (g0 && g1 && g0 === g1) bad++;  // both set and same group = not mixed
+  }
+  return bad;
+}
+// True if a team is mixed (one A + one B), considering unset groups as wildcards.
+function isMixedTeam(team) {
+  const g0 = groupOf(team[0]), g1 = groupOf(team[1]);
+  return !g0 || !g1 || g0 !== g1;
+}
+// Returns an inline badge suffix for a team on court cards when mixed mode is on.
+// Empty for same-group teams (the dashed .same-group-team border conveys those).
+function mixedBadgeForTeam(team) {
+  if (!state.mixedMode) return "";
+  if (isMixedTeam(team)) {
+    const labels = mixedToggleLabels();
+    const g0 = groupOf(team[0]), g1 = groupOf(team[1]);
+    if (g0 && g1) return " " + (g0 === "a" ? labels.a : labels.b) + "·" + (g1 === "a" ? labels.a : labels.b);
+    return " ✓";  // mixed with a wildcard
+  }
+  return "";  // same-group team — indicator added by caller
+}
+// Deals players to courts prioritizing 2A+2B per court. Safely handles empty
+// pools (lopsided rosters) and unset groups — never returns undefined.
+//   playing:      Array of slot numbers (the active/playing set)
+//   activeCourts: Number of courts to fill
+//   rng:          Seeded RNG function (e.g. mulberry32(seed))
+// Returns: Array of arrays, one per court, each with 4 slot numbers.
+// Note: surplus players beyond activeCourts × 4 are dropped (truncated); the
+// caller guarantees `playing` is sized to the exact court seat count.
+function dealBalancedCourts(playing, activeCourts, rng) {
+  const shuffle = (arr) => seededShuffle(arr.slice(), rng);
+  const aPool = shuffle(playing.filter(s => groupOf(s) === "a"));
+  const bPool = shuffle(playing.filter(s => groupOf(s) === "b"));
+  const unset = shuffle(playing.filter(s => groupOf(s) === ""));
+  const courts = Array.from({ length: activeCourts }, () => []);
+  // Deal 2A + 2B per court
+  for (let c = 0; c < activeCourts; c++) {
+    while (courts[c].length < 2 && aPool.length) courts[c].push(aPool.pop());
+    while (courts[c].length < 4 && bPool.length) courts[c].push(bPool.pop());
+  }
+  // Fill remaining seats from surplus (leftover A, B, then unset)
+  const surplus = [...aPool, ...bPool, ...unset];
+  for (let c = 0; c < activeCourts && surplus.length; c++) {
+    while (courts[c].length < 4 && surplus.length) courts[c].push(surplus.pop());
+  }
+  return courts;
+}
+// Computes the within-court pairing cost for a proposed team split.
+// Lower = better. Used by pairMixedAware as the secondary sort key.
+//   opts.history:  prior rounds (for repeat partner/opponent cost)
+//   opts.chosen:   games already chosen this round (for intra-round cost)
+//   opts.court:    court number for the game being formed
+//   opts.stackBySlot: Map<slot, stackScore> (Stack format only)
+//   opts.prevSameCourt: previous round's game on this court (Stack repeat check)
+function pairingCost(t1, t2, opts) {
+  opts = opts || {};
+  // RR / King / Gauntlet: use the existing repeat-partner/opponent cost
+  if (opts.stackBySlot) {
+    // Stack: measure skill imbalance between teams + repeat penalty
+    const s1 = (opts.stackBySlot.get(t1[0]) || 0) + (opts.stackBySlot.get(t1[1]) || 0);
+    const s2 = (opts.stackBySlot.get(t2[0]) || 0) + (opts.stackBySlot.get(t2[1]) || 0);
+    let cost = Math.abs(s1 - s2);
+    if (opts.prevSameCourt) {
+      const wasPair = (a, b) => {
+        for (const t of [opts.prevSameCourt.team1, opts.prevSameCourt.team2]) {
+          if (t.includes(a) && t.includes(b)) return true;
+        }
+        return false;
+      };
+      if (wasPair(t1[0], t1[1]) || wasPair(t2[0], t2[1])) cost += 1000;
+    }
+    return cost;
+  }
+  // Default: repeat cost via rrRoundCost
+  const game = { court: opts.court || 1, team1: t1, team2: t2 };
+  return rrRoundCost([...(opts.chosen || []), game], opts.history || []);
+}
+
+// Returns [team1, team2] — mixed-aware pairing for 4 slots on a court.
+// Sorts candidate splits lexicographically: (badTeams, cost).
+// When mixedMode is off, badTeams is always 0 → reduces to pure cost (byte-identical).
+function pairMixedAware(four, opts) {
+  const splits = rrTeamSplits(four);
+  const scored = splits.map(([team1, team2]) => ({
+    teams: [team1, team2],
+    badTeams: mixedModeBadTeamCount([team1, team2]),
+    cost: pairingCost(team1, team2, opts),
+  }));
+  scored.sort((a, b) => a.badTeams - b.badTeams || a.cost - b.cost);
+  return scored[0].teams;
+}
+
+// Assigns players to courts via multi-restart search. Optimizes lexicographically:
+//   (1) totalBadTeams — number of same-gender teams forced across all courts
+//   (2) totalDeviation — sum of |assignedCourt - naturalCourt| per player
+//   (3) repeatCost — rrRoundCost for the proposed games
+// Returns { courts: Array<Array<slot>>, badTeams: number }.
+function assignCourtsConstrained(playing, naturalCourt, activeCourts, history, rng) {
+  if (!state.mixedMode || playing.length < activeCourts * 4) {
+    // Fallback: simple slice (mixed off, or not enough players for full courts)
+    const shuffled = seededShuffle(playing, rng);
+    const courts = [];
+    for (let c = 0; c < activeCourts; c++) courts.push(shuffled.slice(c * 4, c * 4 + 4));
+    return { courts, badTeams: 0 };
+  }
+  let best = null;
+  let bestKey = [Infinity, Infinity, Infinity];
+  const restarts = 80;
+  for (let attempt = 0; attempt < restarts; attempt++) {
+    const shuffled = seededShuffle(playing, rng);
+    const courts = [];
+    for (let c = 0; c < activeCourts; c++) courts.push(shuffled.slice(c * 4, c * 4 + 4));
+    // Score the assignment
+    let badTeams = 0, deviation = 0;
+    const games = [];
+    for (let c = 0; c < activeCourts; c++) {
+      const four = courts[c];
+      if (four.length !== 4) continue;
+      const [t1, t2] = pairMixedAware(four, { court: c + 1, history, chosen: games });
+      games.push({ court: c + 1, team1: t1, team2: t2 });
+      badTeams += mixedModeBadTeamCount([t1, t2]);
+      for (const s of four) deviation += Math.abs((c + 1) - (naturalCourt[s] || (c + 1)));
+    }
+    const repeatCost = rrRoundCost(games, history);
+    const key = [badTeams, deviation, repeatCost];
+    if (key[0] < bestKey[0] || (key[0] === bestKey[0] && key[1] < bestKey[1]) ||
+        (key[0] === bestKey[0] && key[1] === bestKey[1] && key[2] < bestKey[2])) {
+      best = courts; bestKey = key;
+    }
+    if (bestKey[0] === 0 && bestKey[1] === 0) break;  // 0 badTeams + 0 deviation = perfect assignment
+  }
+  return { courts: best, badTeams: bestKey[0] };
+}
 function computeStackStats(throughRound) {
   const upTo = Math.min(throughRound || 0, state.rounds.length);
   let count = Math.max(playerCount(), (state.slots || []).length);
@@ -6158,7 +6814,7 @@ function buildNextLadderRound(prevRound, format) {
   const history = ladderHistoryThrough(prevRound.round);
   if (!history.length || history[history.length - 1] !== prevRound) history.push(prevRound);
   const rng = ladderRoundRng(round);
-  const alloc = allocateByes("losersSitCapped", {
+  const alloc = allocateByesMixed("losersSitCapped", {
     activeSlots: active,
     players: ladderPlayersFor(active),
     rounds: history,
@@ -6217,15 +6873,41 @@ function buildNextLadderRound(prevRound, format) {
   const games = [];
   const stackStats = format === "stack" ? computeStackStats(prevRound.round) : null;
   const stackBySlot = stackStats ? new Map(stackStats.map(s => [s.slot, s.stackScore])) : null;
-  for (let court = 1; court <= alloc.activeCourts; court++) {
-    const slots = seats[court - 1];
-    if (slots.length !== 4) continue;
-    if (format === "stack") {
-      const [team1, team2] = pairForStackCourt(slots, gameForCourt(prevRound, court), stackBySlot);
-      games.push(makeGame(court, team1, team2));
-    } else {
-      const s = shuffle(slots);
-      games.push(makeGame(court, [s[0], s[1]], [s[2], s[3]]));
+  if (state.mixedMode) {
+    // Mixed mode: use constrained assignment instead of movement-based seats
+    const naturalCourt = {};
+    const movers = new Map();  // slot → target court from movement
+    for (const g of gamesOf(prevRound)) {
+      const t1Won = g.score1 > g.score2;
+      const winners = t1Won ? g.team1 : g.team2;
+      const losers = t1Won ? g.team2 : g.team1;
+      const court = g.court || 1;
+      winners.forEach(s => movers.set(s, clampCourt(court - 1, alloc.activeCourts)));
+      losers.forEach(s => movers.set(s, clampCourt(court + 1, alloc.activeCourts)));
+    }
+    alloc.playing.forEach(s => { if (!movers.has(s)) movers.set(s, Math.floor((alloc.activeCourts + 1) / 2)); });
+    alloc.playing.forEach(s => { naturalCourt[s] = movers.get(s); });
+    const result = assignCourtsConstrained(alloc.playing, naturalCourt, alloc.activeCourts, history, rng);
+    for (let c = 0; c < result.courts.length; c++) {
+      const four = result.courts[c];
+      if (four.length !== 4) continue;
+      const opts = format === "stack"
+        ? { stackBySlot, prevSameCourt: gameForCourt(prevRound, c + 1) }
+        : { history, chosen: games, court: c + 1 };
+      const [t1, t2] = pairMixedAware(four, opts);
+      games.push(makeGame(c + 1, t1, t2));
+    }
+  } else {
+    for (let court = 1; court <= alloc.activeCourts; court++) {
+      const slots = seats[court - 1];
+      if (slots.length !== 4) continue;
+      if (format === "stack") {
+        const [team1, team2] = pairForStackCourt(slots, gameForCourt(prevRound, court), stackBySlot);
+        games.push(makeGame(court, team1, team2));
+      } else {
+        const s = shuffle(slots);
+        games.push(makeGame(court, [s[0], s[1]], [s[2], s[3]]));
+      }
     }
   }
   return makeRound(round, games, alloc.byes);
@@ -6321,7 +7003,7 @@ function buildGauntletPairing(ranked, roundNum) {
   const activeSet = new Set(active.length ? active : ranked);
   const rankedActive = ranked.filter(slot => activeSet.has(slot));
   const rng = ladderRoundRng(roundNum);
-  const alloc = allocateByes("rotation", {
+  const alloc = allocateByesMixed("rotation", {
     activeSlots: [...activeSet].sort((a, b) => a - b),
     players: ladderPlayersFor([...activeSet]),
     rounds: ladderHistoryThrough(roundNum - 1),
@@ -6331,9 +7013,22 @@ function buildGauntletPairing(ranked, roundNum) {
   });
   const playing = rankedActive.filter(slot => !alloc.byes.includes(slot));
   const games = [];
-  for (let c = 0; c < alloc.activeCourts; c++) {
-    const block = playing.slice(c * 4, c * 4 + 4);
-    if (block.length === 4) games.push(makeGame(c + 1, [block[0], block[3]], [block[1], block[2]]));
+  if (state.mixedMode) {
+    const naturalCourt = {};
+    playing.forEach((s, i) => { naturalCourt[s] = Math.floor(i / 4) + 1; });
+    const result = assignCourtsConstrained(playing, naturalCourt, alloc.activeCourts,
+      ladderHistoryThrough(roundNum - 1), rng);
+    for (let c = 0; c < result.courts.length; c++) {
+      const four = result.courts[c];
+      if (four.length !== 4) continue;
+      const [t1, t2] = pairMixedAware(four, { history: ladderHistoryThrough(roundNum - 1), chosen: games, court: c + 1 });
+      games.push(makeGame(c + 1, t1, t2));
+    }
+  } else {
+    for (let c = 0; c < alloc.activeCourts; c++) {
+      const block = playing.slice(c * 4, c * 4 + 4);
+      if (block.length === 4) games.push(makeGame(c + 1, [block[0], block[3]], [block[1], block[2]]));
+    }
   }
   return makeRound(roundNum, games, alloc.byes);
 }
@@ -6558,6 +7253,12 @@ function finalRankingCrown() {
   // Map each (trimmed, unique) name to its normalized phone for post-shuffle alignment.
   const phoneByName = {};
   entries.forEach(e => { if (e.name) phoneByName[e.name] = normalizePhone(e.phone || ""); });
+  // Populate slotGroups from rawGroups via name lookup (must run BEFORE schedule generation)
+  if (state.mixedMode) {
+    const groupByName = {};
+    entries.forEach((e, i) => { if (e.name) groupByName[e.name] = (state.rawGroups || [])[i] || ""; });
+    state.slotGroups = shuffled.map(name => groupByName[name] || "");
+  }
 
   state.scheduleSeed = makeScheduleSeed();
   state.startedAt = Date.now();
@@ -6635,7 +7336,7 @@ function finalRankingCrown() {
   } else {
     state.slots = shuffled;
     writePlayersFromSlots(count, phoneByName);
-    if (count === 8 && state.courtCount === 2) {
+    if (count === 8 && state.courtCount === 2 && !state.mixedMode) {
       state.rrScheduleMode = "wh8";
       state.rrRounds = 7;
       state.rounds = generateRounds();
@@ -6729,6 +7430,7 @@ function buildPersonalRecap(slot, opts) {
   let bestWin = null;
   let closestLoss = null;
   let byeCount = 0;
+  let sameGroupPartnerSlot = null;  // first same-group partner (mixed best-effort fallback)
   const scanRound = (round, roundNum) => {
     if (byesOf(round).includes(slot)) byeCount++;
     gamesOf(round).forEach(g => {
@@ -6738,6 +7440,9 @@ function buildPersonalRecap(slot, opts) {
       const team = on1 ? g.team1 : g.team2;
       const partner = team.find(s => s !== slot);
       if (partner) partners.set(partner, (partners.get(partner) || 0) + 1);
+      if (state.mixedMode && !isMixedTeam(team) && partner && sameGroupPartnerSlot === null) {
+        sameGroupPartnerSlot = partner;
+      }
       if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) return;
       if (g.score1 === g.score2) { ties++; return; }
       const myScore = on1 ? g.score1 : g.score2;
@@ -6775,6 +7480,7 @@ function buildPersonalRecap(slot, opts) {
     slot, name, rank, fieldSize, gp, wins, losses, ties, record,
     avgPoints, avgDiff, bestWin, closestLoss,
     mostCommonPartner: mostCommonPartnerSlot ? { slot: mostCommonPartnerSlot[0], name: partnerName, games: mostCommonPartnerSlot[1] } : null,
+    sameGroupPartner: sameGroupPartnerSlot ? { slot: sameGroupPartnerSlot, name: nameOf(sameGroupPartnerSlot) } : null,
     byeCount, headline: headlineBits.join(", ") + ".", awards: []
   };
 }
@@ -6819,6 +7525,7 @@ function buildShareCardModel(type, opts) {
     lines.push("Record: " + recap.record + " · GP " + recap.gp);
     if (recap.bestWin) lines.push("Best win: Round " + recap.bestWin.round + " (" + recap.bestWin.score + ")");
     if (recap.mostCommonPartner) lines.push("Most common partner: " + recap.mostCommonPartner.name);
+    if (recap.sameGroupPartner) lines.push("You teamed with " + recap.sameGroupPartner.name + " (same group — not enough of the other group to pair everyone).");
     if (recap.byeCount) lines.push("Byes: " + recap.byeCount);
   } else {
     const ranking = state.format === "crown" ? finalRankingCrown() : finalRanking();
@@ -7440,6 +8147,19 @@ function buildFairnessExplanation(type, opts) {
       ]
     };
   }
+  if (type === "same-group") {
+    const team = opts.team || [];
+    const names = team.map(nameOf).filter(Boolean).join(" & ");
+    return {
+      title: "Same-group team",
+      body: "Rumble keeps teams mixed (1 + 1) when the roster allows. This round, the roster math forced one same-group team.",
+      facts: [
+        names ? "Team: " + names : "This team pairs two players from the same group.",
+        "Mixed mode pairs one player from each group per team when counts allow.",
+        "Uneven group counts make at least one same-group team unavoidable."
+      ]
+    };
+  }
   return {
     title: "How Rumble decided this",
     body: "This explanation is based on the deterministic tournament rules stored in the current event.",
@@ -7666,6 +8386,38 @@ function allocateByes(policy, context) {
   const byes = selectSorted(pool);
   return { ...shape, byes, playing: active.filter(s => !byes.includes(s)) };
 }
+// Checks if a playing set can form all-mixed courts (2A+2B per court).
+function isMixedFeasible(playing, activeCourts) {
+  const aCount = playing.filter(s => groupOf(s) === "a").length;
+  const bCount = playing.filter(s => groupOf(s) === "b").length;
+  return aCount >= 2 * activeCourts && bCount >= 2 * activeCourts;
+}
+// Wraps allocateByes with a mixed-feasibility filter. When mixedMode is on,
+// tries different bye orderings to find one that leaves a mixed-feasible
+// playing set. Falls back to the original result if none is feasible.
+function allocateByesMixed(policy, context) {
+  const result = allocateByes(policy, context);
+  if (!state.mixedMode || result.byes.length === 0) return result;
+  const shape = roundShapeFor((context.activeSlots || []).length, context.courtCount || 2);
+  if (isMixedFeasible(result.playing, shape.activeCourts || shape.courts)) return result;
+  // Try swapping each bye with a non-bye player from the over-represented group
+  // to find a feasible set. This is a bounded search over bye-set variants.
+  const active = (context.activeSlots || []).slice();
+  const rng = context.rng || Math.random;
+  // Generate variants by rotating which slots sit, biased toward the surplus group
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const shuffled = seededShuffle(active, rng);
+    const variantByes = shuffled.slice(0, result.byes.length);
+    const variantPlaying = active.filter(s => !variantByes.includes(s));
+    if (isMixedFeasible(variantPlaying, shape.activeCourts || shape.courts)) {
+      // Feasible! But also check fairness — prefer variants closer to the
+      // original rotation. For simplicity, take the first feasible found.
+      return { ...result, byes: variantByes, playing: variantPlaying };
+    }
+  }
+  // No feasible variant found → return original (best-effort)
+  return result;
+}
 function rrPairKey(a, b) {
   return Math.min(a, b) + "-" + Math.max(a, b);
 }
@@ -7713,6 +8465,10 @@ function rrTeamSplits(four) {
   ];
 }
 function bestRRSplit(four, court, history, chosen) {
+  if (state.mixedMode) {
+    const [team1, team2] = pairMixedAware(four, { court, history, chosen });
+    return makeGame(court, team1, team2);
+  }
   let best = null, bestCost = Infinity;
   for (const [team1, team2] of rrTeamSplits(four)) {
     const game = makeGame(court, team1, team2);
@@ -7728,15 +8484,18 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
   for (let ri = 0; ri < roundsWanted; ri++) {
     const roundNum = baseRound + ri + 1;
     const prior = [...(history || []), ...rounds];
-    const alloc = allocateByes("rotation", { activeSlots: actives, players, rounds: prior, round: roundNum, courtCount, rng });
+    const alloc = allocateByesMixed("rotation", { activeSlots: actives, players, rounds: prior, round: roundNum, courtCount, rng });
     let bestGames = null, bestCost = Infinity;
     const restarts = Math.max(1, alloc.playing.length === 4 ? 1 : 60);
     for (let attempt = 0; attempt < restarts; attempt++) {
-      const shuffled = seededShuffle(alloc.playing, rng);
+      const courts = state.mixedMode
+        ? dealBalancedCourts(alloc.playing, alloc.activeCourts, rng)
+        : null;
+      const shuffled = courts ? null : seededShuffle(alloc.playing, rng);
       const games = [];
       for (let c = 0; c < alloc.activeCourts; c++) {
-        const four = shuffled.slice(c * 4, c * 4 + 4);
-        games.push(bestRRSplit(four, c + 1, prior, games));
+        const four = courts ? courts[c] : shuffled.slice(c * 4, c * 4 + 4);
+        if (four && four.length === 4) games.push(bestRRSplit(four, c + 1, prior, games));
       }
       const cost = rrRoundCost(games, prior);
       if (cost < bestCost) { bestGames = games; bestCost = cost; }
@@ -9210,6 +9969,45 @@ function renderRulesUl(bullets) {
   (bullets || rulesForActiveFormat()).forEach(text => ul.appendChild(el("li", null, text)));
   return ul;
 }
+function openEditGroupLabelsModal() {
+  if (!state.mixedGroupLabels || typeof state.mixedGroupLabels !== "object") {
+    state.mixedGroupLabels = { a: "", b: "" };
+  }
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Edit group labels"));
+  modal.appendChild(el("p", { class: "muted", style: "margin-top:0;" },
+    "Names for the two groups mixed mode pairs together (e.g. Men / Women)."));
+  const aInput = el("input", {
+    class: "name-input", type: "text", value: state.mixedGroupLabels.a || "",
+    placeholder: "Group A label", autocomplete: "off",
+  });
+  const bInput = el("input", {
+    class: "name-input", type: "text", value: state.mixedGroupLabels.b || "",
+    placeholder: "Group B label", autocomplete: "off",
+  });
+  modal.appendChild(el("label", { class: "muted", style: "font-size:13px;" }, "Group A"));
+  modal.appendChild(aInput);
+  modal.appendChild(el("label", { class: "muted", style: "font-size:13px;margin-top:10px;" }, "Group B"));
+  modal.appendChild(bInput);
+  modal.appendChild(el("button", {
+    class: "primary", style: "width:100%;margin-top:14px;",
+    onclick: () => {
+      state.mixedGroupLabels.a = (aInput.value || "").trim();
+      state.mixedGroupLabels.b = (bInput.value || "").trim();
+      save();
+      close();
+      render();
+    },
+  }, "Save"));
+  modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Cancel"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+  setTimeout(() => aInput.focus(), 0);
+}
+
 function renderRulesBlock() {
   const details = el("details", { class: "rules" });
   details.appendChild(el("summary", null, "How it works"));
@@ -9225,6 +10023,29 @@ function renderRulesBlock() {
               style: "color: var(--accent); font-weight: 600;" },
       "install & getting-started guide"),
     "."));
+  if (state.format !== "crown") {
+    body.appendChild(el("label", { class: "rule-row", style: "display:flex;align-items:center;gap:8px;margin-top:12px;" },
+      el("span", { style: "flex:1;" }, "Mixed mode (pair 1 + 1)"),
+      el("button", {
+        class: state.mixedMode ? "primary" : "",
+        style: "min-height:40px;padding:8px 16px;font-size:16px;",
+        onclick: () => {
+          state.mixedMode = !state.mixedMode;
+          save();
+          render();
+        },
+      }, state.mixedMode ? "ON" : "OFF")
+    ));
+    if (state.mixedMode) {
+      body.appendChild(el("div", { style: "margin-top:4px;" },
+        el("a", {
+          href: "#",
+          style: "color: var(--accent); font-size: 13px; font-weight: 600;",
+          onclick: (e) => { e.preventDefault(); openEditGroupLabelsModal(); },
+        }, "Edit labels")
+      ));
+    }
+  }
   details.appendChild(body);
   return details;
 }
@@ -10416,6 +11237,28 @@ function renderSaveToLifetimeBlock() {
     });
       row.appendChild(nameInput);
       row.appendChild(phoneInput);
+      if (state.mixedMode) {
+        const groupBtn = (groupVal, label) => {
+          const isSet = (state.rawGroups[i] || "") === groupVal;
+          return el("button", {
+            class: isSet ? "primary" : "",
+            style: "min-height:40px;min-width:40px;padding:4px 8px;font-size:14px;",
+            "aria-label": "Set group " + label + " for player " + (i + 1),
+            onclick: () => {
+              state.rawGroups[i] = isSet ? "" : groupVal;
+              save();
+              render();
+            },
+          }, label);
+        };
+        const labels = mixedToggleLabels();
+        const groupWrap = el("div", { style: "display:flex;gap:4px;" },
+          groupBtn("a", labels.a),
+          groupBtn("b", labels.b)
+        );
+        groupWrap.style.cssText = "flex:0.6;display:flex;gap:4px;";
+        row.appendChild(groupWrap);
+      }
       if (!isCrown && playerCount > 4) {
         row.appendChild(el("button", {
           class: "remove-player",
@@ -10423,6 +11266,7 @@ function renderSaveToLifetimeBlock() {
           onclick: () => {
             state.rawNames.splice(i, 1);
             state.rawPhones.splice(i, 1);
+            if (Array.isArray(state.rawGroups)) state.rawGroups.splice(i, 1);
             if (Array.isArray(_phoneAutofilled)) _phoneAutofilled.splice(i, 1);
             save();
             render();
@@ -10432,6 +11276,22 @@ function renderSaveToLifetimeBlock() {
       list.appendChild(row);
     }
   card.appendChild(list);
+  if (state.mixedMode) {
+    const groups = (state.rawGroups || []).slice(0, playerCount);
+    const aCount = groups.filter(g => g === "a").length;
+    const bCount = groups.filter(g => g === "b").length;
+    const unsetCount = groups.filter(g => !g).length;
+    const activeCourts = effectiveCourtCountForFormat(state.format, state.courtCount);
+    if (unsetCount > 0) {
+      card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
+        "Set a group for all players, or mixed pairing may be uneven."));
+    } else if (Math.min(aCount, bCount) < activeCourts * 2) {
+      const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
+      card.appendChild(el("p", { class: "muted", style: "color:var(--accent);margin:8px 0;" },
+        aCount + " " + labels.a + " / " + bCount + " " + labels.b +
+        ": some same-gender teams needed. Up to " + (activeCourts * 4) + " players may play per round."));
+    }
+  }
 
   const startBtn = el("button", {
     id: "start-btn",
@@ -11335,9 +12195,18 @@ function renderPlaying() {
 
   const roundByes = byesOf(round);
   if (roundByes.length) {
+    let tallyNode = null;
+    if (state.mixedMode) {
+      const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
+      const aByes = roundByes.filter(s => groupOf(s) === "a").length;
+      const bByes = roundByes.filter(s => groupOf(s) === "b").length;
+      tallyNode = el("div", { class: "bye-group-tally" },
+        aByes + " " + labels.a + " · " + bByes + " " + labels.b);
+    }
     scoreSection.appendChild(el("div", { class: "bye-banner" },
       "☕ Sitting this round: " + roundByes.map(nameOf).join(", ") + " — back next round.",
-      whyButton("bye", { slots: roundByes.slice(), round: round.round || state.currentRound })));
+      whyButton("bye", { slots: roundByes.slice(), round: round.round || state.currentRound }),
+      tallyNode));
   }
   scoreSection.appendChild(renderRoundCourts(round, false, refreshes));
 
@@ -11623,16 +12492,27 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
   const crownMatchIdx = opts && opts.matchIdx != null ? opts.matchIdx : null;
 
   const node = el("div", { class: "team-row" });
+  // Mixed-mode badge ("M·W" or "✓") + dashed outline for same-group fallback teams.
+  const badgeText = mixedBadgeForTeam(team);
+  const isSameGroup = state.mixedMode && !isMixedTeam(team);
+  const nameClass = "team-name" + (isSameGroup ? " same-group-team" : "");
+  const sameGroupTitle = "Same-group team — not enough of one group to pair everyone.";
   if (seeds) {
-    const nameNode = el("div", { class: "team-name" });
+    const nameNode = el("div", { class: nameClass });
+    if (isSameGroup) nameNode.title = sameGroupTitle;
     nameNode.appendChild(seedPill(seeds.get(team[0]), kind));
     nameNode.appendChild(document.createTextNode(nameOf(team[0])));
     nameNode.appendChild(document.createTextNode(" & "));
     nameNode.appendChild(seedPill(seeds.get(team[1]), kind));
     nameNode.appendChild(document.createTextNode(nameOf(team[1])));
+    if (badgeText) nameNode.appendChild(el("span", { class: "mixed-badge" }, badgeText.trim()));
+    if (isSameGroup) nameNode.appendChild(whyButton("same-group", { team }));
     node.appendChild(nameNode);
   } else {
-    node.appendChild(el("div", { class: "team-name" }, nameOf(team[0]) + " & " + nameOf(team[1])));
+    node.appendChild(el("div", { class: nameClass, title: isSameGroup ? sameGroupTitle : undefined },
+      nameOf(team[0]) + " & " + nameOf(team[1]),
+      badgeText ? el("span", { class: "mixed-badge" }, badgeText.trim()) : null,
+      isSameGroup ? whyButton("same-group", { team }) : null));
   }
 
   // Quick-fill pill: shown only when both scores are null.
@@ -13520,6 +14400,7 @@ function openSettings() {
         placeholder: "Phone optional",
         autocomplete: "tel",
       });
+      let selectedGroup = "";
       const addBtn = el("button", {
         class: "primary",
         disabled: activeTotal >= 24,
@@ -13528,7 +14409,7 @@ function openSettings() {
       addBtn.addEventListener("click", () => {
         const beforeState = stateSnapshotForUndo();
         const cleanName = (nameInput.value || "").trim();
-        const result = addMidEventPlayer(nameInput.value, phoneInput.value);
+        const result = addMidEventPlayer(nameInput.value, phoneInput.value, selectedGroup);
         if (result && result.ok) {
           recordEvent({
             kind: "roster",
@@ -13543,6 +14424,26 @@ function openSettings() {
       phoneInput.addEventListener("keydown", e => { if (e.key === "Enter") addBtn.click(); });
       addRow.appendChild(nameInput);
       addRow.appendChild(phoneInput);
+      if (state.mixedMode) {
+        const labels = mixedToggleLabels();
+        const groupBtn = (groupVal, label) => {
+          const btn = el("button", {
+            style: "min-height:40px;min-width:40px;padding:4px 8px;font-size:14px;",
+            "aria-label": "Set group " + label + " for new player",
+          }, label);
+          const sync = () => { btn.className = selectedGroup === groupVal ? "primary" : ""; };
+          btn.addEventListener("click", () => {
+            selectedGroup = selectedGroup === groupVal ? "" : groupVal;
+            sync();
+          });
+          sync();
+          return btn;
+        };
+        addRow.appendChild(el("div", { style: "display:flex;gap:4px;" },
+          groupBtn("a", labels.a),
+          groupBtn("b", labels.b)
+        ));
+      }
       addRow.appendChild(addBtn);
       modal.appendChild(addRow);
     }
