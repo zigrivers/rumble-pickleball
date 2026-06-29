@@ -6418,7 +6418,7 @@ function stackScoreGain(pts, court, courtCount, won) {
   return gain;
 }
 
-// Per-player stack stats through the given round (1-based, inclusive).
+// Collision-safe toggle labels for the two mixed-mode groups.
 function mixedToggleLabels() {
   const a = (state.mixedGroupLabels || {}).a || "A";
   const b = (state.mixedGroupLabels || {}).b || "B";
