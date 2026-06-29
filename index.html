@@ -4878,6 +4878,10 @@ function simulationConfigs() {
     { label: "Stack 10/2 churn", format: "stack", players: 10, courts: 2, rounds: 4, churn: true, nextCourts: 1, seed: 4102 },
     { label: "King 16/4 churn", format: "king", players: 16, courts: 4, rounds: 6, churn: true, nextCourts: 3, seed: 4103 },
     { label: "Gauntlet 9/2 churn", format: "gauntlet", players: 9, courts: 2, rounds: 6, churn: true, nextCourts: 1, seed: 4104 },
+    { label: "Mixed RR 10/2", format: "rr", players: 10, courts: 2, rounds: 5, mixed: true, seed: 4201 },
+    { label: "Mixed Stack 8/2", format: "stack", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4202 },
+    { label: "Mixed King 8/2", format: "king", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4203 },
+    { label: "Mixed Gauntlet 8/2", format: "gauntlet", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4204 },
   ];
 }
 
@@ -5013,6 +5017,14 @@ function runSimulation() {
     state.rawPhones = state.rawNames.map(() => "");
     state.slots = seededShuffle(state.rawNames, mulberry32(cfg.seed));
     writePlayersFromSlots(cfg.players);
+    if (cfg.mixed) {
+      state.mixedMode = true;
+      state.rawGroups = state.rawNames.map((_, i) => i % 2 === 0 ? "a" : "b");
+      state.slotGroups = state.slots.map(name => {
+        const idx = state.rawNames.indexOf(name);
+        return idx >= 0 ? state.rawGroups[idx] : "";
+      });
+    }
     state.tiebreakRandom = seededShuffle(Array.from({ length: cfg.players }, (_, i) => i), mulberry32(cfg.seed + 1));
     state.currentRound = 1;
     state.phase = "playing";
@@ -5075,6 +5087,15 @@ function runSimulation() {
         console.assert(returnMidEventPlayer(leftSlot).ok, cfg.label + ": return succeeds", leftSlot);
       }
       state.rounds.slice(state.currentRound).forEach((future, i) => checkRoundParticipants(future, cfg.label + " future " + (i + 1)));
+      if (cfg.mixed) {
+        const round = state.rounds[state.currentRound - 1];
+        for (const game of gamesOf(round)) {
+          for (const team of [game.team1, game.team2]) {
+            console.assert(isMixedTeam(team),
+              cfg.label + " round " + state.currentRound + ": team is mixed", team);
+          }
+        }
+      }
       advanceFlexibleRound();
     }
 
