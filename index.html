@@ -4824,6 +4824,29 @@ function runSelfTests() {
     state = newState();
   })();
 
+  // ---- Mixed mode: mid-event join ----
+  (function midEventJoinTests() {
+    state = newState();
+    state.format = "rr";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 333;
+    writePlayersFromSlots(8);
+    startTournament();
+    // Add a 9th player (group "a")
+    const result = addMidEventPlayer("Player 9", "", "a");
+    console.assert(result.ok, "join: player 9 added", result);
+    // slotGroups should include the new player's group
+    const newSlot = state.slots.findIndex(s => s === "Player 9") + 1;
+    console.assert(groupOf(newSlot) === "a", "join: new player has group a", { newSlot, group: groupOf(newSlot) });
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -5334,7 +5357,7 @@ function makeScheduleSeed() {
     save();
     return { ok: true };
   }
-  function addMidEventPlayer(name, phone) {
+  function addMidEventPlayer(name, phone, group) {
     const blocked = rosterChangeBlocked();
     if (blocked) return { ok: false, error: blocked };
     const cleanName = (name || "").trim();
@@ -5359,6 +5382,9 @@ function makeScheduleSeed() {
     state.phones[slot - 1] = cleanPhone;
     if (Array.isArray(state.rawNames)) state.rawNames[slot - 1] = cleanName;
     if (Array.isArray(state.rawPhones)) state.rawPhones[slot - 1] = cleanPhone;
+    if (Array.isArray(state.rawGroups)) state.rawGroups[slot - 1] = group || "";
+    if (!Array.isArray(state.slotGroups)) state.slotGroups = [];
+    state.slotGroups[slot - 1] = group || "";
     insertTiebreakSlot(slot);
     saveRosterEntry(cleanName, cleanPhone);
     const regen = regenerateFutureRounds();
