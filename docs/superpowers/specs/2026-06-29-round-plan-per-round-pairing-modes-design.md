@@ -26,6 +26,12 @@ Players at a social pickleball night (6M + 6W, 3 courts) want a mix of mixed dou
 - **No change to ranking, scoring, or standings.** Pairing mode is a scheduling concern. The Adjusted Margin ranker and all stat computation are mode-agnostic.
 - **No round plan for Crown.** Crown's themed matches don't fit the per-round model.
 
+## 3.5 Cross-mode standings — honest framing
+
+A tournament with varying modes (gender rounds + mixed rounds) produces standings that mix different competitive contexts. Gender rounds shrink each player's partner pool to their own group (~5 options for 6+6), so repeat partners exhaust variety faster. Mixed rounds pair across groups. A strong player in a weak same-gender pool faces a structurally different challenge than in mixed rounds. All games feed one Adjusted Margin leaderboard.
+
+**This is intentional for a social night.** The standings are a fun social aggregate, not a precision rating. The Adjusted Margin ranker is explicitly a "light, fixed-strength heuristic" designed for social play. We accept the cross-mode variance because the alternative — separate standings per mode — fragments the social narrative of the night into incomparable leaderboards. The spec owns this framing rather than implying mode has no competitive effect.
+
 ## 4. Data model
 
 ### 4.1 New state field
@@ -52,16 +58,27 @@ type RoundMode =
 ### 4.3 Blend constraints
 
 - `mixedCourts` must be `>= 1` and `<= courtCount - 1`. If `mixedCourts === 0`, it's equivalent to `gender`. If `mixedCourts === courtCount`, it's equivalent to `mixed`.
-- If the manager changes court count after setting a plan, blend rounds auto-clamp `mixedCourts` silently (no error).
+- If the manager changes court count after setting a plan, blend rounds auto-clamp `mixedCourts` and display a small inline note on affected rows: *"Adjusted (court count changed)."* The note clears on next render.
 
-### 4.4 Relationship to existing `mixedMode`
+### 4.4 Relationship to existing `mixedMode` — explicit mode threading
 
-`mixedMode` is the shorthand; `roundPlan` is the advanced view:
-- **`mixedMode` ON, `roundPlan` empty:** scheduler treats every round as mixed. This is the current mixed-mode feature — backward compatible.
-- **`mixedMode` OFF, `roundPlan` empty:** scheduler treats every round as open. This is today's default — backward compatible.
-- **`roundPlan` populated:** the round plan takes precedence. `mixedMode` is implied true (since the plan uses groups).
+`mixedMode` is the legacy shorthand; `roundPlan` is the advanced view. The critical design decision: **scheduling primitives no longer read `state.mixedMode` directly.** They receive the resolved per-round mode as an explicit parameter. This fixes the coupling where an "open" round inside a populated plan would still trigger mixed pairing because `bestRRSplit` checks the global.
+
+- **`mixedMode` ON, `roundPlan` empty:** `roundPlanForRound(ri)` returns `{mode:"mixed"}` for all rounds. Scheduler receives `"mixed"` explicitly. Backward compatible.
+- **`mixedMode` OFF, `roundPlan` empty:** `roundPlanForRound(ri)` returns `{mode:"open"}`. Scheduler receives `"open"`. Backward compatible.
+- **`roundPlan` populated:** the round plan takes precedence per-round. `state.mixedMode` is set to `true` (so surfaces like the per-player group toggles stay visible) but **scheduling primitives ignore it** — they read only the resolved mode passed by the router.
 - **`mixedMode` toggled ON in setup:** populates `roundPlan` with all-mixed entries. The manager can then edit individual rounds.
 - **`mixedMode` toggled OFF:** clears `roundPlan` to `[]`. Values preserved in memory for re-toggle.
+
+**What changes in existing primitives:** every function that currently reads `state.mixedMode` gains an explicit `mode` parameter instead:
+- `bestRRSplit(four, court, history, chosen)` → `bestRRSplit(four, court, history, chosen, mode)`
+- `pairMixedAware(four, opts)` → already takes opts; the mode is in `opts.mode`
+- `mixedModeBadTeamCount(teams)` → gains a `mode` param; only counts bad teams when mode is `"mixed"`
+- `generateRRSchedule` → passes `roundPlanForRound(ri)` to each helper
+- `allocateByesMixed` → becomes `allocateByesForMode(mode, ...)` (see §6.8)
+- `assignCourtsConstrained` → gains `mode` param
+
+When `mode === "open"`, all these primitives reduce to today's non-mixed behavior (byte-identical) regardless of what `state.mixedMode` says.
 
 ### 4.5 Migration
 
@@ -86,7 +103,11 @@ When a player joins mid-tournament, the schedule regenerates for remaining round
 
 ### 4.8 Mid-tournament plan edits
 
-The manager can edit `roundPlan` for remaining unstarted rounds via **⚙ Settings → Round Plan**. Completed rounds are locked (their games are already recorded). The edit triggers schedule regeneration for all unstarted rounds, picking up the new modes.
+The manager can edit `roundPlan` for remaining unstarted rounds via **⚙ Settings → Round Plan**. Completed rounds are locked (their games are already recorded).
+
+**Round Robin:** regenerates all unstarted pre-built rounds immediately, picking up the new modes.
+
+**Ladder formats (Stack/King/Gauntlet):** these build rounds incrementally — the next round is only built after the prior round's scores are entered. Plan edits apply when the next round is generated: the manager changes round 5's mode from mixed to gender while round 3 is in progress; when round 4 completes and round 5 is generated, it reads the updated mode. No immediate regeneration — the plan change takes effect at the next round boundary.
 
 ## 5. Setup UI
 
@@ -132,7 +153,7 @@ These just fill the dropdowns — the manager can edit any round afterward.
 
 ### 5.6 Court count interaction
 
-If the manager changes court count after setting up the plan, blend rounds auto-clamp `mixedCourts`. No error, no warning — just adjust silently.
+If the manager changes court count after setting up the plan, blend rounds auto-clamp `mixedCourts` with an inline note (see §4.3).
 
 ### 5.7 Mixed-mode toggle interaction
 
@@ -172,6 +193,10 @@ Court composition options for gender mode:
 
 The dealer prefers 2A+2B courts when possible (maximizes partner variety: each player can partner with any of the N-1 same-group players, and faces all opposite-group players as opponents).
 
+**Gender semantics (resolved):** "Gender" means same-group *teams* — M+M or W+W. Opponents may be the same or different group. A 2A+2B court pairs as A+A vs B+B (men vs women), which is standard gender-doubles match play. A 4A court pairs as A+A vs A+A. This is the common interpretation for social pickleball: you partner with your own gender but may play against any team. If a manager wants strict gender separation (men only play men, women only play women), that requires a 4A+4B court split, which only works when group counts divide evenly into courts of 4 — a configuration the dealer forms when math allows but does not force.
+
+**Wildcard handling:** players with unset groups (`groupOf` returns `""`) are treated as wildcards in gender mode — they can fill either side. `pairGenderAware` counts a team with one unset player as `crossTeams === 0` (valid for gender mode) since the unset player can be any group. This means a roster with some unset players degrades gracefully: the scheduler forms same-group pairs where possible and uses unset players as flexible fillers.
+
 **New helper — `pairGenderAware(four, opts)`:** the mirror image of `pairMixedAware`. Instead of minimizing same-group teams, it minimizes *cross-group* (mixed) teams:
 
 ```js
@@ -194,7 +219,7 @@ For a 2A+2B court, this always produces `[A,A]` vs `[B,B]` (the only split with 
 
 ### 6.5 Blend mode
 
-The scheduler splits courts into two sets and applies different helpers:
+The scheduler splits courts into two sets and applies different helpers. **Each generated game stores its court mode** as `game.courtMode` (`"mixed"` or `"gender"`) so rendering and post-processing passes (including the court-swap optimizer) don't need to re-derive mode from court index:
 
 ```js
 function dealBlendCourts(plan, playing, activeCourts, rng, prior) {
@@ -206,29 +231,34 @@ function dealBlendCourts(plan, playing, activeCourts, rng, prior) {
   const dealt = new Set(mCourts.flat());
   const remaining = playing.filter(s => !dealt.has(s));
   const gCourts = dealGenderCourts(remaining, genderCourts, rng, prior);
-  return [...mCourts, ...gCourts];
+  // Return courts with their mode tags
+  const tagged = [
+    ...mCourts.map(c => ({ slots: c, courtMode: "mixed" })),
+    ...gCourts.map(c => ({ slots: c, courtMode: "gender" })),
+  ];
+  return tagged;
 }
 ```
 
+The court-swap post-processing pass (§generateRRSchedule's relabeling) must preserve `game.courtMode` when swapping court numbers — it swaps the `court` field but leaves `courtMode` intact, so rendering always reads the correct mode from the game record.
+
 For the user's 6M+6W / 3-court / 2-mixed example:
-- Mixed court 1: 2M+2W → M+W vs M+W
-- Mixed court 2: 2M+2W → M+W vs M+W
-- Gender court: 2M+2W → M+M vs W+W
+- Mixed court 1: 2M+2W → M+W vs M+W (`courtMode: "mixed"`)
+- Mixed court 2: 2M+2W → M+W vs M+W (`courtMode: "mixed"`)
+- Gender court: 2M+2W → M+M vs W+W (`courtMode: "gender"`)
 
 4 mixed teams + 2 gender teams, all 12 players active.
 
 ### 6.6 `pairByMode` dispatcher
 
+Uses the `courtMode` tag from `dealBlendCourts` (or the round's mode for non-blend rounds), not court index:
+
 ```js
-function pairByMode(plan, four, courtIndex, opts) {
-  if (plan.mode === "gender") return pairGenderAware(four, opts);
-  if (plan.mode === "blend") {
-    // First mixedCourts courts are mixed; rest are gender
-    const isMixedCourt = courtIndex < (plan.mixedCourts || 1);
-    return isMixedCourt ? pairMixedAware(four, opts) : pairGenderAware(four, opts);
-  }
-  // "mixed" and "open" both use pairMixedAware (open reduces to pure cost when mixedModeBadTeamCount returns 0)
-  if (plan.mode === "mixed") return pairMixedAware(four, opts);
+function pairByMode(plan, four, courtMode, opts) {
+  // courtMode is "mixed" or "gender" (resolved by the dealer for blend,
+  // or equals plan.mode for non-blend rounds)
+  if (courtMode === "gender") return pairGenderAware(four, opts);
+  if (courtMode === "mixed") return pairMixedAware(four, opts);
   return bestRRSplit(four, opts.court, opts.history, opts.chosen);  // open
 }
 ```
@@ -243,13 +273,26 @@ function pairByMode(plan, four, courtIndex, opts) {
 
 The optimizer already does multi-restart search with a lexicographic cost. Adding a mode parameter changes the scoring function, not the structure.
 
-### 6.8 Bye allocation
+**Rank-vs-mode conflict in blend rounds:** in a ladder, court assignment is rank-dependent (winners up, losers down). In a blend round, the ranking order may place group ratios on a court that can't satisfy its mode (e.g., 4 players of one group assigned to a "mixed" court). The optimizer resolves this by treating the mode as a **soft constraint within the lexicographic cost** — it minimizes mode violations after minimizing court deviation. If a perfect mode assignment isn't achievable within the movement constraints, the court with the fewest violations accepts the fallback, and the court-type badge on screen reflects what was actually achieved (not what was planned). The "Why?" button explains the fallback.
 
-`allocateByesMixed` (the feasibility filter) applies only when the round's mode is mixed or blend. For gender and open rounds, standard `allocateByes` is used. This is handled by the mode router — the calling code checks the round plan before choosing the bye allocator.
+### 6.8 Bye allocation — mode-aware for all modes
 
-### 6.9 Finals bracket
+**The existing `allocateByesMixed` is renamed and generalized to `allocateByesForMode(mode, ...)`.** It applies a feasibility filter appropriate to the round's mode:
 
-The finals use the **last round's mode** for pairing. If round 7 was gender, finals are gender-paired. If round 7 was blend, finals use mixed (single-court finals can't blend). If round 7 was open, finals use the existing `#1+#4 vs #2+#3` formula.
+- **Mixed:** byes leave a playing set where `countA >= 2*activeCourts && countB >= 2*activeCourts` (existing behavior).
+- **Gender:** byes leave a playing set where each group has an even count (so same-group pairs are possible on every court). Specifically: `countA % 2 === 0 && countB % 2 === 0` after removing byes.
+- **Blend:** byes leave a playing set satisfying *both* the mixed-court constraint (enough A and B for `mixedCourts` courts of 2A+2B) and the gender-court constraint (even remainder for gender courts).
+- **Open:** standard rotation `allocateByes` — no group constraint.
+
+For all modes, the existing individual-fairness rotation (`byeCount` history) remains the tie-break among feasible bye sets. If no feasible set exists (lopsided roster), falls back to standard rotation (best-effort).
+
+### 6.9 Finals bracket — rank-seeded, mode-aware when feasible
+
+Finals pairing uses rank seeding (#1+#4 vs #2+#3) as the primary constraint — this is the championship, and seed integrity matters more than pairing mode. **The round-plan mode does NOT apply to finals.** This resolves the conflict where the top 4 by rank might be 3A+1B and can't form a valid mixed/gender split.
+
+Exception: if the top-4 seeds happen to have a 2A+2B split and the tournament was predominantly mixed-mode, `pairMixedAware` is used to pick the mixed split (same as the fix we applied to finals in the mixed-mode feature). Otherwise, rank-seeded pairing is used as-is.
+
+This means: a gender-only tournament will still get rank-seeded finals (which may be mixed if the top 4 happen to split that way). The finals are about finding the best team, not enforcing a pairing mode. The round plan governs the regular rounds; the finals are their own thing.
 
 ### 6.10 What does NOT change
 
@@ -330,12 +373,18 @@ Legacy saved state without `roundPlan` loads with `[]`. Tournament still runs.
 
 | Case | Expected behavior |
 |---|---|
-| Gender mode, lopsided 7A+5B, 3 courts | Best-effort: form as many gender courts as possible |
+| Gender mode, lopsided 7A+5B, 3 courts | Best-effort: form as many gender courts as possible; remaining court may have mixed teams |
+| Blend, lopsided 8A+4B, 3 courts, 2 mixed | Mixed courts: 2A+2B each; gender remainder 4A+0B → A+A vs A+A |
+| Blend with byes present (10A+6B, 3 courts, 2 mixed) | Bye filter ensures mixed courts get 2A+2B and gender remainder is even |
 | Blend with mixedCourts=0 | Equivalent to gender mode |
 | Blend with mixedCourts=courtCount | Equivalent to mixed mode |
 | Round plan shorter than rrRounds | Missing rounds fall back to `roundPlanForRound` (open or mixed) |
-| Mid-tournament plan edit | Remaining rounds regenerate; completed rounds locked |
-| Court count change after plan set | Blend `mixedCourts` re-clamped silently |
+| Mid-tournament plan edit (RR) | Remaining rounds regenerate; completed rounds locked |
+| Mid-tournament plan edit (ladder) | Change takes effect at next round boundary |
+| Court count change after plan set | Blend `mixedCourts` re-clamped with inline note |
+| Gender mode with unset-group players | Unset players are wildcards; pairs same-group where possible |
+| Open round inside populated plan | Truly open (no mixed pairing) — primitives receive `"open"` mode explicitly |
+| `game.courtMode` survives court-swap pass | Court relabeling preserves `courtMode` tag on game records |
 
 ### 8.5 Manual QA
 
@@ -355,14 +404,29 @@ Legacy saved state without `roundPlan` loads with `[]`. Tournament still runs.
 ## 10. Architecture summary
 
 - **State:** `state.roundPlan: Array<RoundMode>` + `roundPlanForRound(ri)` resolver with `mixedMode` fallback
+- **Explicit mode threading:** scheduling primitives receive the resolved per-round mode as a parameter — they do NOT read `state.mixedMode` directly. Fixes the coupling where an open round inside a plan would trigger mixed pairing.
+- **Court identity:** each generated game stores `game.courtMode` (`"mixed"` / `"gender"` / `"open"`) at generation time. Rendering and post-processing passes read this tag instead of inferring from court index.
 - **Setup UI:** collapsible Round Plan section (visible when mixed on), per-round dropdowns, blend sub-control, quick presets
-- **New helpers:** `dealGenderCourts`, `pairGenderAware` (mirror of `pairMixedAware`), `dealBlendCourts` (splits courts into mixed + gender sets)
-- **Routers:** `dealCourtsByMode`, `pairByMode` dispatch to the right helper based on `plan.mode`
-- **Scheduler:** `generateRRSchedule` and `assignCourtsConstrained` read the round plan
-- **Surfaces:** mode badge in header, court-type badge on blend courts, M·M/W·W team badges, settings round-plan view
+- **New helpers:** `dealGenderCourts`, `pairGenderAware` (mirror of `pairMixedAware` — minimizes crossTeams), `dealBlendCourts` (splits courts into mixed + gender sets, tags each with `courtMode`)
+- **Routers:** `dealCourtsByMode`, `pairByMode` dispatch based on `plan.mode` / `courtMode`
+- **Bye allocation:** `allocateByesForMode(mode, ...)` — mode-aware feasibility filter for all modes (mixed, gender, blend, open)
+- **Scheduler:** `generateRRSchedule` and `assignCourtsConstrained` read the round plan and pass mode explicitly
+- **Finals:** rank-seeded pairing, mode-aware only when the top-4 split happens to be 2A+2B and tournament was predominantly mixed
+- **Surfaces:** mode badge in header, court-type badge on blend courts (reads `game.courtMode`), M·M/W·W team badges, settings round-plan view
 - **Migration:** `roundPlan` defaults to `[]`, backfilled in v5 loader
 - **Backward compat:** `mixedMode:true` + empty plan = all mixed; `mixedMode:false` + empty = all open
 
-## 11. Open questions
+## 11. Resolved questions
 
-None at design time.
+All questions surfaced during design and MMR review are resolved:
+
+- **Global coupling:** scheduling primitives receive explicit `mode` parameter; they don't read `state.mixedMode` (§4.4).
+- **Court identity:** `game.courtMode` stored on each game record at generation time; not derived from court index (§6.5).
+- **Bye feasibility for gender/blend:** `allocateByesForMode` applies group-feasibility constraints for all modes, not just mixed (§6.8).
+- **Finals mode conflict:** finals use rank-seeded pairing; mode does NOT apply. The round plan governs regular rounds only (§6.9).
+- **Gender semantics:** same-group teams, cross-group opponents allowed. Wildcards fill either side (§6.4).
+- **Lopsided blend:** tested explicitly; gender remainder deals from whatever's left after mixed courts (§8.4).
+- **Ladder plan edits:** take effect at next round boundary, not immediate regeneration (§4.8).
+- **Ladder blend conflicts:** mode is a soft constraint within the optimizer; court badge reflects actual achievement (§6.7).
+- **Cross-mode standings fairness:** intentional social aggregate, not precision rating (§3.5).
+- **Silent clamping:** inline note shown when court count change clamps `mixedCourts` (§4.3).
