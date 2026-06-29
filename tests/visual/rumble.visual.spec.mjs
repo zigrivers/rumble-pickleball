@@ -129,6 +129,12 @@ test("setup lifetime toggle", async ({ page }) => {
   await expect(page).toHaveScreenshot("setup-lifetime-toggle.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
 });
 
+test("setup mixed mode", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await seedState(page, "setup-mixed");
+  await expect(page).toHaveScreenshot("setup-mixed.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
+});
+
 test("career empty", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await seedCareer(page, stateForVisual("setup-desktop"), null);
