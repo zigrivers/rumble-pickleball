@@ -4771,6 +4771,59 @@ function runSelfTests() {
     state = newState();
   })();
 
+  // ---- Mixed mode: ladder rounds 2+ ----
+  (function ladderRounds2PlusTests() {
+    // Stack 8/2, 4A+4B: build round 2 from round 1, all teams mixed
+    state = newState();
+    state.format = "stack";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.stackRounds = 6;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 777;
+    state.tiebreakRandom = [0,1,2,3,4,5,6,7];
+    writePlayersFromSlots(8);
+    state.rounds = [assignInitialStackCourts()];
+    state.phase = "playing";
+    // Complete round 1 with decisive scores
+    for (const g of gamesOf(state.rounds[0])) { g.score1 = 11; g.score2 = 7; }
+    // Build round 2
+    const r2 = buildNextStackRound(state.rounds[0]);
+    for (const game of gamesOf(r2)) {
+      for (const team of [game.team1, game.team2]) {
+        console.assert(isMixedTeam(team), "Stack r2: team is mixed", { team });
+      }
+    }
+
+    // Gauntlet 8/2, 4A+4B: build round 2, all teams mixed
+    state = newState();
+    state.format = "gauntlet";
+    state.courtCount = 2;
+    state.mixedMode = true;
+    state.gauntletRounds = 6;
+    state.rawNames = ["A","B","C","D","E","F","G","H"];
+    state.rawGroups = ["a","b","a","b","a","b","a","b"];
+    state.slots = state.rawNames.slice();
+    state.slotGroups = state.rawGroups.slice();
+    state.scheduleSeed = 777;
+    state.tiebreakRandom = [0,1,2,3,4,5,6,7];
+    writePlayersFromSlots(8);
+    state.rounds = [assignInitialGauntletCourts()];
+    state.phase = "playing";
+    for (const g of gamesOf(state.rounds[0])) { g.score1 = 11; g.score2 = 7; }
+    const r2g = buildNextGauntletRound(state.rounds[0]);
+    for (const game of gamesOf(r2g)) {
+      for (const team of [game.team1, game.team2]) {
+        console.assert(isMixedTeam(team), "Gauntlet r2: team is mixed", { team });
+      }
+    }
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6681,15 +6734,41 @@ function buildNextLadderRound(prevRound, format) {
   const games = [];
   const stackStats = format === "stack" ? computeStackStats(prevRound.round) : null;
   const stackBySlot = stackStats ? new Map(stackStats.map(s => [s.slot, s.stackScore])) : null;
-  for (let court = 1; court <= alloc.activeCourts; court++) {
-    const slots = seats[court - 1];
-    if (slots.length !== 4) continue;
-    if (format === "stack") {
-      const [team1, team2] = pairForStackCourt(slots, gameForCourt(prevRound, court), stackBySlot);
-      games.push(makeGame(court, team1, team2));
-    } else {
-      const s = shuffle(slots);
-      games.push(makeGame(court, [s[0], s[1]], [s[2], s[3]]));
+  if (state.mixedMode) {
+    // Mixed mode: use constrained assignment instead of movement-based seats
+    const naturalCourt = {};
+    const movers = new Map();  // slot → target court from movement
+    for (const g of gamesOf(prevRound)) {
+      const t1Won = g.score1 > g.score2;
+      const winners = t1Won ? g.team1 : g.team2;
+      const losers = t1Won ? g.team2 : g.team1;
+      const court = g.court || 1;
+      winners.forEach(s => movers.set(s, clampCourt(court - 1, alloc.activeCourts)));
+      losers.forEach(s => movers.set(s, clampCourt(court + 1, alloc.activeCourts)));
+    }
+    alloc.playing.forEach(s => { if (!movers.has(s)) movers.set(s, Math.floor((alloc.activeCourts + 1) / 2)); });
+    alloc.playing.forEach(s => { naturalCourt[s] = movers.get(s); });
+    const result = assignCourtsConstrained(alloc.playing, naturalCourt, alloc.activeCourts, history, rng);
+    for (let c = 0; c < result.courts.length; c++) {
+      const four = result.courts[c];
+      if (four.length !== 4) continue;
+      const opts = format === "stack"
+        ? { stackBySlot, prevSameCourt: gameForCourt(prevRound, c + 1) }
+        : { history, chosen: games, court: c + 1 };
+      const [t1, t2] = pairMixedAware(four, opts);
+      games.push(makeGame(c + 1, t1, t2));
+    }
+  } else {
+    for (let court = 1; court <= alloc.activeCourts; court++) {
+      const slots = seats[court - 1];
+      if (slots.length !== 4) continue;
+      if (format === "stack") {
+        const [team1, team2] = pairForStackCourt(slots, gameForCourt(prevRound, court), stackBySlot);
+        games.push(makeGame(court, team1, team2));
+      } else {
+        const s = shuffle(slots);
+        games.push(makeGame(court, [s[0], s[1]], [s[2], s[3]]));
+      }
     }
   }
   return makeRound(round, games, alloc.byes);
@@ -6795,9 +6874,22 @@ function buildGauntletPairing(ranked, roundNum) {
   });
   const playing = rankedActive.filter(slot => !alloc.byes.includes(slot));
   const games = [];
-  for (let c = 0; c < alloc.activeCourts; c++) {
-    const block = playing.slice(c * 4, c * 4 + 4);
-    if (block.length === 4) games.push(makeGame(c + 1, [block[0], block[3]], [block[1], block[2]]));
+  if (state.mixedMode) {
+    const naturalCourt = {};
+    playing.forEach((s, i) => { naturalCourt[s] = Math.floor(i / 4) + 1; });
+    const result = assignCourtsConstrained(playing, naturalCourt, alloc.activeCourts,
+      ladderHistoryThrough(roundNum - 1), rng);
+    for (let c = 0; c < result.courts.length; c++) {
+      const four = result.courts[c];
+      if (four.length !== 4) continue;
+      const [t1, t2] = pairMixedAware(four, { history: ladderHistoryThrough(roundNum - 1), chosen: games, court: c + 1 });
+      games.push(makeGame(c + 1, t1, t2));
+    }
+  } else {
+    for (let c = 0; c < alloc.activeCourts; c++) {
+      const block = playing.slice(c * 4, c * 4 + 4);
+      if (block.length === 4) games.push(makeGame(c + 1, [block[0], block[3]], [block[1], block[2]]));
+    }
   }
   return makeRound(roundNum, games, alloc.byes);
 }
