@@ -6556,6 +6556,8 @@ function mixedBadgeForTeam(team) {
 //   activeCourts: Number of courts to fill
 //   rng:          Seeded RNG function (e.g. mulberry32(seed))
 // Returns: Array of arrays, one per court, each with 4 slot numbers.
+// Note: surplus players beyond activeCourts × 4 are dropped (truncated); the
+// caller guarantees `playing` is sized to the exact court seat count.
 function dealBalancedCourts(playing, activeCourts, rng) {
   const shuffle = (arr) => seededShuffle(arr.slice(), rng);
   const aPool = shuffle(playing.filter(s => groupOf(s) === "a"));
@@ -6656,7 +6658,7 @@ function assignCourtsConstrained(playing, naturalCourt, activeCourts, history, r
         (key[0] === bestKey[0] && key[1] === bestKey[1] && key[2] < bestKey[2])) {
       best = courts; bestKey = key;
     }
-    if (badTeams === 0) break;  // found a perfect assignment, stop early
+    if (bestKey[0] === 0 && bestKey[1] === 0) break;  // 0 badTeams + 0 deviation = perfect assignment
   }
   return { courts: best, badTeams: bestKey[0] };
 }
@@ -8145,6 +8147,19 @@ function buildFairnessExplanation(type, opts) {
       ]
     };
   }
+  if (type === "same-group") {
+    const team = opts.team || [];
+    const names = team.map(nameOf).filter(Boolean).join(" & ");
+    return {
+      title: "Same-group team",
+      body: "Rumble keeps teams mixed (1 + 1) when the roster allows. This round, the roster math forced one same-group team.",
+      facts: [
+        names ? "Team: " + names : "This team pairs two players from the same group.",
+        "Mixed mode pairs one player from each group per team when counts allow.",
+        "Uneven group counts make at least one same-group team unavoidable."
+      ]
+    };
+  }
   return {
     title: "How Rumble decided this",
     body: "This explanation is based on the deterministic tournament rules stored in the current event.",
@@ -8389,8 +8404,6 @@ function allocateByesMixed(policy, context) {
   // to find a feasible set. This is a bounded search over bye-set variants.
   const active = (context.activeSlots || []).slice();
   const rng = context.rng || Math.random;
-  let best = result;
-  let bestFeasible = false;
   // Generate variants by rotating which slots sit, biased toward the surplus group
   for (let attempt = 0; attempt < 60; attempt++) {
     const shuffled = seededShuffle(active, rng);
@@ -9956,6 +9969,45 @@ function renderRulesUl(bullets) {
   (bullets || rulesForActiveFormat()).forEach(text => ul.appendChild(el("li", null, text)));
   return ul;
 }
+function openEditGroupLabelsModal() {
+  if (!state.mixedGroupLabels || typeof state.mixedGroupLabels !== "object") {
+    state.mixedGroupLabels = { a: "", b: "" };
+  }
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+  const modal = el("div", { class: "modal" });
+  modal.appendChild(el("h2", null, "Edit group labels"));
+  modal.appendChild(el("p", { class: "muted", style: "margin-top:0;" },
+    "Names for the two groups mixed mode pairs together (e.g. Men / Women)."));
+  const aInput = el("input", {
+    class: "name-input", type: "text", value: state.mixedGroupLabels.a || "",
+    placeholder: "Group A label", autocomplete: "off",
+  });
+  const bInput = el("input", {
+    class: "name-input", type: "text", value: state.mixedGroupLabels.b || "",
+    placeholder: "Group B label", autocomplete: "off",
+  });
+  modal.appendChild(el("label", { class: "muted", style: "font-size:13px;" }, "Group A"));
+  modal.appendChild(aInput);
+  modal.appendChild(el("label", { class: "muted", style: "font-size:13px;margin-top:10px;" }, "Group B"));
+  modal.appendChild(bInput);
+  modal.appendChild(el("button", {
+    class: "primary", style: "width:100%;margin-top:14px;",
+    onclick: () => {
+      state.mixedGroupLabels.a = (aInput.value || "").trim();
+      state.mixedGroupLabels.b = (bInput.value || "").trim();
+      save();
+      close();
+      render();
+    },
+  }, "Save"));
+  modal.appendChild(el("button", { style: "width:100%;margin-top:8px;", onclick: close }, "Cancel"));
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+  setTimeout(() => aInput.focus(), 0);
+}
+
 function renderRulesBlock() {
   const details = el("details", { class: "rules" });
   details.appendChild(el("summary", null, "How it works"));
@@ -9984,6 +10036,15 @@ function renderRulesBlock() {
         },
       }, state.mixedMode ? "ON" : "OFF")
     ));
+    if (state.mixedMode) {
+      body.appendChild(el("div", { style: "margin-top:4px;" },
+        el("a", {
+          href: "#",
+          style: "color: var(--accent); font-size: 13px; font-weight: 600;",
+          onclick: (e) => { e.preventDefault(); openEditGroupLabelsModal(); },
+        }, "Edit labels")
+      ));
+    }
   }
   details.appendChild(body);
   return details;
@@ -12433,20 +12494,25 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
   const node = el("div", { class: "team-row" });
   // Mixed-mode badge ("M·W" or "✓") + dashed outline for same-group fallback teams.
   const badgeText = mixedBadgeForTeam(team);
-  const nameClass = "team-name" + (state.mixedMode && !isMixedTeam(team) ? " same-group-team" : "");
+  const isSameGroup = state.mixedMode && !isMixedTeam(team);
+  const nameClass = "team-name" + (isSameGroup ? " same-group-team" : "");
+  const sameGroupTitle = "Same-group team — not enough of one group to pair everyone.";
   if (seeds) {
     const nameNode = el("div", { class: nameClass });
+    if (isSameGroup) nameNode.title = sameGroupTitle;
     nameNode.appendChild(seedPill(seeds.get(team[0]), kind));
     nameNode.appendChild(document.createTextNode(nameOf(team[0])));
     nameNode.appendChild(document.createTextNode(" & "));
     nameNode.appendChild(seedPill(seeds.get(team[1]), kind));
     nameNode.appendChild(document.createTextNode(nameOf(team[1])));
     if (badgeText) nameNode.appendChild(el("span", { class: "mixed-badge" }, badgeText.trim()));
+    if (isSameGroup) nameNode.appendChild(whyButton("same-group", { team }));
     node.appendChild(nameNode);
   } else {
-    node.appendChild(el("div", { class: nameClass },
+    node.appendChild(el("div", { class: nameClass, title: isSameGroup ? sameGroupTitle : undefined },
       nameOf(team[0]) + " & " + nameOf(team[1]),
-      badgeText ? el("span", { class: "mixed-badge" }, badgeText.trim()) : null));
+      badgeText ? el("span", { class: "mixed-badge" }, badgeText.trim()) : null,
+      isSameGroup ? whyButton("same-group", { team }) : null));
   }
 
   // Quick-fill pill: shown only when both scores are null.
@@ -14334,6 +14400,7 @@ function openSettings() {
         placeholder: "Phone optional",
         autocomplete: "tel",
       });
+      let selectedGroup = "";
       const addBtn = el("button", {
         class: "primary",
         disabled: activeTotal >= 24,
@@ -14342,7 +14409,7 @@ function openSettings() {
       addBtn.addEventListener("click", () => {
         const beforeState = stateSnapshotForUndo();
         const cleanName = (nameInput.value || "").trim();
-        const result = addMidEventPlayer(nameInput.value, phoneInput.value);
+        const result = addMidEventPlayer(nameInput.value, phoneInput.value, selectedGroup);
         if (result && result.ok) {
           recordEvent({
             kind: "roster",
@@ -14357,6 +14424,26 @@ function openSettings() {
       phoneInput.addEventListener("keydown", e => { if (e.key === "Enter") addBtn.click(); });
       addRow.appendChild(nameInput);
       addRow.appendChild(phoneInput);
+      if (state.mixedMode) {
+        const labels = mixedToggleLabels();
+        const groupBtn = (groupVal, label) => {
+          const btn = el("button", {
+            style: "min-height:40px;min-width:40px;padding:4px 8px;font-size:14px;",
+            "aria-label": "Set group " + label + " for new player",
+          }, label);
+          const sync = () => { btn.className = selectedGroup === groupVal ? "primary" : ""; };
+          btn.addEventListener("click", () => {
+            selectedGroup = selectedGroup === groupVal ? "" : groupVal;
+            sync();
+          });
+          sync();
+          return btn;
+        };
+        addRow.appendChild(el("div", { style: "display:flex;gap:4px;" },
+          groupBtn("a", labels.a),
+          groupBtn("b", labels.b)
+        ));
+      }
       addRow.appendChild(addBtn);
       modal.appendChild(addRow);
     }
