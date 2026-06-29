@@ -200,7 +200,7 @@
     <div class="card c-rr">
       <span class="tag">Round Robin</span>
       <h3>Adjusted Margin</h3>
-      <p>Everyone plays a set number of rounds, with partners and opponents rotating so you mix with the whole group.</p>
+      <p>Everyone plays a set number of rounds, with partners and opponents rotating so you mix with the whole group. <em>Mixed mode</em> constrains every team to 1&nbsp;man + 1&nbsp;woman — the rotation still varies partners and opponents, just within that rule.</p>
       <ul class="pt">
         <li><b>Margin matters.</b> How much you win (or lose) by drives your rank — with diminishing returns, so a blowout beats a squeaker but not by a runaway amount.</li>
         <li><b>Deuce points don't inflate.</b> A 13–11 win counts exactly like an 11–9 win. Both are "won by 2."</li>
@@ -215,7 +215,7 @@
       <h3>Climb the Courts</h3>
       <p>Eight players. After <em>every</em> round, everyone is re-ranked by the same Adjusted Margin as Round Robin, then re-paired by rank.</p>
       <ul class="pt">
-        <li><b>Court 1</b> hosts the top four: #1 + #4 vs #2 + #3.</li>
+        <li><b>Court 1</b> hosts the top four: #1 + #4 vs #2 + #3. <em>(Mixed mode picks the 1M+1W split within each block.)</em></li>
         <li><b>Court 2</b> hosts the next four: #5 + #8 vs #6 + #7.</li>
         <li>Play well and you climb toward Court 1; slip and you slide down.</li>
       </ul>
@@ -419,7 +419,7 @@ gain = points · multiplier
     <p>Players are ranked by <b>average King score per game</b> (<code>kingScore ÷ games</code>), ties broken by the random draw.</p>
 
     <h3 id="finals">Finals seeding</h3>
-    <p>After the regular rounds, the format's final ranking is computed and players are sliced into groups of four — top four to the Championship (seed 1 vs 4, seed 2 vs 3), the next four to Consolation, then Bronze, and so on, one bracket per available court. Anyone below the last complete group of four is listed as unseated. Finals games are excluded from every regular-season statistic, so they never alter the standings that produced the seeding.</p>
+    <p>After the regular rounds, the format's final ranking is computed and players are sliced into groups of four — top four to the Championship (seed 1 vs 4, seed 2 vs 3), the next four to Consolation, then Bronze, and so on, one bracket per available court. Anyone below the last complete group of four is listed as unseated. Finals games are excluded from every regular-season statistic, so they never alter the standings that produced the seeding. <em>In Mixed mode, finals pairings also respect 1M+1W per team.</em></p>
 
     <h3>What counts as a "decided" game</h3>
     <p>Only games with a finished, win-by-2 result feed the statistics. A tied score (e.g. 11–11) is treated as in-progress and excluded from points, wins, and margins until it resolves — so an unfinished game can never pad the standings. Byes are not games and never count.</p>
