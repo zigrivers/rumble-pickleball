@@ -6440,6 +6440,15 @@ function readDisplayState() {
 }
 
 function save() {
+  if (state && state.phase === "setup") {
+    const playerCount = setupRosterCount();
+    const activeCourts = effectiveCourtCountForFormat(state.format, state.courtCount);
+    if (state.format === "rr" && playerCount === 8 && activeCourts === 2 && !state.mixedMode && state.rrRounds === 7) {
+      state.rrScheduleMode = "wh8";
+    } else {
+      state.rrScheduleMode = "generated";
+    }
+  }
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { console.warn("save failed", e); }
 }

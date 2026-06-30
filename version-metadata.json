@@ -1,5 +1,12 @@
 [
   {
+    "version": "v37",
+    "changes": [
+      "Fix timing projection out-of-sync bug by dynamically syncing 'rrScheduleMode' in the save pipeline during setup",
+      "Ensure the 'Timing & Rules' tab and 'Review & Start' modal immediately reflect manually selected Round Robin round counts"
+    ]
+  },
+  {
     "version": "v36",
     "changes": [
       "Redesign the 'Review & Start' tournament confirmation modal with a premium dashboard card layout",
