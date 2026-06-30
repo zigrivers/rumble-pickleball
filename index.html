@@ -51,23 +51,62 @@
   }
   header.top {
     display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .header-main-row {
+    display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 14px;
-    padding: 4px 0 10px;
-    border-bottom: 1px solid var(--border);
+    width: 100%;
   }
-  .title { font-size: 22px; font-weight: 700; }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-top: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 480px) {
+    .header-meta-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .header-meta-row .progress,
+    .header-meta-row .tb-header-strip {
+      text-align: center;
+      justify-content: center;
+    }
+  }
+  .title {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
   .progress {
-    font-size: 18px;
+    font-size: 12px;
     font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     color: var(--accent);
-    background: rgba(251, 191, 36, 0.12);
-    padding: 8px 14px;
-    border-radius: 999px;
+    background: rgba(251, 191, 36, 0.06);
+    border: 1px solid rgba(251, 191, 36, 0.15);
+    padding: 6px 12px;
+    border-radius: 8px;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
   }
   button {
     font-family: inherit;
@@ -106,9 +145,33 @@
     outline-offset: 2px;
   }
   .icon-btn {
-    width: 60px; min-width: 60px; height: 60px; min-height: 60px;
-    padding: 0; font-size: 26px;
-    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+  .icon-btn:active {
+    transform: translateY(0);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .icon-btn svg {
+    stroke: currentColor;
+    fill: none;
   }
   .card {
     background: linear-gradient(135deg, var(--panel) 0%, rgba(26, 32, 40, 0.8) 100%);
@@ -2117,23 +2180,40 @@
     margin: 8px 0 4px;
   }
   .tb-header-strip {
-    width: 100%;
-    text-align: center;
     font-size: 13px;
-    padding: 4px 12px 6px;
-    border-top: 1px solid var(--border);
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.02);
     color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
   }
   .undo-chip {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 12px;
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: transparent;
-    border: 1px solid var(--muted);
-    color: var(--muted);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 0 12px;
+    height: 38px;
+    min-height: 38px;
+    border-radius: 8px;
     cursor: pointer;
-    margin-left: 4px;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+  }
+  .undo-chip:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+  }
+  .undo-chip:active {
+    transform: translateY(0);
   }
   /* Mobile UI/UX overrides — placed last so they win over the base rules above
      (equal specificity → later source order wins) when the media query matches. */
@@ -10680,39 +10760,71 @@ function renderHeader() {
   } else if (state.phase === "finals") progressText = "Finals";
   else if (state.phase === "crown")   progressText = "👑 Crown Match";
   else if (state.phase === "done")    progressText = "🏆 Champions";
+  
   const header = el("header", { class: "top" });
-  header.appendChild(el("div", { class: "title" }, "🏓 Rumble Pickleball"));
-  header.appendChild(el("div", { class: "progress" }, progressText));
-  if (state.phase !== "setup" || (Array.isArray(state.eventLog) && state.eventLog.length)) {
-    const logBtn = el("button", { class: "icon-btn", onclick: openEventLogModal, "aria-label": "Event log" });
-    logBtn.appendChild(makeSvg('<path d="M4 6h16M4 12h16M4 18h16"/>', 22));
-    header.appendChild(logBtn);
-  }
-  const settingsBtn = el("button", { class: "icon-btn", onclick: openSettings, "aria-label": "Settings" });
-  settingsBtn.appendChild(makeSvg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>', 22));
-  header.appendChild(settingsBtn);
-  const strip = timeBudgetStripEl();
-  if (strip) header.appendChild(strip);
-  if (Array.isArray(state.undoStack) && state.undoStack.length) {
-    const undo = state.undoStack[0];
-    const chip = el("button", { class: "undo-chip", title: undo.label || "Undo last event" }, "↶ Undo");
-    chip.addEventListener("click", function() {
-      const res = undoLastEvent();
-      showToast(res.ok ? "Undid last event" : res.error);
-    });
-    header.appendChild(chip);
-  }
+  
+  // Row 1: Brand title and Action buttons
+  const mainRow = el("div", { class: "header-main-row" });
+  mainRow.appendChild(el("div", { class: "title" }, "🏓 Rumble"));
+  
+  const actions = el("div", { class: "header-actions" });
+  
+  // Undo last tightening
   if (_undoChipAdjIdx >= 0 &&
       state.timeBudget &&
       Array.isArray(state.timeBudget.adjustments) &&
       state.timeBudget.adjustments[_undoChipAdjIdx]) {
-    const chip = el("button", { class: "undo-chip" }, "↻ Undo last tightening");
+    const chip = el("button", { 
+      class: "undo-chip tightening",
+      style: "background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.2); color: #f59e0b;"
+    }, "Tightening ↺");
     chip.addEventListener("click", function() {
       _undoChipAdjIdx = -1;
       undoLastTightening();
     });
-    header.appendChild(chip);
+    actions.appendChild(chip);
   }
+  
+  // Undo last event
+  if (Array.isArray(state.undoStack) && state.undoStack.length) {
+    const undo = state.undoStack[0];
+    const chip = el("button", { 
+      class: "undo-chip event", 
+      title: undo.label || "Undo last event",
+      style: "background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.2); color: #ef4444;"
+    }, "Undo ↶");
+    chip.addEventListener("click", function() {
+      const res = undoLastEvent();
+      showToast(res.ok ? "Undid last event" : res.error);
+    });
+    actions.appendChild(chip);
+  }
+  
+  // Event Log button
+  if (state.phase !== "setup" || (Array.isArray(state.eventLog) && state.eventLog.length)) {
+    const logBtn = el("button", { class: "icon-btn", onclick: openEventLogModal, "aria-label": "Event log" });
+    logBtn.appendChild(makeSvg('<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>', 18, "0 0 24 24"));
+    actions.appendChild(logBtn);
+  }
+  
+  // Settings button
+  const settingsBtn = el("button", { class: "icon-btn", onclick: openSettings, "aria-label": "Settings" });
+  settingsBtn.appendChild(makeSvg('<circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>', 18, "0 0 24 24"));
+  actions.appendChild(settingsBtn);
+  
+  mainRow.appendChild(actions);
+  header.appendChild(mainRow);
+  
+  // Row 2: Progress status pill and time budget estimation strip
+  const metaRow = el("div", { class: "header-meta-row" });
+  metaRow.appendChild(el("div", { class: "progress" }, progressText));
+  
+  const strip = timeBudgetStripEl();
+  if (strip) {
+    metaRow.appendChild(strip);
+  }
+  
+  header.appendChild(metaRow);
   return header;
 }
 
