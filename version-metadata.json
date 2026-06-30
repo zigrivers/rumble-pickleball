@@ -1,5 +1,11 @@
 [
   {
+    "version": "v55",
+    "changes": [
+      "Redesign the Tournament Champions panel for events that finish without a championship game (e.g. Round Robin 'Skip championship'): replace the misleading 'Tournament Champions Tied!' headline by crowning the final-standings leader as champion and recasting the 1st–4th placements as the focus — a premium podium with a gold-spotlighted champion card (animated shine sweep, 'Champion' corner ribbon, and glow pulse), a floating-crown header with a 'Crowned by final standings' caption and soft gold aurora, and staggered reveal animations (all honoring reduced-motion)"
+    ]
+  },
+  {
     "version": "v54",
     "changes": [
       "Polish MLP same-gender rounds: court cards now caption single-gender games (e.g. 'Men doubles') with positive group badges instead of the dashed 'unbalanced pairing' warning, clearly flag the one mixed-gender court that an uneven roster forces, add a setup heads-up when the group counts can't split into all-single-gender courts of 4 (e.g. 6 Men + 6 Women on 3 courts), stop the post-game recap from describing intentional same-gender teammates as a roster-forced fallback, and label Final Standings 'After all rounds' instead of 'Includes finals games' when the championship is skipped"
