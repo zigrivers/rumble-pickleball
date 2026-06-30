@@ -1,5 +1,11 @@
 [
   {
+    "version": "v43",
+    "changes": [
+      "Redesign and reorganize the Settings modal to reduce scrolling: separate visual preferences into a clean Display tab, use grid toggles, display reference items as chevrons, and wrap Saved Numbers & Diagnostics in accordions"
+    ]
+  },
+  {
     "version": "v42",
     "changes": [
       "Redesign the Champions Page UI (champions card, trophy scorecards, and dimensional podium columns) to a higher premium standard"
