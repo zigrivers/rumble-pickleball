@@ -2597,6 +2597,33 @@ function pickCrownPreset(budgetMin, calibration) {
   return { error: "no_fit", preset: "Sprint" };
 }
 
+function generalProjectFinishTime(state, calibration, nowTs) {
+  if (state.format === "crown") return null;
+  if (state.phase === "done") return null;
+  
+  let completedRounds = 0;
+  if (Array.isArray(state.rounds)) {
+    for (const r of state.rounds) {
+      if (r && gamesOf(r).length && isRoundDecided(r)) completedRounds++;
+    }
+  }
+  
+  const remainingRounds = Math.max(0, (state.rounds ? state.rounds.length : totalRegularRounds()) - completedRounds);
+  const activeCourts = state.courtCount || 1;
+  const target = state.winScore || 11;
+  const winBy = state.winBy || 2;
+  const scoring = state.scoringSystem || "sideout";
+  
+  const [rndLo, rndHi] = estimateRoundMinutes(target, winBy, scoring, activeCourts, calibration);
+  const [finLo, finHi] = estimateRoundMinutes(11, 2, "sideout", activeCourts, calibration);
+  const msPerMin = 60 * 1000;
+  
+  return [
+    nowTs + (remainingRounds * rndLo + finLo) * msPerMin,
+    nowTs + (remainingRounds * rndHi + finHi) * msPerMin,
+  ];
+}
+
 // Projects when the tournament will finish. Returns [tsLow, tsHigh] ms timestamps, or null.
 // Projects remaining rounds + finals from nowTs. T_setup_overhead is excluded because
 // by the time this is called (phase="playing"), setup overhead is already underway.
@@ -18457,39 +18484,72 @@ function openSettingsTabbed() {
       // Scoring & Limits
       tabContent.appendChild(el("div", { class: "ka-section-title" }, "Scoring & Limits"));
       
-      let winScoreRow = null;
-      if (state.format === "crown") {
+      const isCrown = state.format === "crown";
+      const isSetup = state.phase === "setup";
+      const hasTimeBudget = state.timeBudget && state.timeBudget.enabled;
+      
+      if (isCrown) {
         tabContent.appendChild(el("p", { class: "muted", style: "margin-bottom:12px; font-size:12px;" },
           "Scores are fixed by Crown Court format (Opening/Power to 11, Sudden Death to 7)."));
       } else {
-        winScoreRow = el("div", { class: "settings-row" });
+        // Win Score Row
+        const winScoreRow = el("div", { class: "settings-row" });
         winScoreRow.appendChild(el("label", null, "Win score"));
-        const winSelect = el("select");
-        [11, 15, 21].forEach(v => {
-          const opt = el("option", { value: String(v) }, String(v));
-          if (state.winScore === v) opt.setAttribute("selected", "selected");
-          winSelect.appendChild(opt);
-        });
-        winSelect.addEventListener("change", () => {
-          state.winScore = parseInt(winSelect.value, 10);
-          save();
-        });
-        winScoreRow.appendChild(winSelect);
+        if (hasTimeBudget) {
+          winScoreRow.appendChild(el("span", { style: "font-weight:600; color:var(--muted);" }, String(state.winScore)));
+        } else {
+          const winSelect = el("select");
+          [11, 15, 21].forEach(v => {
+            const opt = el("option", { value: String(v) }, String(v));
+            if (state.winScore === v) opt.setAttribute("selected", "selected");
+            winSelect.appendChild(opt);
+          });
+          winSelect.addEventListener("change", () => {
+            state.winScore = parseInt(winSelect.value, 10);
+            save();
+            render();
+          });
+          winScoreRow.appendChild(winSelect);
+        }
         tabContent.appendChild(winScoreRow);
-        if (state.timeBudget.enabled) winScoreRow.style.display = "none";
+        
+        // Scoring System Row
+        const scoringRow = el("div", { class: "settings-row", style: "margin-top:12px;" });
+        scoringRow.appendChild(el("label", null, "Scoring system"));
+        if (hasTimeBudget) {
+          const displayLabel = state.scoringSystem === "rally" ? "Rally scoring" : "Side-out scoring";
+          scoringRow.appendChild(el("span", { style: "font-weight:600; color:var(--muted);" }, displayLabel));
+        } else {
+          const scoringSelect = el("select");
+          [
+            { value: "sideout", label: "Side-out" },
+            { value: "rally", label: "Rally" }
+          ].forEach(item => {
+            const opt = el("option", { value: item.value }, item.label);
+            if (state.scoringSystem === item.value) opt.setAttribute("selected", "selected");
+            scoringSelect.appendChild(opt);
+          });
+          scoringSelect.addEventListener("change", () => {
+            state.scoringSystem = scoringSelect.value;
+            save();
+            render();
+          });
+          scoringRow.appendChild(scoringSelect);
+        }
+        tabContent.appendChild(scoringRow);
       }
       
-      // Adjust Total Rounds
-      const roundsRow = el("div", { class: "settings-row", style: "margin-top:12px;" });
+      // Total Rounds Row
+      const roundsRow = el("div", { class: "settings-row", style: "margin-top:12px; border-bottom:1px solid var(--border); padding-bottom:16px; margin-bottom:16px;" });
       roundsRow.appendChild(el("label", null, "Total Rounds"));
       
-      if (state.format === "crown") {
+      if (isCrown) {
         roundsRow.appendChild(el("span", { style: "font-weight:600; color:var(--muted);" }, "3 (Fixed for Crown)"));
       } else if (state.format === "rr" && state.rrScheduleMode === "wh8") {
         roundsRow.appendChild(el("span", { style: "font-weight:600; color:var(--muted);" }, "7 (Fixed Wheel of 8)"));
       } else {
         const roundsSel = el("select");
-        const minRounds = state.phase === "setup" ? 4 : state.currentRound;
+        const minRounds = isSetup ? 4 : state.currentRound;
         const maxRounds = 12;
         const currentVal = totalRegularRounds();
         
@@ -18514,80 +18574,111 @@ function openSettingsTabbed() {
       }
       tabContent.appendChild(roundsRow);
       
-      // Time Budget
-      if (state.format !== "crown") {
-        tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:20px;" }, "Time Budget"));
+      // Time Budget Section
+      if (!isCrown) {
+        tabContent.appendChild(el("div", { class: "ka-section-title" }, "Time Budget"));
         
-        const tbToggleRow = el("div", { class: "ka-row" });
-        const tbToggleText = el("div", { class: "ka-text" });
-        tbToggleText.appendChild(el("div", { class: "ka-title" }, "Set a time budget"));
-        tbToggleText.appendChild(el("div", { class: "ka-sub" }, "Fit games to tournament timeframe."));
-        const tbToggleSwitch = el("label", { class: "ka-switch" });
-        const tbToggleInput = el("input", { type: "checkbox", id: "tb-s-enabled", "aria-label": "Set a time budget" });
-        if (state.timeBudget.enabled) tbToggleInput.setAttribute("checked", "checked");
-        if (state.phase !== "setup") { tbToggleInput.disabled = true; tbToggleInput.title = "Locked after start"; }
-        tbToggleSwitch.appendChild(tbToggleInput);
-        tbToggleSwitch.appendChild(el("span", { class: "slider" }));
-        tbToggleRow.appendChild(tbToggleText);
-        tbToggleRow.appendChild(tbToggleSwitch);
-        tabContent.appendChild(tbToggleRow);
-        
-        const tbDetails = el("div", {
-          style: "display:" + (state.timeBudget.enabled ? "block" : "none") + "; margin-top:8px;"
-        });
-        
-        const tbTimeRow = el("div", { class: "settings-row" });
-        tbTimeRow.appendChild(el("label", { for: "tb-s-minutes" }, "Event time"));
-        const tbMinutesSel = el("select", { id: "tb-s-minutes" });
-        if (state.phase !== "setup") { tbMinutesSel.disabled = true; }
-        const tbTimeOptions = [
-          { value: 60,  label: "60 min (very tight)" },
-          { value: 75,  label: "75 min (very tight)" },
-          { value: 90,  label: "90 min" },
-          { value: 105, label: "105 min" },
-          { value: 120, label: "120 min" },
-          { value: 150, label: "150 min" },
-          { value: 180, label: "180 min" },
-        ];
-        const tbSavedMinutes = state.timeBudget.minutes || 90;
-        tbTimeOptions.forEach(opt => {
-          const o = el("option", { value: String(opt.value) }, opt.label);
-          if (opt.value === tbSavedMinutes) o.setAttribute("selected", "selected");
-          tbMinutesSel.appendChild(o);
-        });
-        tbTimeRow.appendChild(tbMinutesSel);
-        tbDetails.appendChild(tbTimeRow);
-        
-        const tbReadout = el("div", { class: "muted", style: "font-size:13px; margin:6px 0;" });
-        tbReadout.appendChild(el("div", null, "Will play: ", el("span", { id: "tb-s-will-play" }, "—")));
-        tbReadout.appendChild(el("div", { id: "tb-s-likely-done-row" }, "Likely done: ", el("span", { id: "tb-s-likely-done" }, "—")));
-        tbReadout.appendChild(el("div", { id: "tb-s-confidence-row" }, "Confidence: ", el("span", { id: "tb-s-confidence" }, "—")));
-        tbDetails.appendChild(tbReadout);
-        
-        const tbTightBanner = el("div", {
-          id: "tb-s-tight-banner",
-          class: "tb-tight-banner",
-          style: "display:none;"
-        }, "This budget is tight — even our shortest games may run over.");
-        tbDetails.appendChild(tbTightBanner);
-        
-        const tbAutoRow = el("div", { class: "settings-row" });
-        const tbAutoChk = el("input", { type: "checkbox", id: "tb-s-auto-tighten" });
-        if (state.timeBudget.autoTighten) tbAutoChk.setAttribute("checked", "checked");
-        const tbAutoLabel = el("label", { for: "tb-s-auto-tighten" });
-        tbAutoLabel.appendChild(document.createTextNode("Auto-tighten if running long"));
-        tbAutoLabel.appendChild(el("span", { class: "muted", style: "font-size:11px; margin-left:6px;" }, "(default: prompt)"));
-        tbAutoRow.appendChild(tbAutoChk);
-        tbAutoRow.appendChild(tbAutoLabel);
-        tbDetails.appendChild(tbAutoRow);
-        
-        tabContent.appendChild(tbDetails);
-        
-        tbToggleInput.addEventListener("change", () => {
-          state.timeBudget.enabled = tbToggleInput.checked;
-          tbDetails.style.display = tbToggleInput.checked ? "block" : "none";
-          if (winScoreRow) winScoreRow.style.display = tbToggleInput.checked ? "none" : "";
-          if (tbToggleInput.checked) {
+        if (isSetup) {
+          const tbToggleRow = el("div", { class: "ka-row" });
+          const tbToggleText = el("div", { class: "ka-text" });
+          tbToggleText.appendChild(el("div", { class: "ka-title" }, "Set a time budget"));
+          tbToggleText.appendChild(el("div", { class: "ka-sub" }, "Fit games to tournament timeframe."));
+          
+          const tbToggleSwitch = el("label", { class: "ka-switch" });
+          const tbToggleInput = el("input", { type: "checkbox", id: "tb-s-enabled", "aria-label": "Set a time budget" });
+          if (state.timeBudget.enabled) tbToggleInput.setAttribute("checked", "checked");
+          tbToggleSwitch.appendChild(tbToggleInput);
+          tbToggleSwitch.appendChild(el("span", { class: "slider" }));
+          tbToggleRow.appendChild(tbToggleText);
+          tbToggleRow.appendChild(tbToggleSwitch);
+          tabContent.appendChild(tbToggleRow);
+          
+          const tbDetails = el("div", {
+            style: "display:" + (state.timeBudget.enabled ? "block" : "none") + "; margin-top:8px;"
+          });
+          
+          const tbTimeRow = el("div", { class: "settings-row" });
+          tbTimeRow.appendChild(el("label", { for: "tb-s-minutes" }, "Event time"));
+          const tbMinutesSel = el("select", { id: "tb-s-minutes" });
+          const tbTimeOptions = [
+            { value: 60,  label: "60 min (very tight)" },
+            { value: 75,  label: "75 min (very tight)" },
+            { value: 90,  label: "90 min" },
+            { value: 105, label: "105 min" },
+            { value: 120, label: "120 min" },
+            { value: 150, label: "150 min" },
+            { value: 180, label: "180 min" },
+          ];
+          const tbSavedMinutes = state.timeBudget.minutes || 90;
+          tbTimeOptions.forEach(opt => {
+            const o = el("option", { value: String(opt.value) }, opt.label);
+            if (opt.value === tbSavedMinutes) o.setAttribute("selected", "selected");
+            tbMinutesSel.appendChild(o);
+          });
+          tbTimeRow.appendChild(tbMinutesSel);
+          tbDetails.appendChild(tbTimeRow);
+          
+          const tbReadout = el("div", { class: "muted", style: "font-size:13px; margin:6px 0;" });
+          tbReadout.appendChild(el("div", null, "Will play: ", el("span", { id: "tb-s-will-play" }, "—")));
+          tbReadout.appendChild(el("div", { id: "tb-s-likely-done-row" }, "Likely done: ", el("span", { id: "tb-s-likely-done" }, "—")));
+          tbReadout.appendChild(el("div", { id: "tb-s-confidence-row" }, "Confidence: ", el("span", { id: "tb-s-confidence" }, "—")));
+          tbDetails.appendChild(tbReadout);
+          
+          const tbTightBanner = el("div", {
+            id: "tb-s-tight-banner",
+            class: "tb-tight-banner",
+            style: "display:none;"
+          }, "This budget is tight — even our shortest games may run over.");
+          tbDetails.appendChild(tbTightBanner);
+          
+          const tbAutoRow = el("div", { class: "settings-row" });
+          const tbAutoChk = el("input", { type: "checkbox", id: "tb-s-auto-tighten" });
+          if (state.timeBudget.autoTighten) tbAutoChk.setAttribute("checked", "checked");
+          const tbAutoLabel = el("label", { for: "tb-s-auto-tighten" });
+          tbAutoLabel.appendChild(document.createTextNode("Auto-tighten if running long"));
+          tbAutoLabel.appendChild(el("span", { class: "muted", style: "font-size:11px; margin-left:6px;" }, "(default: prompt)"));
+          tbAutoRow.appendChild(tbAutoChk);
+          tbAutoRow.appendChild(tbAutoLabel);
+          tbDetails.appendChild(tbAutoRow);
+          
+          tabContent.appendChild(tbDetails);
+          
+          tbToggleInput.addEventListener("change", () => {
+            state.timeBudget.enabled = tbToggleInput.checked;
+            tbDetails.style.display = tbToggleInput.checked ? "block" : "none";
+            if (tbToggleInput.checked) {
+              const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+              if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+                showRallyAckDialog(
+                  () => {
+                    state.timeBudget.rallyAcknowledged = true;
+                    save();
+                    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+                  },
+                  () => {
+                    const STEPS = [60, 75, 90, 105, 120, 150, 180];
+                    const idx = STEPS.indexOf(state.timeBudget.minutes);
+                    if (idx < STEPS.length - 1) {
+                      state.timeBudget.minutes = STEPS[idx + 1];
+                      tbMinutesSel.value = String(state.timeBudget.minutes);
+                      const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
+                      save();
+                      updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+                    }
+                  }
+                );
+              } else {
+                save();
+                updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+              }
+            } else {
+              state.timeBudget.plannedConfig = null;
+              save();
+            }
+          });
+          
+          tbMinutesSel.addEventListener("change", () => {
+            state.timeBudget.minutes = parseInt(tbMinutesSel.value, 10);
             const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
             if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
               showRallyAckDialog(
@@ -18612,48 +18703,79 @@ function openSettingsTabbed() {
               save();
               updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
             }
-          } else {
-            state.timeBudget.plannedConfig = null;
+          });
+          
+          tbAutoChk.addEventListener("change", () => {
+            state.timeBudget.autoTighten = tbAutoChk.checked;
             save();
-          }
-        });
-        
-        tbMinutesSel.addEventListener("change", () => {
-          state.timeBudget.minutes = parseInt(tbMinutesSel.value, 10);
-          const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-          if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
-            showRallyAckDialog(
-              () => {
-                state.timeBudget.rallyAcknowledged = true;
-                save();
-                updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
-              },
-              () => {
-                const STEPS = [60, 75, 90, 105, 120, 150, 180];
-                const idx = STEPS.indexOf(state.timeBudget.minutes);
-                if (idx < STEPS.length - 1) {
-                  state.timeBudget.minutes = STEPS[idx + 1];
-                  tbMinutesSel.value = String(state.timeBudget.minutes);
-                  const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
-                  save();
-                  updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
-                }
+          });
+          
+          // Initial solve and draw for setup mode
+          const { config: initC, error: initE, isTight: initT, suggestion: initS } = applyTimeBudgetSolve();
+          updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(initC, state.timeBudget.minutes, initS), initT, !!initE);
+          
+        } else {
+          // PLAYING PHASE: Real-time progress / finish estimate
+          const container = el("div", { style: "background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:16px; margin-top:8px;" });
+          
+          const cal = readCalibration();
+          const proj = generalProjectFinishTime(state, cal, Date.now());
+          const fmtTs = ts => {
+            const d = new Date(ts);
+            let h = d.getHours(), m = d.getMinutes();
+            const ampm = h >= 12 ? "pm" : "am";
+            h = h % 12 || 12;
+            return h + ":" + String(m).padStart(2, "0") + " " + ampm;
+          };
+          
+          if (proj) {
+            const [projLow, projHigh] = proj;
+            const finishText = `~${fmtTs(projLow)} – ${fmtTs(projHigh)}`;
+            
+            const timeRow = el("div", { style: "display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;" });
+            timeRow.appendChild(el("span", { style: "font-size:13px; color:var(--muted);" }, "Estimated Finish"));
+            timeRow.appendChild(el("span", { style: "font-size:16px; font-weight:800; color:var(--accent);" }, finishText));
+            container.appendChild(timeRow);
+            
+            if (hasTimeBudget) {
+              const mid = (projLow + projHigh) / 2;
+              const budgetEnd = (state.timeBudget.startedAt || Date.now()) + state.timeBudget.minutes * 60000;
+              const ratio = mid / budgetEnd;
+              
+              let paceText = "On Pace", paceColor = "#88cc88", paceBg = "rgba(136,204,136,0.15)";
+              if (ratio < 0.90) {
+                paceText = "Ahead of Pace"; paceColor = "#34d399"; paceBg = "rgba(52,211,153,0.15)";
+              } else if (ratio <= 1.05) {
+                // keep default
+              } else if (ratio <= 1.10) {
+                paceText = "Behind Pace"; paceColor = "#ccaa44"; paceBg = "rgba(204,170,68,0.18)";
+              } else {
+                paceText = "Running Long"; paceColor = "#e87c3e"; paceBg = "rgba(232,124,62,0.18)";
               }
-            );
+              
+              const paceRow = el("div", { style: "display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;" });
+              paceRow.appendChild(el("span", { style: "font-size:13px; color:var(--muted);" }, "Current Pace"));
+              paceRow.appendChild(el("span", { 
+                style: `font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; padding:4px 10px; border-radius:6px; color:${paceColor}; background:${paceBg};`
+              }, paceText));
+              container.appendChild(paceRow);
+              
+              const budgetRow = el("div", { style: "display:flex; justify-content:space-between; align-items:center;" });
+              budgetRow.appendChild(el("span", { style: "font-size:13px; color:var(--muted);" }, "Target Finish"));
+              budgetRow.appendChild(el("span", { style: "font-size:13px; font-weight:600;" }, fmtTs(budgetEnd)));
+              container.appendChild(budgetRow);
+            } else {
+              const confidence = calibrationReadout();
+              const confRow = el("div", { style: "display:flex; justify-content:space-between; align-items:center;" });
+              confRow.appendChild(el("span", { style: "font-size:13px; color:var(--muted);" }, "Prediction Confidence"));
+              confRow.appendChild(el("span", { style: "font-size:13px; font-weight:600;" }, confidence));
+              container.appendChild(confRow);
+            }
           } else {
-            save();
-            updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+            container.appendChild(el("p", { class: "muted", style: "margin:0; text-align:center; font-size:13px;" }, "Estimated finish time unavailable."));
           }
-        });
-        
-        tbAutoChk.addEventListener("change", () => {
-          state.timeBudget.autoTighten = tbAutoChk.checked;
-          save();
-        });
-        
-        if (state.timeBudget.enabled) {
-          const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-          updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+          
+          tabContent.appendChild(container);
         }
       }
       
