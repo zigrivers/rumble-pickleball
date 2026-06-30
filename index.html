@@ -14325,7 +14325,8 @@ function renderPlaying() {
   standingsSection.appendChild(standingsCard);
 
   // Mid-event recap (RR/Gauntlet only, once at least one round is complete).
-  if (textResultsSupported()) {
+  const hasAnyPhone = (state.phones || []).some(isValidPhone);
+  if (textResultsSupported() && hasAnyPhone) {
     const completedRounds = state.rounds.filter(isRoundDecided).length;
     if (completedRounds >= 1) {
       moreSection.appendChild(renderTextResultsCard({ throughRound: completedRounds }));

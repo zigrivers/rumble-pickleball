@@ -1,5 +1,11 @@
 [
   {
+    "version": "v41",
+    "changes": [
+      "Hide the Text Standings panel in the Round screens if player phone numbers are not entered"
+    ]
+  },
+  {
     "version": "v40",
     "changes": [
       "Calculate and display calibration-based expected finish time in the Review & Start modal for untimed tournaments"
