@@ -19495,6 +19495,7 @@ if (window.__rumbleFbReady) setupLifetimeAuth();
       if (reg.waiting && navigator.serviceWorker.controller) showUpdateChip(reg.waiting);
       trackWorker(reg.installing);
       reg.addEventListener("updatefound", () => trackWorker(reg.installing));
+      reg.update().catch(() => {});
     });
   }
 }
