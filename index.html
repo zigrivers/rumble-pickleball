@@ -2507,7 +2507,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v53";
+const APP_VERSION    = "v54";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -6117,6 +6117,23 @@ function runSelfTests() {
     console.assert(finalsStageMinutes(2, null)[1] > 0,
       "finalsStageMinutes: nonzero when championship kept");
 
+    // Rounds carry pairingMode; mixedBadgeForTeam labels same-group teams only in gender rounds
+    state = newState();
+    state.format = "rr"; state.mixedMode = true; state.courtCount = 2;
+    state.sameGenderOpponents = true;
+    state.rrPairingModes = ["mixed", "samegender"];
+    state.slotGroups = ["a", "a", "a", "a", "b", "b", "b", "b"];
+    state.mixedGroupLabels = { a: "Men", b: "Women" };
+    const taggedSched = generateRRSchedule([1, 2, 3, 4, 5, 6, 7, 8], 2, 2, [], mulberry32(5));
+    console.assert(!taggedSched[0].pairingMode, "round tag: a mixed round carries no samegender tag");
+    console.assert(taggedSched[1].pairingMode === "samegender", "round tag: a gender round is tagged samegender");
+    console.assert(mixedBadgeForTeam([1, 2], true).trim() === "Men",
+      "badge: same-group team labeled with its group in a gender round");
+    console.assert(mixedBadgeForTeam([1, 2], false) === "",
+      "badge: same-group team stays unlabeled outside a gender round");
+    console.assert(mixedBadgeForTeam([1, 5], true).trim() === "M·W",
+      "badge: a mixed team is labeled normally regardless of round type");
+
     state = newState();
   })();
 
@@ -7889,14 +7906,23 @@ function isMixedTeam(team) {
   return !g0 || !g1 || g0 !== g1;
 }
 // Returns an inline badge suffix for a team on court cards when mixed mode is on.
-// Empty for same-group teams (the dashed .same-group-team border conveys those).
-function mixedBadgeForTeam(team) {
+// In a same-gender round a same-group team is intentional, so it gets a positive
+// group label (e.g. "Men"); otherwise an empty string (the dashed .same-group-team
+// border conveys an unintended same-group fallback).
+function mixedBadgeForTeam(team, sameGenderRound) {
   if (!state.mixedMode) return "";
   if (isMixedTeam(team)) {
     const labels = mixedToggleLabels();
     const g0 = groupOf(team[0]), g1 = groupOf(team[1]);
     if (g0 && g1) return " " + (g0 === "a" ? labels.a : labels.b) + "·" + (g1 === "a" ? labels.a : labels.b);
     return " ✓";  // mixed with a wildcard
+  }
+  if (sameGenderRound) {
+    const g0 = groupOf(team[0]);
+    if (g0) {
+      const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
+      return " " + (g0 === "a" ? labels.a : labels.b);
+    }
   }
   return "";  // same-group team — indicator added by caller
 }
@@ -8877,7 +8903,7 @@ function buildPersonalRecap(slot, opts) {
       const team = on1 ? g.team1 : g.team2;
       const partner = team.find(s => s !== slot);
       if (partner) partners.set(partner, (partners.get(partner) || 0) + 1);
-      if (state.mixedMode && !isMixedTeam(team) && partner && sameGroupPartnerSlot === null) {
+      if (state.mixedMode && round.pairingMode !== "samegender" && !isMixedTeam(team) && partner && sameGroupPartnerSlot === null) {
         sameGroupPartnerSlot = partner;
       }
       if (!Number.isInteger(g.score1) || !Number.isInteger(g.score2)) return;
@@ -9985,7 +10011,9 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
       }
       if (cost < bestCost) { bestGames = games; bestCost = cost; }
     }
-    rounds.push(makeRound(roundNum, bestGames || [], alloc.byes));
+    const builtRound = makeRound(roundNum, bestGames || [], alloc.byes);
+    if (roundMode === "samegender") builtRound.pairingMode = "samegender";
+    rounds.push(builtRound);
   }
   // Post-schedule court balancing: for each round, swap courts 1↔2 if it
   // reduces the total court-count imbalance across all players. RR courts
@@ -11931,6 +11959,24 @@ function renderRRPairingControls() {
         ? labels.a + " pairs only face " + labels.a + " pairs and " + labels.b + " only face " + labels.b + " (separate courts where the roster allows)."
         : "A " + labels.a + " pair may face a " + labels.b + " pair on the same court."
     ));
+
+    // Accurate heads-up for the no-bye case where the group counts can't tile
+    // into all-single-gender courts of 4 (e.g. 6 Men + 6 Women on 3 courts).
+    if (state.sameGenderOpponents) {
+      const cnt = setupRosterCount();
+      const groups = (state.rawGroups || []).slice(0, cnt);
+      const nA = groups.filter(x => x === "a").length;
+      const nB = groups.filter(x => x === "b").length;
+      const courts = Math.min(effectiveCourtCountForFormat("rr", state.courtCount), Math.floor(cnt / 4));
+      const noByes = (nA + nB === cnt) && (cnt === courts * 4) && courts > 0;
+      if (noByes && (nA % 4 !== 0 || nB % 4 !== 0)) {
+        const groupWord = detectPreset() === "gender" ? "gender" : "group";
+        wrap.appendChild(el("div", { style: "font-size:13px;margin-top:8px;line-height:1.45;color:var(--warn,#e0a341);border-left:2px solid var(--warn,#e0a341);padding-left:8px;" },
+          "⚠️ With " + nA + " " + labels.a + " and " + nB + " " + labels.b + " on " + courts +
+          " courts, each " + sameLabel.toLowerCase() + " round will have one mixed-" + groupWord + " court — " +
+          "the counts don't split evenly into all-" + labels.a + " / all-" + labels.b + " courts of 4."));
+      }
+    }
   }
 
   return wrap;
@@ -15341,7 +15387,8 @@ function renderRoundCourts(round, isFinals, refreshes) {
       wrap.appendChild(renderCourtCard(g, key, refreshes, { kind: i === 0 ? "gold" : "silver", seeds }));
     });
   } else {
-    for (const g of gamesOf(round)) wrap.appendChild(renderCourtCard(g, g.court, refreshes));
+    const sameGenderRound = !!(round && round.pairingMode === "samegender");
+    for (const g of gamesOf(round)) wrap.appendChild(renderCourtCard(g, g.court, refreshes, { sameGenderRound }));
   }
   return wrap;
 }
@@ -15382,6 +15429,18 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   if (courtKey === "champ") {
     card.appendChild(el("div", { class: "pairing-caption" },
       "Balanced pairing — top seed + 4th vs 2nd + 3rd"));
+  }
+  // Same-gender round: caption each court as a single-group game, or flag the
+  // odd court that the roster math couldn't keep single-group.
+  if (!isFinalCard && seedInfo && seedInfo.sameGenderRound) {
+    const groups = [...(game.team1 || []), ...(game.team2 || [])].map(groupOf);
+    const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
+    const groupWord = detectPreset() === "gender" ? "gender" : "group";
+    const allSame = groups.length === 4 && groups.every(gr => gr && gr === groups[0]);
+    card.appendChild(el("div", { class: "pairing-caption" },
+      allSame
+        ? (groups[0] === "a" ? labels.a : labels.b) + " doubles"
+        : "Mixed-" + groupWord + " court — roster doesn't divide evenly"));
   }
 
   const matchup = el("div", { class: "matchup" });
@@ -15457,9 +15516,12 @@ function renderTeamRow(game, teamKey, scoreKey, otherScoreKey, refreshes, opts) 
   const crownMatchIdx = opts && opts.matchIdx != null ? opts.matchIdx : null;
 
   const node = el("div", { class: "team-row" });
-  // Mixed-mode badge ("M·W" or "✓") + dashed outline for same-group fallback teams.
-  const badgeText = mixedBadgeForTeam(team);
-  const isSameGroup = state.mixedMode && !isMixedTeam(team);
+  // Mixed-mode badge ("M·W", a positive group label in gender rounds, or "✓") +
+  // dashed outline for UNINTENDED same-group fallback teams. In a same-gender round
+  // a same-group team is the whole point, so it is never flagged as a fallback.
+  const sameGenderRound = !!(opts && opts.sameGenderRound);
+  const badgeText = mixedBadgeForTeam(team, sameGenderRound);
+  const isSameGroup = state.mixedMode && !isMixedTeam(team) && !sameGenderRound;
   const nameClass = "team-name" + (isSameGroup ? " same-group-team" : "");
   const sameGroupTitle = "Same-group team — not enough of one group to pair everyone.";
   const winnerBadge = el("span", { class: "team-winner-icon", style: "display:none;" },
@@ -16816,7 +16878,7 @@ function renderDoneScreen() {
   const head = el("div", { class: "standings-header-row" },
     el("div", null,
       el("h3", { style: "margin: 0; font-size: 18px; font-weight: 800;" }, "Final Standings"),
-      el("span", { class: "muted", style: "font-size: 12px;" }, "Includes finals games")
+      el("span", { class: "muted", style: "font-size: 12px;" }, state.finals ? "Includes finals games" : "After all rounds")
     ),
     el("div", { style: "display:flex;align-items:center;gap:8px;" },
       standingsViewToggle(), guideButton(state.format))
