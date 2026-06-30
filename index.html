@@ -8451,6 +8451,9 @@ function activeSlots(round) {
     return { activeCourts, playing, byesNeeded: activeN - playing };
   }
   function courtCardLabel(court, format = state.format) {
+    if (state.courtNames && state.courtNames[court - 1]) {
+      return state.courtNames[court - 1].toUpperCase();
+    }
     if (format === "stack") return court === 1 ? "🏆 COURT 1" : "COURT " + court;
     if (format === "king") {
       if (court === 1) return "👑 KING'S COURT";
@@ -8463,6 +8466,9 @@ function activeSlots(round) {
     return "COURT " + court;
   }
   function courtTagLabel(court, format = state.format) {
+    if (state.courtNames && state.courtNames[court - 1]) {
+      return state.courtNames[court - 1];
+    }
     if (format === "stack") return "Court " + court;
     if (format === "king") {
       if (court === 1) return "King's Court";
@@ -8474,7 +8480,10 @@ function activeSlots(round) {
     if (court === 2) return "North";
     return "Court " + court;
   }
-  function courtLocationLabel(court, format = state.format) {
+  function courtLocationLabel(court, format = state.format, ignoreCustom = false) {
+    if (!ignoreCustom && state.courtNames && state.courtNames[court - 1]) {
+      return state.courtNames[court - 1];
+    }
     if (format === "king") {
       if (court === 1) return "King's Court";
       if (court === 2) return "Bottom Court";
@@ -8490,7 +8499,9 @@ function activeSlots(round) {
   function courtIdentity(court, format = state.format, opts = {}) {
     const c = Math.max(1, Math.min(6, parseInt(court, 10) || 1));
     let label;
-    if (format === "king" && c === 1) label = "King's Court";
+    if (state.courtNames && state.courtNames[c - 1]) {
+      label = state.courtNames[c - 1];
+    } else if (format === "king" && c === 1) label = "King's Court";
     else if (format === "king" && c === 2) label = "Bottom Court";
     else label = "Court " + c;
     return {
@@ -8502,6 +8513,9 @@ function activeSlots(round) {
     };
   }
   function shuffleRevealLabel(court, format = state.format) {
+    if (state.courtNames && state.courtNames[court - 1]) {
+      return state.courtNames[court - 1];
+    }
     if (format === "stack" && court === 1) return "🏆 Court 1";
     if (format === "king" && court === 1) return "👑 King's Court";
     if (format === "king" && court === 2) return "Bottom Court";
@@ -11863,6 +11877,52 @@ function renderSaveToLifetimeBlock() {
 
     const fitMessage = fitLineText(playerCount, courtDisplay);
     courtCard.appendChild(el("div", { class: "fit-line" + (fitMessage.includes(">1/3") ? " warning" : "") }, fitMessage));
+
+    // Court Names configuration block
+    const namesBlock = el("div", {
+      style: "margin-top:16px; border-top:1px solid var(--border); padding-top:12px;"
+    });
+    namesBlock.appendChild(el("h4", {
+      style: "margin:0 0 10px; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted);"
+    }, "Rename Courts (Optional)"));
+
+    const namesGrid = el("div", {
+      style: "display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px;"
+    });
+
+    if (!state.courtNames) {
+      state.courtNames = [];
+    }
+
+    // Display inputs for each active court
+    for (let i = 0; i < courtDisplay; i++) {
+      const defaultPlaceholder = courtLocationLabel(i + 1, state.format, true);
+      const val = state.courtNames[i] !== undefined ? state.courtNames[i] : "";
+      
+      const item = el("div", { style: "display:flex; flex-direction:column; gap:4px;" });
+      item.appendChild(el("span", { style: "font-size:11px; color:var(--muted);" }, `Court ${i + 1}`));
+      
+      const input = el("input", {
+        type: "text",
+        placeholder: defaultPlaceholder,
+        value: val,
+        style: "min-height:36px; font-size:13px; background:var(--panel-2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:4px 8px; width:100%; box-sizing:border-box;"
+      });
+      
+      input.addEventListener("input", () => {
+        state.courtNames[i] = input.value.trim();
+        save();
+      });
+
+      input.addEventListener("blur", () => {
+        render();
+      });
+      
+      item.appendChild(input);
+      namesGrid.appendChild(item);
+    }
+    namesBlock.appendChild(namesGrid);
+    courtCard.appendChild(namesBlock);
 
     contentPlayers.appendChild(courtCard);
 
