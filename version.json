@@ -1,5 +1,11 @@
 [
   {
+    "version": "v40",
+    "changes": [
+      "Calculate and display calibration-based expected finish time in the Review & Start modal for untimed tournaments"
+    ]
+  },
+  {
     "version": "v39",
     "changes": [
       "Redesign Round and Court Pages UI into a premium, polished layout using Design Critic guidelines",

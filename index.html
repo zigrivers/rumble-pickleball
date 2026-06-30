@@ -10741,6 +10741,37 @@ function preStartSummaryModel() {
   if (state.timeBudget && state.timeBudget.enabled) {
     const readout = formatTimeBudgetReadout(cfg, state.timeBudget.minutes, null);
     estimatedDuration = readout.likelyDone ? readout.willPlay + " · " + readout.likelyDone : readout.willPlay;
+  } else {
+    const cal = readCalibration();
+    let loMin = 0, hiMin = 0;
+    if (state.format === "crown") {
+      const presetObj = CROWN_PRESETS[0]; // Standard
+      let lo = 0, hi = 0;
+      presetObj.matches.forEach(m => {
+        const [glo, ghi] = estimateGameMinutes(m.target, m.winBy, m.scoring, cal);
+        lo += 2.3 * glo + 3;
+        hi += 2.3 * ghi + 3;
+      });
+      loMin = Math.round(lo);
+      hiMin = Math.round(hi);
+    } else {
+      const [roundLo, roundHi] = estimateRoundMinutes(winScore, winBy, scoringSystem, activeCourts, cal);
+      const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
+      loMin = rounds * roundLo + finLo + 5;
+      hiMin = rounds * roundHi + finHi + 5;
+    }
+    if (loMin > 0) {
+      const fmtTs = ts => {
+        const d = new Date(ts);
+        let h = d.getHours(), m = d.getMinutes();
+        const ampm = h >= 12 ? "pm" : "am";
+        h = h % 12 || 12;
+        return h + ":" + String(m).padStart(2, "0") + " " + ampm;
+      };
+      const baseTs = getBaseTimestamp();
+      const likelyDone = "~" + fmtTs(baseTs + loMin * 60000) + "–" + fmtTs(baseTs + hiMin * 60000);
+      estimatedDuration = "Untimed · " + likelyDone;
+    }
   }
   const tierCount = state.format === "crown" ? 0 : Math.min(activeCourts, Math.floor(players / 4));
   const unseated = state.format === "crown" ? 0 : Math.max(0, players - tierCount * 4);
