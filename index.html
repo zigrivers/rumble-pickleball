@@ -1585,6 +1585,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
+const APP_VERSION    = "v24";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -10774,6 +10775,76 @@ function openRosterManagerModal() {
   mountModal(bg, modal);
 }
 
+function openVersionHistoryModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => bg.remove();
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  const modal = el("div", {
+    class: "modal",
+    style: "max-width: 440px; width: 90%; display: flex; flex-direction: column; max-height: 80vh; padding: 20px; box-sizing: border-box;"
+  });
+
+  const header = el("div", { style: "display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;" },
+    el("h2", { style: "margin:0; font-size:18px;" }, "Version History"),
+    el("button", {
+      style: "background:transparent; border:none; color:var(--muted); font-size:22px; cursor:pointer; padding:0; line-height:1;",
+      onclick: close
+    }, "×")
+  );
+  modal.appendChild(header);
+
+  const contentArea = el("div", { style: "flex:1; overflow-y:auto; padding-right:4px;" });
+  modal.appendChild(contentArea);
+
+  contentArea.appendChild(el("div", { style: "text-align:center; padding:20px; color:var(--muted); font-size:13px;" }, "Loading history..."));
+
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+
+  fetch("version.json?cb=" + Date.now())
+    .then(res => res.json())
+    .then(data => {
+      contentArea.innerHTML = "";
+      if (!Array.isArray(data)) {
+        contentArea.appendChild(el("div", { style: "color:var(--accent); font-size:13px;" }, "Error: Version list is not an array."));
+        return;
+      }
+      
+      data.forEach((release, index) => {
+        const item = el("div", {
+          style: "margin-bottom:18px; border-bottom:1px solid var(--border); padding-bottom:14px;"
+        });
+        if (index === data.length - 1) {
+          item.style.borderBottom = "none";
+          item.style.paddingBottom = "0";
+        }
+
+        const titleRow = el("div", { style: "display:flex; align-items:center; gap:8px; margin-bottom:6px;" });
+        titleRow.appendChild(el("span", { style: "font-size:14px; font-weight:700; color:var(--text);" }, release.version));
+        
+        if (release.version === APP_VERSION) {
+          titleRow.appendChild(el("span", {
+            style: "background:#1e3a5f; color:#3b82f6; border:1px solid #2563eb; border-radius:99px; padding:2px 8px; font-size:10px; font-weight:700;"
+          }, "Current"));
+        }
+        item.appendChild(titleRow);
+
+        const ul = el("ul", { style: "margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); line-height:1.4;" });
+        release.changes.forEach(ch => {
+          ul.appendChild(el("li", null, ch));
+        });
+        item.appendChild(ul);
+        
+        contentArea.appendChild(item);
+      });
+    })
+    .catch(() => {
+      contentArea.innerHTML = "";
+      contentArea.appendChild(el("div", { style: "text-align:center; color:var(--accent); padding:20px; font-size:13px;" }, "Failed to load version history."));
+    });
+}
+
 const TOURNAMENT_TEMPLATES = [
   { id: "lunch-45",          title: "Lunch Break 45",    goal: "fast",        blurb: "4 quick rounds, 45-min budget." },
   { id: "club-90",           title: "Club Night 90",     goal: "balanced",    blurb: "Full Round Robin, 90-min budget." },
@@ -15382,6 +15453,11 @@ function openSettings() {
 
   modal.appendChild(el("button", {
     style: "width: 100%; margin-bottom: 12px;",
+    onclick: () => { openVersionHistoryModal(); },
+  }, "Version History"));
+
+  modal.appendChild(el("button", {
+    style: "width: 100%; margin-bottom: 12px;",
     onclick: () => { window.open(displayModeUrl(), "_blank", "noopener"); },
   }, "TV / Projector Mode"));
 
@@ -16761,17 +16837,30 @@ if (window.__rumbleFbReady) setupLifetimeAuth();
         fetch("version.json?cb=" + Date.now())
           .then(res => res.json())
           .then(data => {
-            if (data.version) {
-              const verSpan = document.getElementById("pwa-update-ver");
-              if (verSpan) verSpan.textContent = `Version ${data.version}`;
+            if (!Array.isArray(data) || data.length === 0) return;
+            
+            const latestVer = data[0].version;
+            const verSpan = document.getElementById("pwa-update-ver");
+            if (verSpan) verSpan.textContent = `Upgrading to ${latestVer}`;
+
+            const currentIdx = data.findIndex(r => r.version === APP_VERSION);
+            let changes = [];
+            if (currentIdx !== -1) {
+              for (let i = 0; i < currentIdx; i++) {
+                changes = changes.concat(data[i].changes);
+              }
+            } else {
+              changes = data[0].changes;
             }
-            if (Array.isArray(data.changes) && data.changes.length > 0) {
-              const ul = document.getElementById("pwa-update-list");
-              if (ul) {
-                ul.innerHTML = "";
-                data.changes.forEach(ch => {
-                  ul.appendChild(el("li", null, ch));
-                });
+
+            const ul = document.getElementById("pwa-update-list");
+            if (ul && changes.length > 0) {
+              ul.innerHTML = "";
+              changes.slice(0, 4).forEach(ch => {
+                ul.appendChild(el("li", null, ch));
+              });
+              if (changes.length > 4) {
+                ul.appendChild(el("li", { style: "list-style:none; margin-left:-16px; font-style:italic;" }, `+ ${changes.length - 4} more updates...`));
               }
             }
           })

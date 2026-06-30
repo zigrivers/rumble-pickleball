@@ -3,7 +3,7 @@
 // delete by "everything that isn't the current version".
 const CACHE_PREFIX = "rumble-pickleball-";
 // Bump VERSION on every deploy so clients pick up changes.
-const VERSION = CACHE_PREFIX + "v23";
+const VERSION = CACHE_PREFIX + "v24";
 const SHELL = [
   "./",
   "index.html",
@@ -13,6 +13,7 @@ const SHELL = [
   "icon-512.png",
   "icon-512-maskable.png",
   "apple-touch-icon.png",
+  "version.json",
 ];
 
 self.addEventListener("install", (event) => {

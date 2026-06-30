@@ -1,8 +1,71 @@
-{
-  "version": "v23",
-  "changes": [
-    "Manage active rosters with the new Roster Manager tool",
-    "Load players from Lifetime Stats club history or save custom Tuesday/Thursday roster groups",
-    "Rename and customize court names in setup and mid-tournament settings"
-  ]
-}
+[
+  {
+    "version": "v24",
+    "changes": [
+      "View full version history and release notes in Settings modal",
+      "Dynamic release notes display relative to your current app version"
+    ]
+  },
+  {
+    "version": "v23",
+    "changes": [
+      "Manage active rosters using the new Roster Manager tool",
+      "Load players from Lifetime Stats club list or save custom Tuesday/Thursday templates"
+    ]
+  },
+  {
+    "version": "v22",
+    "changes": [
+      "Rename and customize court names in setup and mid-tournament settings modal"
+    ]
+  },
+  {
+    "version": "v21",
+    "changes": [
+      "View games, byes, and partner mix projections in the Format tab",
+      "Sleek slide-up notification panel for new app updates"
+    ]
+  },
+  {
+    "version": "v20",
+    "changes": [
+      "Redesigned setup layout with tabs (Players & Courts, Format, Timing & Rules)",
+      "Customize court names directly in the setup screen"
+    ]
+  },
+  {
+    "version": "v19",
+    "changes": [
+      "Start time dropdown in user-friendly 15-minute intervals",
+      "Scoring system defaults to Traditional side-out for new tournaments"
+    ]
+  },
+  {
+    "version": "v18",
+    "changes": [
+      "Reordered Timing & Rules tab with rules-on-top and estimates card at the bottom",
+      "Detailed math breakdown in collapsible 'How is this calculated?' section"
+    ]
+  },
+  {
+    "version": "v17",
+    "changes": [
+      "Relocated Mixed Mode card to Players & Courts tab",
+      "Added clear context messages for Mixed Mode ON vs OFF pairing behavior"
+    ]
+  },
+  {
+    "version": "v16",
+    "changes": [
+      "Dynamic tournament duration and likely-finish estimates",
+      "Adjust scoring mechanics (Traditional vs Rally) directly in Timing & Rules"
+    ]
+  },
+  {
+    "version": "v15",
+    "changes": [
+      "Format tab reordered with Format selection at the very top",
+      "Collapsed templates and presets in quick-access accordion"
+    ]
+  }
+]
