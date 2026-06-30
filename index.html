@@ -10494,6 +10494,286 @@ function parsePastedNames(text, count) {
   setTimeout(() => textarea.focus(), 0);
 }
 
+function openRosterManagerModal() {
+  const bg = el("div", { class: "modal-bg" });
+  const close = () => { bg.remove(); };
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  const modal = el("div", {
+    class: "modal",
+    style: "max-width: 420px; width: 90%; display: flex; flex-direction: column; max-height: 80vh; padding: 20px; box-sizing: border-box;"
+  });
+
+  const header = el("div", { style: "display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;" },
+    el("h2", { style: "margin:0; font-size:18px;" }, "Roster Manager"),
+    el("button", {
+      style: "background:transparent; border:none; color:var(--muted); font-size:22px; cursor:pointer; padding:0; line-height:1;",
+      onclick: close
+    }, "×")
+  );
+  modal.appendChild(header);
+
+  let activeTab = "club";
+  const tabsContainer = el("div", { class: "setup-tabs", style: "margin-bottom:16px; padding:2px; height:38px;" });
+  
+  const clubTabBtn = el("button", { class: "setup-tab-btn active", style: "font-size:13px;" }, "Club List");
+  const groupsTabBtn = el("button", { class: "setup-tab-btn", style: "font-size:13px;" }, "Saved Groups");
+  
+  tabsContainer.appendChild(clubTabBtn);
+  tabsContainer.appendChild(groupsTabBtn);
+  modal.appendChild(tabsContainer);
+
+  const contentArea = el("div", { style: "flex:1; overflow-y:auto; min-height: 250px; display:flex; flex-direction:column;" });
+  modal.appendChild(contentArea);
+
+  const ledger = LifetimeStore.getLedger();
+  const playersMap = ledger.players || {};
+  const playersList = Object.values(playersMap).map(p => {
+    return { phoneKey: p.phoneKey, displayName: p.displayName || p.phoneKey };
+  }).sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  const checkedKeys = new Set();
+  
+  state.rawNames.forEach((name, idx) => {
+    if (name && name.trim()) {
+      const phone = state.rawPhones[idx] || "";
+      const match = playersList.find(p => {
+        if (phone && p.phoneKey === phone) return true;
+        return p.displayName.toLowerCase() === name.trim().toLowerCase();
+      });
+      if (match) checkedKeys.add(match.phoneKey);
+    }
+  });
+
+  let searchQuery = "";
+
+  function drawContent() {
+    contentArea.innerHTML = "";
+
+    if (activeTab === "club") {
+      clubTabBtn.classList.add("active");
+      groupsTabBtn.classList.remove("active");
+
+      const searchInput = el("input", {
+        type: "text",
+        placeholder: "Search players...",
+        value: searchQuery,
+        style: "width:100%; min-height:36px; font-size:13px; background:var(--panel-2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:4px 10px; margin-bottom:12px; box-sizing:border-box;"
+      });
+      searchInput.addEventListener("input", () => {
+        searchQuery = searchInput.value;
+        drawListOnly();
+      });
+      contentArea.appendChild(searchInput);
+
+      const listContainer = el("div", { style: "flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-bottom:12px; max-height:220px;" });
+      contentArea.appendChild(listContainer);
+
+      const countBadge = el("div", { style: "font-size:12px; color:var(--muted); margin-bottom:8px; text-align:right; font-weight:600;" }, `Selected: ${checkedKeys.size} players`);
+      contentArea.appendChild(countBadge);
+
+      const loadBtn = el("button", {
+        style: "width:100%; min-height:40px; font-weight:700; font-size:14px; background:var(--accent); color:#1a1207; border:none; border-radius:8px; cursor:pointer;"
+      }, `Load Selected (${checkedKeys.size})`);
+      
+      loadBtn.addEventListener("click", () => {
+        const count = checkedKeys.size;
+        if (count < 4 || count > 24) {
+          showToast("Select between 4 and 24 players.");
+          return;
+        }
+        state.rawNames = [];
+        state.rawPhones = [];
+        state.rawGroups = [];
+        playersList.forEach(p => {
+          if (checkedKeys.has(p.phoneKey)) {
+            state.rawNames.push(p.displayName);
+            state.rawPhones.push(p.phoneKey !== p.displayName ? p.phoneKey : "");
+            state.rawGroups.push("a");
+          }
+        });
+        setSetupRosterCount(count);
+        save();
+        close();
+        render();
+        showToast(`Loaded ${count} players from Club List.`);
+      });
+      contentArea.appendChild(loadBtn);
+
+      function drawListOnly() {
+        listContainer.innerHTML = "";
+        const query = searchQuery.toLowerCase().trim();
+        const filtered = playersList.filter(p => p.displayName.toLowerCase().includes(query));
+
+        if (filtered.length === 0) {
+          listContainer.appendChild(el("div", { style: "text-align:center; padding:24px; color:var(--muted); font-size:13px; font-style:italic;" },
+            playersList.length === 0 ? "No players in career history yet. Save a tournament to build your club roster." : "No players match your search."
+          ));
+          return;
+        }
+
+        filtered.forEach(p => {
+          const row = el("label", {
+            style: "display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px 12px; cursor:pointer; margin-bottom:4px;"
+          });
+          
+          const chk = el("input", {
+            type: "checkbox",
+            style: "width:16px; height:16px; accent-color:var(--accent);"
+          });
+          if (checkedKeys.has(p.phoneKey)) chk.setAttribute("checked", "checked");
+          
+          chk.addEventListener("change", () => {
+            if (chk.checked) checkedKeys.add(p.phoneKey);
+            else checkedKeys.delete(p.phoneKey);
+            countBadge.textContent = `Selected: ${checkedKeys.size} players`;
+            loadBtn.textContent = `Load Selected (${checkedKeys.size})`;
+          });
+
+          row.appendChild(chk);
+          
+          const labelInfo = el("div", { style: "flex:1; display:flex; flex-direction:column;" });
+          labelInfo.appendChild(el("div", { style: "font-size:13px; font-weight:600; color:var(--text);" }, p.displayName));
+          if (p.phoneKey !== p.displayName) {
+            labelInfo.appendChild(el("div", { style: "font-size:11px; color:var(--muted);" }, p.phoneKey));
+          }
+          row.appendChild(labelInfo);
+          listContainer.appendChild(row);
+        });
+      }
+
+      drawListOnly();
+
+    } else {
+      clubTabBtn.classList.remove("active");
+      groupsTabBtn.classList.add("active");
+
+      let groups = [];
+      try {
+        groups = JSON.parse(localStorage.getItem("rumble_saved_roster_groups")) || [];
+      } catch {
+        groups = [];
+      }
+
+      const saveForm = el("div", { style: "background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:16px;" });
+      saveForm.appendChild(el("h4", { style: "margin:0 0 8px; font-size:12px; font-weight:700; color:var(--text); text-transform:uppercase; letter-spacing:0.5px;" }, "Save Current Roster"));
+      
+      const saveRow = el("div", { style: "display:flex; gap:8px;" });
+      const nameInput = el("input", {
+        type: "text",
+        placeholder: "Roster Name (e.g. Tuesday League)",
+        style: "flex:1; min-height:36px; font-size:13px; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:4px 8px; box-sizing: border-box;"
+      });
+      const saveBtn = el("button", {
+        style: "min-height:36px; background:var(--accent); color:#1a1207; border:none; border-radius:8px; font-weight:700; font-size:12px; padding:0 12px; cursor:pointer;"
+      }, "Save");
+      
+      saveBtn.addEventListener("click", () => {
+        const gName = nameInput.value.trim();
+        if (!gName) {
+          showToast("Please enter a roster name.");
+          return;
+        }
+        
+        const activePlayersCount = setupRosterCount();
+        const playersToSave = [];
+        for (let i = 0; i < activePlayersCount; i++) {
+          playersToSave.push({
+            name: state.rawNames[i] || "",
+            phone: state.rawPhones[i] || "",
+            group: state.rawGroups[i] || "a"
+          });
+        }
+
+        const newGroup = {
+          id: "group_" + Date.now(),
+          name: gName,
+          players: playersToSave
+        };
+        
+        groups.push(newGroup);
+        localStorage.setItem("rumble_saved_roster_groups", JSON.stringify(groups));
+        drawContent();
+        showToast(`Saved current roster as "${gName}".`);
+      });
+
+      saveRow.appendChild(nameInput);
+      saveRow.appendChild(saveBtn);
+      saveForm.appendChild(saveRow);
+      contentArea.appendChild(saveForm);
+
+      const listContainer = el("div", { style: "flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; max-height:180px;" });
+      contentArea.appendChild(listContainer);
+
+      if (groups.length === 0) {
+        listContainer.appendChild(el("div", { style: "text-align:center; padding:32px; color:var(--muted); font-size:13px; font-style:italic;" },
+          "No saved rosters yet. Type a name above to save your Tuesday or Thursday roster."
+        ));
+      } else {
+        groups.forEach(g => {
+          const card = el("div", {
+            style: "background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px;"
+          });
+          
+          const info = el("div", { style: "flex:1;" });
+          info.appendChild(el("div", { style: "font-size:14px; font-weight:700; color:var(--text);" }, g.name));
+          info.appendChild(el("div", { style: "font-size:11px; color:var(--muted); margin-top:2px;" }, `${g.players.length} players`));
+          card.appendChild(info);
+
+          const actionsRow = el("div", { style: "display:flex; gap:6px;" });
+          
+          const loadGroupBtn = el("button", {
+            style: "min-height:30px; background:var(--accent); color:#1a1207; border:none; border-radius:6px; font-weight:700; font-size:11px; padding:0 10px; cursor:pointer;"
+          }, "Load");
+          
+          loadGroupBtn.addEventListener("click", () => {
+            const count = g.players.length;
+            state.rawNames = [];
+            state.rawPhones = [];
+            state.rawGroups = [];
+            g.players.forEach(p => {
+              state.rawNames.push(p.name);
+              state.rawPhones.push(p.phone);
+              state.rawGroups.push(p.group);
+            });
+            setSetupRosterCount(count);
+            save();
+            close();
+            render();
+            showToast(`Loaded roster group "${g.name}".`);
+          });
+          
+          const deleteGroupBtn = el("button", {
+            style: "min-height:30px; border-radius:6px; font-weight:700; font-size:11px; padding:0 8px; cursor:pointer; color:#ff6b6b; border:1px solid #ff6b6b; background:transparent;"
+          }, "Delete");
+
+          deleteGroupBtn.addEventListener("click", () => {
+            showConfirm(`Delete roster group "${g.name}"?`, () => {
+              groups = groups.filter(item => item.id !== g.id);
+              localStorage.setItem("rumble_saved_roster_groups", JSON.stringify(groups));
+              drawContent();
+              showToast(`Deleted group "${g.name}".`);
+            });
+          });
+
+          actionsRow.appendChild(loadGroupBtn);
+          actionsRow.appendChild(deleteGroupBtn);
+          card.appendChild(actionsRow);
+
+          listContainer.appendChild(card);
+        });
+      }
+    }
+  }
+
+  clubTabBtn.addEventListener("click", () => { activeTab = "club"; drawContent(); });
+  groupsTabBtn.addEventListener("click", () => { activeTab = "groups"; drawContent(); });
+
+  drawContent();
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+}
+
 const TOURNAMENT_TEMPLATES = [
   { id: "lunch-45",          title: "Lunch Break 45",    goal: "fast",        blurb: "4 quick rounds, 45-min budget." },
   { id: "club-90",           title: "Club Night 90",     goal: "balanced",    blurb: "Full Round Robin, 90-min budget." },
@@ -12056,6 +12336,13 @@ function getRoundStatistics(format, rounds, players, courts) {
       onclick: openPasteModal,
     }, "Paste " + playerCount + " names");
     actions.appendChild(pasteLink);
+
+    const savedRostersBtn = el("button", {
+      onclick: openRosterManagerModal,
+      style: "margin-left: 6px;"
+    }, "👥 Saved Rosters");
+    actions.appendChild(savedRostersBtn);
+
     card.appendChild(actions);
 
     const list = el("div", { class: "setup-list" });
