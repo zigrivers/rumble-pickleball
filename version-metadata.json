@@ -1,5 +1,11 @@
 [
   {
+    "version": "v50",
+    "changes": [
+      "Redesign and upgrade the placements card in the Tournament Champions panel: replace the single primary stat line with a detailed statistics table (incorporating Win-Loss Record, Total Points, and Net Point Difference alongside Average Margin/Stack Rate/King Rate), and introduce premium floating crown, pulsing medal, and staggered fade-in-up reveal animations"
+    ]
+  },
+  {
     "version": "v49",
     "changes": [
       "Combine the Edit Names & Phones list and the Active Players list into a single unified grid in the Settings Roster tab, styling each slot row with slot numbering badges, inline text/phone editors, and Leave buttons"
