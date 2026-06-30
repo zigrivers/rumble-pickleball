@@ -2507,7 +2507,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v52";
+const APP_VERSION    = "v53";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -2573,6 +2573,14 @@ function estimateRoundMinutes(target, winBy, scoring, activeCourts, calibration)
   ];
 }
 
+// Time the championship/finals stage adds to an estimate, as [lo, hi] minutes.
+// Returns [0, 0] when the Round Robin championship is skipped, so finish-time
+// projections don't reserve time for a finals game that won't be played.
+function finalsStageMinutes(activeCourts, calibration) {
+  if (state.format === "rr" && state.skipChampionship) return [0, 0];
+  return estimateRoundMinutes(11, 2, "sideout", activeCourts, calibration);
+}
+
 // Picks the richest win condition (target/winBy/scoring) that fits the time budget.
 // Returns {target, winBy, scoring} or {error, suggestion}.
 // T_finals uses low estimate (optimistic) so tight budgets aren't prematurely rejected.
@@ -2581,7 +2589,7 @@ function solveWinCondition(format, rounds, budgetMin, calibration, activeCourts 
   const SETUP_OVERHEAD = 5;
   const TARGETS = [21, 15, 11, 9, 7];  // richest first in each scoring system
 
-  const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", activeCourts, calibration);
+  const [finalsLo] = finalsStageMinutes(activeCourts, calibration);
   const budgetForRounds = budgetMin - SETUP_OVERHEAD - finalsLo;
   if (budgetForRounds <= 0) return { error: "no_fit_finals" };
 
@@ -2671,7 +2679,7 @@ function generalProjectFinishTime(state, calibration, nowTs) {
   const scoring = state.scoringSystem || "sideout";
   
   const [rndLo, rndHi] = estimateRoundMinutes(target, winBy, scoring, activeCourts, calibration);
-  const [finLo, finHi] = estimateRoundMinutes(11, 2, "sideout", activeCourts, calibration);
+  const [finLo, finHi] = finalsStageMinutes(activeCourts, calibration);
   const msPerMin = 60 * 1000;
   
   return [
@@ -2701,7 +2709,7 @@ function projectFinishTime(state, calibration, nowTs) {
   const remainingRounds = Math.max(0, state.rounds.length - completedRounds);
   const activeCourts = timeBudgetActiveCourtsFor(state);
   const [rndLo, rndHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, activeCourts, calibration);
-  const [finLo, finHi] = estimateRoundMinutes(11, 2, "sideout", activeCourts, calibration);
+  const [finLo, finHi] = finalsStageMinutes(activeCourts, calibration);
   const msPerMin = 60 * 1000;
 
   return [
@@ -6033,6 +6041,85 @@ function runSelfTests() {
     state = newState();
   })();
 
+  // MLP: per-round pairing (same-gender) + skip championship
+  (function mlpPairingTests() {
+    // Migration defaults for the three new fields
+    const legacy = backfillStateDefaults({ phase: "setup", format: "rr", rawNames: ["A", "B"] });
+    console.assert(Array.isArray(legacy.rrPairingModes) && legacy.rrPairingModes.length === 0,
+      "migration: rrPairingModes defaults to []");
+    console.assert(legacy.sameGenderOpponents === true, "migration: sameGenderOpponents defaults to true");
+    console.assert(legacy.skipChampionship === false, "migration: skipChampionship defaults to false");
+
+    // pairSameGroupAware maximizes same-group teams
+    state = newState();
+    state.mixedMode = true;
+    state.slotGroups = ["a", "a", "b", "b"];            // slots 1,2=a; 3,4=b
+    let [pa, pb] = pairSameGroupAware([1, 2, 3, 4], {});
+    console.assert(!isMixedTeam(pa) && !isMixedTeam(pb),
+      "pairSameGroupAware: 2A+2B → same-group teams (AA, BB)", [pa, pb]);
+    state.slotGroups = ["a", "a", "a", "a"];            // all one group
+    [pa, pb] = pairSameGroupAware([1, 2, 3, 4], {});
+    console.assert(!isMixedTeam(pa) && !isMixedTeam(pb),
+      "pairSameGroupAware: 4A → same-group teams");
+
+    // dealSingleGenderCourts produces pure single-gender courts for a balanced roster
+    state.slotGroups = ["a", "a", "a", "a", "b", "b", "b", "b"];   // 4A + 4B
+    const courts = dealSingleGenderCourts([1, 2, 3, 4, 5, 6, 7, 8], 2, mulberry32(7));
+    const pureCourts = courts.every(ct => ct.length === 4 && ct.every(s => groupOf(s) === groupOf(ct[0])));
+    console.assert(pureCourts, "dealSingleGenderCourts: 4A+4B/2 → single-gender courts", courts);
+
+    // generateRRSchedule: same-gender round, restrict ON → same-group teams + single-gender courts
+    state = newState();
+    state.format = "rr";
+    state.mixedMode = true;
+    state.courtCount = 2;
+    state.sameGenderOpponents = true;
+    state.rrPairingModes = ["samegender", "samegender"];
+    state.slotGroups = ["a", "a", "a", "a", "b", "b", "b", "b"];
+    const onSched = generateRRSchedule([1, 2, 3, 4, 5, 6, 7, 8], 2, 2, [], mulberry32(99));
+    let teamsSameOn = true, courtsPureOn = true;
+    for (const r of onSched) {
+      for (const g of gamesOf(r)) {
+        if (isMixedTeam(g.team1) || isMixedTeam(g.team2)) teamsSameOn = false;
+        const four = [...g.team1, ...g.team2];
+        if (!four.every(s => groupOf(s) === groupOf(four[0]))) courtsPureOn = false;
+      }
+    }
+    console.assert(teamsSameOn, "RR samegender restrict-ON: every team is same-group");
+    console.assert(courtsPureOn, "RR samegender restrict-ON: every court is single-gender");
+
+    // restrict OFF → same-group teams, but a court may mix genders (AA vs BB)
+    state.sameGenderOpponents = false;
+    state.rrPairingModes = ["samegender"];
+    const offSched = generateRRSchedule([1, 2, 3, 4, 5, 6, 7, 8], 2, 1, [], mulberry32(99));
+    let teamsSameOff = true;
+    for (const g of gamesOf(offSched[0])) {
+      if (isMixedTeam(g.team1) || isMixedTeam(g.team2)) teamsSameOff = false;
+    }
+    console.assert(teamsSameOff, "RR samegender restrict-OFF: teams still same-group");
+
+    // a "mixed" round stays mixed (1A+1B) — control
+    state.rrPairingModes = ["mixed"];
+    const mixSched = generateRRSchedule([1, 2, 3, 4, 5, 6, 7, 8], 2, 1, [], mulberry32(99));
+    let allMixed = true;
+    for (const g of gamesOf(mixSched[0])) {
+      if (!isMixedTeam(g.team1) || !isMixedTeam(g.team2)) allMixed = false;
+    }
+    console.assert(allMixed, "RR mixed round: every team is 1A+1B");
+
+    // Skip championship zeroes the finals time component
+    state = newState();
+    state.format = "rr";
+    state.skipChampionship = true;
+    console.assert(JSON.stringify(finalsStageMinutes(2, null)) === "[0,0]",
+      "finalsStageMinutes: [0,0] when championship skipped");
+    state.skipChampionship = false;
+    console.assert(finalsStageMinutes(2, null)[1] > 0,
+      "finalsStageMinutes: nonzero when championship kept");
+
+    state = newState();
+  })();
+
     console.log(`[self-tests] complete — ${failures} failure(s)`);
     console.assert = _origAssert;
   }
@@ -6439,6 +6526,9 @@ function newState() {
     mixedGroupLabels: { a: "Men", b: "Women" },      // editable labels for the two groups
     rawGroups: [],                                   // parallel to rawNames: "a"|"b"|"" per setup row
     slotGroups: [],                                  // parallel to slots: "a"|"b"|"" per slot (post-shuffle)
+    rrPairingModes: [],                              // RR only: per-round "mixed"|"samegender" (index = round-1; default "mixed")
+    sameGenderOpponents: true,                       // samegender rounds: restrict same-group teams to same-group opponents
+    skipChampionship: false,                         // RR only: end after the final round (no built finals stage)
   };
 }
 function makeScheduleSeed() {
@@ -6871,6 +6961,10 @@ function backfillStateDefaults(obj) {
   }
   if (!Array.isArray(obj.rawGroups)) obj.rawGroups = [];
   if (!Array.isArray(obj.slotGroups)) obj.slotGroups = [];
+  // Per-round pairing (MLP) backfill
+  if (!Array.isArray(obj.rrPairingModes)) obj.rrPairingModes = [];
+  if (typeof obj.sameGenderOpponents !== "boolean") obj.sameGenderOpponents = true;
+  if (typeof obj.skipChampionship !== "boolean") obj.skipChampionship = false;
   return obj;
 }
 // A restored state is only usable if its phase's core structures are present.
@@ -7912,6 +8006,56 @@ function pairMixedAware(four, opts) {
   }));
   scored.sort((a, b) => a.badTeams - b.badTeams || a.cost - b.cost);
   return scored[0].teams;
+}
+
+// === Same-gender (MLP "gender doubles") pairing ===
+// Returns the pairing mode for a 1-based round number: "samegender" only when
+// Mixed mode is on, format is RR, and that round is flagged; otherwise "mixed".
+function rrPairingModeForRound(roundNum) {
+  if (!state.mixedMode || state.format !== "rr") return "mixed";
+  return (state.rrPairingModes || [])[roundNum - 1] === "samegender" ? "samegender" : "mixed";
+}
+// Inverse of pairMixedAware: returns [team1, team2] MAXIMIZING same-group teams
+// (man/man, woman/woman). Tie-broken by repeat-partner/opponent cost.
+function pairSameGroupAware(four, opts) {
+  const splits = rrTeamSplits(four);
+  const scored = splits.map(([team1, team2]) => ({
+    teams: [team1, team2],
+    mixedTeams: [team1, team2].filter(isMixedTeam).length,  // want 0 → both teams same-group
+    cost: pairingCost(team1, team2, opts),
+  }));
+  scored.sort((a, b) => a.mixedTeams - b.mixedTeams || a.cost - b.cost);
+  return scored[0].teams;
+}
+// Same-gender analogue of bestRRSplit — wraps pairSameGroupAware into a game.
+function bestSameGenderSplit(four, court, history, chosen) {
+  const [team1, team2] = pairSameGroupAware(four, { court, history, chosen });
+  return makeGame(court, team1, team2);
+}
+// Deals players into single-gender courts where the roster allows (restrict-ON
+// same-gender rounds). Greedy: fill each court from the larger remaining group
+// first, falling back to the other group (then unset) for leftover seats. With a
+// balanced roster (e.g. 4A + 4B / 2 courts) this yields pure single-group courts;
+// uneven rosters degrade gracefully to a best-effort impure court.
+//   playing:      Array of slot numbers (the active/playing set)
+//   activeCourts: Number of courts to fill
+//   rng:          Seeded RNG function
+// Returns: Array of arrays, one per court, each with up to 4 slot numbers.
+function dealSingleGenderCourts(playing, activeCourts, rng) {
+  const shuffle = (arr) => seededShuffle(arr.slice(), rng);
+  const aPool = shuffle(playing.filter(s => groupOf(s) === "a"));
+  const bPool = shuffle(playing.filter(s => groupOf(s) === "b"));
+  const unset = shuffle(playing.filter(s => groupOf(s) === ""));
+  const courts = Array.from({ length: activeCourts }, () => []);
+  const drain = (pool, court) => { while (court.length < 4 && pool.length) court.push(pool.pop()); };
+  for (let c = 0; c < activeCourts; c++) {
+    const court = courts[c];
+    // Fill from the larger group first so balanced rosters produce pure courts.
+    if (aPool.length >= bPool.length) { drain(aPool, court); drain(bPool, court); }
+    else { drain(bPool, court); drain(aPool, court); }
+    drain(unset, court);  // last resort for unassigned players
+  }
+  return courts;
 }
 
 // Assigns players to courts via multi-restart search. Optimizes lexicographically:
@@ -9803,17 +9947,31 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
         }
       }
     }
+    const roundMode = rrPairingModeForRound(roundNum);
     let bestGames = null, bestCost = Infinity;
     const restarts = Math.max(1, alloc.playing.length === 4 ? 1 : 60);
     for (let attempt = 0; attempt < restarts; attempt++) {
-      const courts = state.mixedMode
-        ? dealBalancedCourts(alloc.playing, alloc.activeCourts, rng, prior)
-        : null;
+      let courts;
+      if (roundMode === "samegender") {
+        // Same-gender teams. Restrict ON → single-gender courts; OFF → 2A+2B courts
+        // (a men's pair faces a women's pair).
+        courts = state.sameGenderOpponents
+          ? dealSingleGenderCourts(alloc.playing, alloc.activeCourts, rng)
+          : dealBalancedCourts(alloc.playing, alloc.activeCourts, rng, prior);
+      } else {
+        courts = state.mixedMode
+          ? dealBalancedCourts(alloc.playing, alloc.activeCourts, rng, prior)
+          : null;
+      }
       const shuffled = courts ? null : seededShuffle(alloc.playing, rng);
       const games = [];
       for (let c = 0; c < alloc.activeCourts; c++) {
         const four = courts ? courts[c] : shuffled.slice(c * 4, c * 4 + 4);
-        if (four && four.length === 4) games.push(bestRRSplit(four, c + 1, prior, games));
+        if (four && four.length === 4) {
+          games.push(roundMode === "samegender"
+            ? bestSameGenderSplit(four, c + 1, prior, games)
+            : bestRRSplit(four, c + 1, prior, games));
+        }
       }
       let cost = rrRoundCost(games, prior);
       // Court-balance penalty: discourage assigning players to courts they've used most
@@ -10156,7 +10314,7 @@ function maybeFireSlippagePrompt() {
   const avgRoundActual = elapsedMin / roundsFound;
   const cal = readCalibration();
   const activeCourts = timeBudgetActiveCourtsFor(state);
-  const [finalsLo] = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
+  const [finalsLo] = finalsStageMinutes(activeCourts, cal);
   const projectedTotal = elapsedMin + remainingRounds * avgRoundActual + finalsLo + 5;
 
   if (projectedTotal <= tb.minutes * 1.10) return;
@@ -11323,7 +11481,7 @@ function preStartSummaryModel() {
       hiMin = Math.round(hi);
     } else {
       const [roundLo, roundHi] = estimateRoundMinutes(winScore, winBy, scoringSystem, activeCourts, cal);
-      const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
+      const [finLo, finHi]     = finalsStageMinutes(activeCourts, cal);
       loMin = rounds * roundLo + finLo + 5;
       hiMin = rounds * roundHi + finHi + 5;
     }
@@ -11693,6 +11851,88 @@ function renderMixedModeToggle() {
       }, "Edit labels")
     ));
   }
+  return wrap;
+}
+
+// MLP support for Round Robin: a "Skip championship" toggle, a per-round pairing
+// editor (Mixed vs Same-gender), and a "Same-gender opponents only" toggle. Lives
+// in the setup Format tab under the Rounds dropdown. Returns null for non-RR formats.
+function renderRRPairingControls() {
+  if (state.format !== "rr") return null;
+  const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
+  const sameLabel = detectPreset() === "gender" ? "Same-gender" : "Same group";
+  const wrap = el("div", { class: "card", style: "padding:12px 16px; margin-top:10px;" });
+
+  // --- Skip championship ---
+  const skipThumb = el("span", { class: "switch-thumb" });
+  const skipTrack = el("div", {
+    class: "switch-track" + (state.skipChampionship ? " active" : ""),
+    onclick: () => { state.skipChampionship = !state.skipChampionship; save(); render(); },
+  }, skipThumb);
+  wrap.appendChild(el("label", { class: "rule-row", style: "display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" },
+    el("span", { style: "font-weight:600;" }, "Skip championship"),
+    skipTrack
+  ));
+  wrap.appendChild(el("div", { class: "muted", style: "font-size:13px;margin:6px 0 0;line-height:1.45;border-left:2px solid var(--border);padding-left:8px;" },
+    state.skipChampionship
+      ? "Ends after the final round — no championship game. Final standings crown the winners."
+      : "After the final round, the top players play a championship game before the winners are crowned."
+  ));
+
+  wrap.appendChild(el("div", { style: "height:1px;background:var(--border);margin:12px 0;" }));
+
+  // --- Pairing by round ---
+  wrap.appendChild(el("div", { style: "font-weight:600;margin-bottom:2px;" }, "Pairing by round"));
+  if (!state.mixedMode) {
+    wrap.appendChild(el("div", { class: "muted", style: "font-size:13px;line-height:1.45;" },
+      "Turn on Mixed mode (Players & Courts tab) to set each round to mixed or same-gender pairing."));
+    return wrap;
+  }
+
+  const n = Math.max(4, Math.min(12, parseInt(state.rrRounds, 10) || 7));
+  const modeFor = (i) => (state.rrPairingModes || [])[i] === "samegender" ? "samegender" : "mixed";
+  wrap.appendChild(el("div", { class: "muted", style: "font-size:13px;line-height:1.4;margin-bottom:8px;" },
+    "Mixed = one " + labels.a + " + one " + labels.b + " per team. " +
+    sameLabel + " = " + labels.a + "/" + labels.a + " and " + labels.b + "/" + labels.b + " teams."));
+
+  const grid = el("div", { style: "display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;" });
+  for (let i = 0; i < n; i++) {
+    grid.appendChild(el("span", { style: "font-size:14px;color:var(--muted);" }, "Round " + (i + 1)));
+    const sel = el("select", {
+      style: "min-height:34px;font-size:14px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px 8px;",
+      onchange: () => {
+        if (!Array.isArray(state.rrPairingModes)) state.rrPairingModes = [];
+        state.rrPairingModes[i] = sel.value;
+        save();
+        render();
+      },
+    });
+    sel.appendChild(el("option", { value: "mixed", selected: modeFor(i) === "mixed" }, "Mixed (1 + 1)"));
+    sel.appendChild(el("option", { value: "samegender", selected: modeFor(i) === "samegender" }, sameLabel));
+    grid.appendChild(sel);
+  }
+  wrap.appendChild(grid);
+
+  // --- Same-gender opponents only (shown when at least one round is same-gender) ---
+  const anySame = Array.from({ length: n }).some((_, i) => modeFor(i) === "samegender");
+  if (anySame) {
+    wrap.appendChild(el("div", { style: "height:1px;background:var(--border);margin:12px 0;" }));
+    const oppThumb = el("span", { class: "switch-thumb" });
+    const oppTrack = el("div", {
+      class: "switch-track" + (state.sameGenderOpponents ? " active" : ""),
+      onclick: () => { state.sameGenderOpponents = !state.sameGenderOpponents; save(); render(); },
+    }, oppThumb);
+    wrap.appendChild(el("label", { class: "rule-row", style: "display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" },
+      el("span", { style: "font-weight:600;" }, sameLabel + " opponents only"),
+      oppTrack
+    ));
+    wrap.appendChild(el("div", { class: "muted", style: "font-size:13px;margin:6px 0 0;line-height:1.45;border-left:2px solid var(--border);padding-left:8px;" },
+      state.sameGenderOpponents
+        ? labels.a + " pairs only face " + labels.a + " pairs and " + labels.b + " only face " + labels.b + " (separate courts where the roster allows)."
+        : "A " + labels.a + " pair may face a " + labels.b + " pair on the same court."
+    ));
+  }
+
   return wrap;
 }
 
@@ -12388,6 +12628,8 @@ function renderFormatChooser() {
     });
     sub.appendChild(sel);
     wrap.appendChild(sub);
+    const rrExtra = renderRRPairingControls();
+    if (rrExtra) wrap.appendChild(rrExtra);
   }
   if (state.format === "stack") {
     const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
@@ -12741,7 +12983,7 @@ function formatTimeBudgetReadout(config, minutes, suggestion) {
       const rounds = getTimeBudgetRounds();
       const activeCourts = timeBudgetActiveCourtsFor(state);
       const [roundLo, roundHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, activeCourts, cal);
-      const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
+      const [finLo, finHi]     = finalsStageMinutes(activeCourts, cal);
       loMin = rounds * roundLo + finLo + 5;
       hiMin = rounds * roundHi + finHi + 5;
     }
@@ -13051,7 +13293,7 @@ function renderTimeBudgetBlock() {
       const rounds = getTimeBudgetRounds();
       const activeCourts = timeBudgetActiveCourtsFor(state);
       const [roundLo, roundHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, activeCourts, cal);
-      const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
+      const [finLo, finHi]     = finalsStageMinutes(activeCourts, cal);
       loMin = rounds * roundLo + finLo + 5;
       hiMin = rounds * roundHi + finHi + 5;
     }
@@ -13331,7 +13573,7 @@ function renderTimeBudgetBlock() {
                       `• Transition buffer included between matches.`;
   } else if (config) {
     const [roundLo, roundHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, activeCourts, cal);
-    const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
+    const [finLo, finHi]     = finalsStageMinutes(activeCourts, cal);
     const formatLabel = state.format === "rr" ? "Round Robin" :
                         state.format === "stack" ? "Stack Format" :
                         state.format === "king" ? "King of the Court" :
@@ -14989,6 +15231,7 @@ function renderPlaying() {
     }, "Round " + (state.currentRound + 1) + " →");
     primaryBtn.disabled = !advanceReady;
   } else {
+    const skipFinals = state.format === "rr" && state.skipChampionship;
     primaryBtn = el("button", {
       class: "primary",
       onclick: () => {
@@ -14996,17 +15239,30 @@ function renderPlaying() {
         // round since this button was rendered.
         if (allRoundsDecided()) {
           const beforeState = stateSnapshotForUndo();
-          buildFinals();
-          recordEvent({
-            kind: "finals",
-            label: mutationEventLabel("buildFinals", { round: totalRegularRounds() }),
-            beforeState,
-            reversible: true,
-          });
+          if (skipFinals) {
+            // No championship stage — crown straight from the final round's standings.
+            state.phase = "done";
+            recordToLifetimeIfEnabled();
+            recordEvent({
+              kind: "finals",
+              label: mutationEventLabel("finish", {}),
+              beforeState,
+              reversible: true,
+            });
+            save();
+          } else {
+            buildFinals();
+            recordEvent({
+              kind: "finals",
+              label: mutationEventLabel("buildFinals", { round: totalRegularRounds() }),
+              beforeState,
+              reversible: true,
+            });
+          }
           render();
         }
       }
-    }, "Build Finals →");
+    }, skipFinals ? "🏆 Finish & Crown Champions →" : "Build Finals →");
     primaryBtn.disabled = !allRoundsAdvanceable;
   }
   actions.appendChild(primaryBtn);
