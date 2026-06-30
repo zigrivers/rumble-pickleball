@@ -1,5 +1,11 @@
 [
   {
+    "version": "v48",
+    "changes": [
+      "Add Scoring System selector (Side-out vs. Rally) to the Rules tab under Scoring & Limits, and implement a live, real-time Estimated Finish Time forecast dashboard showing remaining time projections and pace mid-tournament"
+    ]
+  },
+  {
     "version": "v47",
     "changes": [
       "Add phone number input fields next to names in the Settings Roster tab allowing real-time edits, move the Active Courts count and Rename Courts text inputs to a dedicated Courts tab, and restrict active court count to a read-only static display"
