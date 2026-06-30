@@ -10982,6 +10982,24 @@ function calibrationReadout() {
   } catch { return "using defaults"; }
 }
 
+function getNowTimeStr() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+function getBaseTimestamp() {
+  const timeStr = state.timeBudget && state.timeBudget.startTime;
+  if (!timeStr) return Date.now();
+  try {
+    const [h, m] = timeStr.split(":").map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.getTime();
+  } catch {
+    return Date.now();
+  }
+}
+
 function formatTimeBudgetReadout(config, minutes, suggestion) {
   const cal = readCalibration();
 
@@ -11037,8 +11055,8 @@ function formatTimeBudgetReadout(config, minutes, suggestion) {
         h = h % 12 || 12;
         return h + ":" + String(m).padStart(2, "0") + " " + ampm;
       };
-      const now = Date.now();
-      likelyDone = "~" + fmtTs(now + loMin * 60000) + "–" + fmtTs(now + hiMin * 60000);
+      const baseTs = getBaseTimestamp();
+      likelyDone = "~" + fmtTs(baseTs + loMin * 60000) + "–" + fmtTs(baseTs + hiMin * 60000);
     }
   }
 
@@ -11344,72 +11362,27 @@ function renderTimeBudgetBlock() {
   const card = el("div", { class: "card" });
   card.appendChild(el("h3", null, "Tournament Timing"));
 
-  // 1. Premium Estimate Banner
-  const estBanner = el("div", {
-    style: "background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:16px;margin:12px 0 16px;text-align:center;"
+  // --- Section 1: Event Schedule Controls (Inputs on top) ---
+  
+  // Start Time selector
+  const startRow = el("div", { class: "settings-row", style: "margin-bottom:12px;" });
+  startRow.appendChild(el("label", { for: "tb-start-time", style: "font-weight:600;" }, "Start Time"));
+  const startInput = el("input", {
+    type: "time",
+    id: "tb-start-time",
+    value: state.timeBudget.startTime || getNowTimeStr(),
+    style: "min-height:36px;font-size:14px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-family:inherit;width:120px;"
   });
-  
-  const estTitle = el("div", { class: "muted", style: "font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;" }, "Estimated Duration");
-  estBanner.appendChild(estTitle);
+  startInput.addEventListener("change", () => {
+    state.timeBudget.startTime = startInput.value;
+    save();
+    render();
+  });
+  startRow.appendChild(startInput);
+  card.appendChild(startRow);
 
-  let durationText = "—";
-  if (config && loMin != null && hiMin != null) {
-    const formatHours = mins => {
-      const h = Math.floor(mins / 60);
-      const m = mins % 60;
-      return h > 0 ? `${h}h ${m}m` : `${m}m`;
-    };
-    durationText = `~${loMin}–${hiMin} min (${formatHours(loMin)} – ${formatHours(hiMin)})`;
-  } else if (error) {
-    durationText = "Budget Too Tight";
-  }
-  
-  const estValue = el("div", {
-    style: "font-size:24px;font-weight:800;color:var(--accent);margin:6px 0;"
-  }, durationText);
-  estBanner.appendChild(estValue);
-
-  // Status Badge (Fit, Tight, Over)
-  let badgeText = "";
-  let badgeStyle = "display:inline-block;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;";
-  if (enabled) {
-    if (error) {
-      badgeText = "⚠️ Exceeds Budget";
-      badgeStyle += "background:#3d1a1a;color:#ff6b6b;border:1px solid #5a2424;";
-    } else if (isTight) {
-      badgeText = "⚠️ Tight Budget";
-      badgeStyle += "background:#3d301a;color:#ffb86c;border:1px solid #5a4524;";
-    } else {
-      badgeText = "✅ Fits Budget";
-      badgeStyle += "background:#1a3d24;color:#50fa7b;border:1px solid #245a33;";
-    }
-  } else {
-    badgeText = "ℹ️ Manual Scoring Estimate";
-    badgeStyle += "background:var(--panel);color:var(--muted);border:1px solid var(--border);";
-  }
-  const estBadge = el("span", { style: badgeStyle }, badgeText);
-  estBanner.appendChild(estBadge);
-  card.appendChild(estBanner);
-
-  // 2. Readout details row
-  const readoutWrap = el("div", { class: "tb-readout", style: "margin-bottom:16px;" });
-  
-  // Will Play
-  const playRow = el("div", null, "Will play: ", el("span", { id: "tb-will-play", style: "font-weight:600;" }, readout.willPlay));
-  readoutWrap.appendChild(playRow);
-
-  // Likely Done
-  const doneRow = el("div", { id: "tb-likely-done-row", style: readout.likelyDone ? "" : "display:none;" }, "Likely done: ", el("span", { id: "tb-likely-done", style: "font-weight:600;" }, readout.likelyDone));
-  readoutWrap.appendChild(doneRow);
-
-  // Confidence
-  const confRow = el("div", { id: "tb-confidence-row", style: readout.confidence ? "" : "display:none;" }, "Confidence: ", el("span", { id: "tb-confidence", class: "muted" }, readout.confidence));
-  readoutWrap.appendChild(confRow);
-
-  card.appendChild(readoutWrap);
-
-  // 3. Time Budget Toggle and Inputs
-  const tbCard = el("div", { style: "border-top:1px solid var(--border);padding-top:16px;margin-bottom:20px;" });
+  // Time Budget Toggle and Inputs
+  const tbCard = el("div", { style: "border-top:1px solid var(--border);padding-top:12px;margin-bottom:16px;" });
   
   const toggleLabel = el("label", { class: "tb-toggle-row", style: "cursor:pointer;font-size:16px;min-height:44px;" });
   const toggleChk = el("input", {
@@ -11480,8 +11453,8 @@ function renderTimeBudgetBlock() {
   tbCard.appendChild(details);
   card.appendChild(tbCard);
 
-  // 4. Scoring Mechanic Panel (Manual Controls)
-  const scoringCard = el("div", { style: "border-top:1px solid var(--border);padding-top:16px;" });
+  // Scoring Mechanic Panel (Manual Controls)
+  const scoringCard = el("div", { style: "border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px;" });
   scoringCard.appendChild(el("h4", { style: "margin:0 0 10px;font-size:15px;" }, "Manual Scoring Rules"));
   
   if (enabled) {
@@ -11565,10 +11538,110 @@ function renderTimeBudgetBlock() {
 
   card.appendChild(scoringCard);
 
+  // --- Section 2: Estimated Results (Outputs at the bottom) ---
+  
+  const summaryPanel = el("div", {
+    style: "background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:20px;border-top:1px solid var(--border);"
+  });
+  
+  summaryPanel.appendChild(el("h4", { style: "margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:700;color:var(--muted);text-align:center;" }, "Estimated Projection"));
+  
+  // Large duration + finish time grid
+  const grid = el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:center;margin-bottom:12px;" });
+  
+  // Col 1: Duration
+  const durCol = el("div");
+  durCol.appendChild(el("div", { class: "muted", style: "font-size:12px;" }, "Total Duration"));
+  let durationText = "—";
+  if (config && loMin != null && hiMin != null) {
+    const formatHours = mins => {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    };
+    durationText = `~${loMin}–${hiMin} min\n(${formatHours(loMin)} – ${formatHours(hiMin)})`;
+  } else if (error) {
+    durationText = "Budget Too Tight";
+  }
+  const durVal = el("div", { style: "font-size:18px;font-weight:800;color:var(--accent);margin-top:4px;white-space:pre-line;" }, durationText);
+  durCol.appendChild(durVal);
+  
+  // Col 2: Finish Time
+  const finCol = el("div");
+  finCol.appendChild(el("div", { class: "muted", style: "font-size:12px;" }, "Estimated Finish"));
+  const finVal = el("div", { id: "tb-likely-done", style: "font-size:18px;font-weight:800;color:var(--accent);margin-top:4px;" }, readout.likelyDone || "—");
+  finCol.appendChild(finVal);
+  
+  grid.appendChild(durCol);
+  grid.appendChild(finCol);
+  summaryPanel.appendChild(grid);
+
+  // Status Badge row
+  const badgeContainer = el("div", { style: "text-align:center;margin-bottom:16px;" });
+  let badgeText = "";
+  let badgeStyle = "display:inline-block;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;";
+  if (enabled) {
+    if (error) {
+      badgeText = "⚠️ Exceeds Budget";
+      badgeStyle += "background:#3d1a1a;color:#ff6b6b;border:1px solid #5a2424;";
+    } else if (isTight) {
+      badgeText = "⚠️ Tight Budget";
+      badgeStyle += "background:#3d301a;color:#ffb86c;border:1px solid #5a4524;";
+    } else {
+      badgeText = "✅ Fits Budget";
+      badgeStyle += "background:#1a3d24;color:#50fa7b;border:1px solid #245a33;";
+    }
+  } else {
+    badgeText = "ℹ️ Manual Scoring Estimate";
+    badgeStyle += "background:var(--panel);color:var(--muted);border:1px solid var(--border);";
+  }
+  badgeContainer.appendChild(el("span", { style: badgeStyle }, badgeText));
+  summaryPanel.appendChild(badgeContainer);
+
+  // Setup Details list
+  const detailsList = el("div", { class: "tb-readout", style: "border-top:1px solid var(--border);padding-top:12px;font-size:13px;" });
+  detailsList.appendChild(el("div", null, "Will play: ", el("span", { id: "tb-will-play", style: "font-weight:600;" }, readout.willPlay)));
+  detailsList.appendChild(el("div", { id: "tb-confidence-row", style: readout.confidence ? "" : "display:none;" }, "Confidence: ", el("span", { id: "tb-confidence", class: "muted" }, readout.confidence)));
+  summaryPanel.appendChild(detailsList);
+
+  // Math/Calculation breakdown accordion
+  const activeCourts = timeBudgetActiveCourtsFor(state);
+  const rounds = getTimeBudgetRounds();
+  let calcExplanation = "";
+  if (state.format === "crown") {
+    calcExplanation = `• Crown Court consists of 4 matches (3 themed rounds + 1 Championship Crown match). \n` +
+                      `• Matches run sequentially on one court. \n` +
+                      `• Transition buffer included between matches.`;
+  } else if (config) {
+    const [roundLo, roundHi] = estimateRoundMinutes(config.target, config.winBy, config.scoring, activeCourts, cal);
+    const [finLo, finHi]     = estimateRoundMinutes(11, 2, "sideout", activeCourts, cal);
+    const formatLabel = state.format === "rr" ? "Round Robin" :
+                        state.format === "stack" ? "Stack Format" :
+                        state.format === "king" ? "King of the Court" :
+                        state.format === "gauntlet" ? "Gauntlet" : "Tournament";
+    calcExplanation = `• Rounds: ${rounds} rounds of ${formatLabel} + 1 Championship round.\n` +
+                      `• Active courts: ${activeCourts} court${activeCourts === 1 ? "" : "s"}.\n` +
+                      `• Round duration: ~${Math.round(roundLo)}–${Math.round(roundHi)} min per round.\n` +
+                      `• Final championship: ~${Math.round(finLo)}–${Math.round(finHi)} min.\n` +
+                      `• Transition buffer: +5 min setup margin between rounds is included in the projection.`;
+  }
+
+  if (calcExplanation) {
+    const calcDetails = el("details", { style: "margin-top:12px;font-size:12px;border-top:1px solid var(--border);padding-top:8px;" });
+    calcDetails.appendChild(el("summary", { style: "cursor:pointer;color:var(--accent);font-weight:600;" }, "How is this calculated?"));
+    const calcBody = el("div", { style: "padding:8px 4px 0;line-height:1.5;color:var(--muted);white-space:pre-line;" }, calcExplanation);
+    calcDetails.appendChild(calcBody);
+    summaryPanel.appendChild(calcDetails);
+  }
+  
+  card.appendChild(summaryPanel);
+
+  // --- Event Listeners and Callbacks ---
+
   // Wire time minutes dropdown
   minutesSel.addEventListener("change", () => {
     state.timeBudget.minutes = parseInt(minutesSel.value, 10);
-    const { config: c, error: err } = applyTimeBudgetSolve();
+    const { config: c } = applyTimeBudgetSolve();
     if (c && c.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
       showRallyAckDialog(
         () => {
