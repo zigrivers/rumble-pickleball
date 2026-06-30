@@ -5965,7 +5965,16 @@ function runSelfTests() {
     state.scheduleSeed = 12345;
     writePlayersFromSlots(8);
     startTournament();
-    const offRounds = JSON.parse(JSON.stringify(state.rounds));
+    // Compare only the schedule structure (court + teams + byes), not the
+    // per-game gameStartedAt: Date.now() timestamps, which differ between the
+    // two startTournament() calls whenever they straddle a millisecond and
+    // would otherwise make this regression test flaky.
+    const schedSig = rounds => JSON.stringify(rounds.map(r => ({
+      round: r.round,
+      byes: byesOf(r),
+      games: gamesOf(r).map(g => ({ court: g.court, team1: g.team1, team2: g.team2 })),
+    })));
+    const offSig = schedSig(state.rounds);
     Math.random = mulberry32(99999);
     state = newState();
     state.format = "rr";
@@ -5977,7 +5986,7 @@ function runSelfTests() {
     writePlayersFromSlots(8);
     startTournament();
     Math.random = _origRandom;
-    console.assert(JSON.stringify(state.rounds) === JSON.stringify(offRounds),
+    console.assert(schedSig(state.rounds) === offSig,
       "RR regression: mixed-off produces identical schedule");
 
     state = newState();
