@@ -1585,7 +1585,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v24";
+const APP_VERSION    = "v25";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -10662,7 +10662,7 @@ function openRosterManagerModal() {
       const saveRow = el("div", { style: "display:flex; gap:8px;" });
       const nameInput = el("input", {
         type: "text",
-        placeholder: "Roster Name (e.g. Tuesday League)",
+        placeholder: "Roster Name (e.g. Morning League)",
         style: "flex:1; min-height:36px; font-size:13px; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:4px 8px; box-sizing: border-box;"
       });
       const saveBtn = el("button", {
@@ -10708,7 +10708,7 @@ function openRosterManagerModal() {
 
       if (groups.length === 0) {
         listContainer.appendChild(el("div", { style: "text-align:center; padding:32px; color:var(--muted); font-size:13px; font-style:italic;" },
-          "No saved rosters yet. Type a name above to save your Tuesday or Thursday roster."
+          "No saved rosters yet. Type a name above to save your current roster."
         ));
       } else {
         groups.forEach(g => {

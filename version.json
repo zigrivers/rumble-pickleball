@@ -1,5 +1,12 @@
 [
   {
+    "version": "v25",
+    "changes": [
+      "Generalized Roster Manager help text and placeholders for all league formats",
+      "Minor user experience refinements on setup views"
+    ]
+  },
+  {
     "version": "v24",
     "changes": [
       "View full version history and release notes in Settings modal",
