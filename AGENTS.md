@@ -100,5 +100,5 @@ The test: Can you draw the state diagram from memory before you touch code?
 
 When modifying `index.html` layouts, styles, configuration screens, or state managers:
 1. **Service Worker Version:** Increment the `VERSION` constant in `sw.js` (e.g. `rumble-pickleball-v21` to `rumble-pickleball-v22`). This forces client browsers to check for updates and refresh their cache.
-2. **Changelog Metadata:** Update `version.json` with the new version name matching the service worker bump, and write a list of brief, user-facing change descriptions in the `changes` array.
-3. **Commit & Ship:** Stage and commit `version.json` and `sw.js` alongside the source code changes before pushing or opening a PR.
+2. **Changelog Metadata:** Update `version-metadata.json` with the new version name matching the service worker bump, and write a list of brief, user-facing change descriptions in the `changes` array.
+3. **Commit & Ship:** Stage and commit `version-metadata.json` and `sw.js` alongside the source code changes before pushing or opening a PR.

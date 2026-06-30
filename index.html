@@ -1585,7 +1585,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v27";
+const APP_VERSION    = "v28";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -10799,7 +10799,7 @@ function openVersionHistoryModal() {
   bg.appendChild(modal);
   mountModal(bg, modal);
 
-  fetch("version.json?cb=" + Date.now())
+  fetch("version-metadata.json?cb=" + Date.now())
     .then(res => res.json())
     .then(data => {
       contentArea.innerHTML = "";
@@ -16831,7 +16831,7 @@ if (window.__rumbleFbReady) setupLifetimeAuth();
 
         document.body.appendChild(card);
 
-        fetch("version.json?cb=" + Date.now())
+        fetch("version-metadata.json?cb=" + Date.now())
           .then(res => res.json())
           .then(data => {
             if (!Array.isArray(data) || data.length === 0) return;
