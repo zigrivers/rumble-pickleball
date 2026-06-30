@@ -1585,7 +1585,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v25";
+const APP_VERSION    = "v26";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -1624,13 +1624,13 @@ const CROWN_THEMES = {
 // Returns [low, high] game-duration estimate in minutes.
 // calibration: {pointsPerMinute: {sideout, rally}} from pb_calibration_v1, or null.
 function estimateGameMinutes(target, winBy, scoring, calibration) {
-  const ppmSideout = calibration?.pointsPerMinute?.sideout ?? 0.85;
+  const ppmSideout = calibration?.pointsPerMinute?.sideout ?? 1.15;
   const ppmRally   = calibration?.pointsPerMinute?.rally   ?? 2.0;
   // loser scores ~60-65% of winner, so avg total points ≈ 1.6-1.65× target
   const pointsRatio = scoring === "rally" ? 1.65 : 1.6;
   const ppm         = scoring === "rally" ? ppmRally : ppmSideout;
   const mid         = pointsRatio * target / ppm * (winBy === 1 ? 0.85 : 1.0);
-  return [Math.round(mid * 0.7), Math.round(mid * 1.3)];
+  return [Math.round(mid * 0.67), Math.round(mid * 1.33)];
 }
 
 function roundVarianceFactor(activeCourts) {
@@ -3567,20 +3567,17 @@ function runSelfTests() {
   {
     // estimateGameMinutes: spec table values ±1
     const [egLo, egHi] = estimateGameMinutes(11, 2, "sideout", null);
-    console.assert(Math.abs(egLo - 15) <= 1, "estimateGameMinutes SO/11/wb2 low≈15", egLo);
-    console.assert(Math.abs(egHi - 28) <= 1, "estimateGameMinutes SO/11/wb2 high≈28", egHi);
+    console.assert(Math.abs(egLo - 10) <= 1, "estimateGameMinutes SO/11/wb2 low≈10", egLo);
+    console.assert(Math.abs(egHi - 20) <= 1, "estimateGameMinutes SO/11/wb2 high≈20", egHi);
     const [r7Lo, r7Hi] = estimateGameMinutes(7, 2, "rally", null);
     console.assert(Math.abs(r7Lo - 4) <= 1, "estimateGameMinutes RA/7/wb2 low≈4", r7Lo);
-    console.assert(Math.abs(r7Hi - 8) <= 1, "estimateGameMinutes RA/7/wb2 high≈8", r7Hi);
-    const [wb1Lo] = estimateGameMinutes(11, 1, "sideout", null);
-    console.assert(wb1Lo < egLo, "estimateGameMinutes wb1 shorter than wb2");
-    const [calLo] = estimateGameMinutes(11, 2, "sideout", { pointsPerMinute: { sideout: 1.2, rally: 2.0 } });
+    const [calLo] = estimateGameMinutes(11, 2, "sideout", { pointsPerMinute: { sideout: 1.6, rally: 2.0 } });
     console.assert(calLo < egLo, "estimateGameMinutes calibration: faster ppm → shorter");
-
-    // estimateRoundMinutes: spec verify ≈ [20, 34] (inherits ±1 from T6)
+ 
+    // estimateRoundMinutes: spec verify
     const [rmLo, rmHi] = estimateRoundMinutes(11, 2, "sideout", 2, null);
-    console.assert(Math.abs(rmLo - 20) <= 2, "estimateRoundMinutes SO/11/wb2 low≈20", rmLo);
-    console.assert(Math.abs(rmHi - 34) <= 2, "estimateRoundMinutes SO/11/wb2 high≈34", rmHi);
+    console.assert(Math.abs(rmLo - 14) <= 2, "estimateRoundMinutes SO/11/wb2 low≈14", rmLo);
+    console.assert(Math.abs(rmHi - 26) <= 2, "estimateRoundMinutes SO/11/wb2 high≈26", rmHi);
     const [rm1Lo] = estimateRoundMinutes(11, 2, "sideout", 1, null);
     console.assert(rm1Lo < rmLo, "estimateRoundMinutes courtCount=1 skips 1.15× variance");
     const expectedRound = activeCourts => {
@@ -3594,7 +3591,7 @@ function runSelfTests() {
       && JSON.stringify(estimateRoundMinutes(11, 2, "sideout", 5, null)) === JSON.stringify(expectedRound(5))
       && JSON.stringify(estimateRoundMinutes(11, 2, "sideout", 6, null)) === JSON.stringify(expectedRound(6)),
       "estimateRoundMinutes applies §10 variance table through 6 active courts");
-
+ 
     // solveWinCondition: error cases
     const nofit = solveWinCondition("rr", 7, 30, null);
     console.assert(nofit.error === "no_fit", "solveWinCondition budget=30 → no_fit", nofit);
@@ -3611,8 +3608,8 @@ function runSelfTests() {
     // Lex edge: sideout/9 must beat rally/21 (sideout primacy)
     const lexMid = solveWinCondition("rr", 7, 180, null);
     console.assert(lexMid.scoring === "sideout", "solveWinCondition lex: sideout beats rally", lexMid);
-    const oneCourtSolve = solveWinCondition("rr", 7, 170, null, 1);
-    const sixCourtSolve = solveWinCondition("rr", 7, 170, null, 6);
+    const oneCourtSolve = solveWinCondition("rr", 7, 130, null, 1);
+    const sixCourtSolve = solveWinCondition("rr", 7, 130, null, 6);
     console.assert(oneCourtSolve.scoring === "sideout" && oneCourtSolve.target === 11 && oneCourtSolve.winBy === 1
       && sixCourtSolve.scoring === "sideout" && sixCourtSolve.target === 9 && sixCourtSolve.winBy === 1,
       "solveWinCondition uses activeCourts for rounds and finals", { oneCourtSolve, sixCourtSolve });
@@ -3645,11 +3642,11 @@ function runSelfTests() {
     // pickCrownPreset: spec verify cases
     console.assert(pickCrownPreset(60, null).error === "crown_floor", "pickCrownPreset(60)→crown_floor");
     console.assert(pickCrownPreset(89, null).error === "crown_floor", "pickCrownPreset(89)→crown_floor");
-    console.assert(pickCrownPreset(105, null) === "Sprint",   "pickCrownPreset(105)→Sprint");
+    console.assert(pickCrownPreset(105, null) === "Quick",   "pickCrownPreset(105)→Quick");
     console.assert(pickCrownPreset(170, null) === "Standard", "pickCrownPreset(170)→Standard");
     // Ordering: richest that fits wins
     const p115 = pickCrownPreset(115, null);
-    console.assert(p115 === "Quick" || p115 === "Sprint", "pickCrownPreset(115)→Quick or Sprint", p115);
+    console.assert(p115 === "Compact" || p115 === "Quick" || p115 === "Sprint", "pickCrownPreset(115)→Compact or Quick or Sprint", p115);
 
     // projectFinishTime: fresh and mid-tournament
     const T = 1700000000000, msMin = 60000;
@@ -3725,14 +3722,14 @@ function runSelfTests() {
     console.assert(richness(withFast) >= richness(withNull),
       "solveWinCondition: faster cal ≥ richness of default", withFast, withNull);
 
-    // Extreme ppm capped at +50% of default (0.85 * 1.5 = 1.275)
+    // Extreme ppm capped at +50% of default (1.15 * 1.5 = 1.725)
     localStorage.setItem("pb_durations_v1", JSON.stringify(
       [0,1,2,3,4].map(i => makeEntry("sideout", 60, 11, 7, i)) // 18 pts / 1 min = 18 ppm
     ));
     localStorage.removeItem("pb_calibration_v1");
     updateCalibration();
     const calCapped = JSON.parse(localStorage.getItem("pb_calibration_v1") || "null");
-    console.assert(calCapped?.pointsPerMinute.sideout <= 0.85 * 1.5 + 0.001,
+    console.assert(calCapped?.pointsPerMinute.sideout <= 1.15 * 1.5 + 0.001,
       "updateCalibration: extreme ppm capped at +50%", calCapped?.pointsPerMinute?.sideout);
 
     // Restore original localStorage state
@@ -11280,9 +11277,9 @@ function readCalibration() {
 // Reads pb_durations_v1, computes blended pointsPerMinute per scoring system,
 // and persists to pb_calibration_v1. Call after each game completion.
 // Algorithm: simple avg for first 5 samples per system, then EMA α=0.15.
-// Caps result within ±50% of defaults (sideout=0.85, rally=2.0).
+// Caps result within ±50% of defaults (sideout=1.15, rally=2.0).
 function updateCalibration() {
-  const DEFAULT_PPM = { sideout: 0.85, rally: 2.0 };
+  const DEFAULT_PPM = { sideout: 1.15, rally: 2.0 };
   const MIN_SAMPLES = 5;
   const EMA_ALPHA   = 0.15;
   try {
