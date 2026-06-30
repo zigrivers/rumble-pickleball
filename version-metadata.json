@@ -1,5 +1,12 @@
 [
   {
+    "version": "v28",
+    "changes": [
+      "Rename changelog file to version-metadata.json to completely bypass client service worker caching",
+      "Configure network-first cache bypass pattern in service worker fetch listeners"
+    ]
+  },
+  {
     "version": "v27",
     "changes": [
       "Fix PWA upgrade card changes diff to display latest version updates by default"

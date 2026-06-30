@@ -3,7 +3,7 @@
 // delete by "everything that isn't the current version".
 const CACHE_PREFIX = "rumble-pickleball-";
 // Bump VERSION on every deploy so clients pick up changes.
-const VERSION = CACHE_PREFIX + "v27";
+const VERSION = CACHE_PREFIX + "v28";
 const SHELL = [
   "./",
   "index.html",
@@ -13,7 +13,6 @@ const SHELL = [
   "icon-512.png",
   "icon-512-maskable.png",
   "apple-touch-icon.png",
-  "version.json",
 ];
 
 self.addEventListener("install", (event) => {
@@ -35,6 +34,15 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+
+  const url = new URL(event.request.url);
+  if (url.pathname.endsWith("/version-metadata.json")) {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request, { ignoreSearch: true }))
+    );
+    return;
+  }
+
   // ignoreSearch so cached shell serves any query string (?test, ?simulate)
   // and update-induced reloads that preserve the query.
   event.respondWith(
