@@ -1,0 +1,8 @@
+{
+  "version": "v21",
+  "changes": [
+    "Rename and customize court names in setup",
+    "Select start times in 15-minute intervals",
+    "View games, byes, and partner mix projections in Format tab"
+  ]
+}
