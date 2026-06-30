@@ -1,5 +1,11 @@
 [
   {
+    "version": "v52",
+    "changes": [
+      "Fix a scheduler bug in Round Robin court assignment: restrict the post-schedule court balancing / relabeling pass to tournaments running on exactly two courts, preventing it from incorrectly swapping and collapsing Court 3+ games into Court 1 and 2"
+    ]
+  },
+  {
     "version": "v51",
     "changes": [
       "Upgrade the Drawing Slots screen: introduce a dynamic background particle canvas with glowing blue and gold elements, integrate golden spark/spitfire burst effects that trigger from the center of each card upon locking in, and increase the reveal animation duration by 50% to build anticipation and suspense"

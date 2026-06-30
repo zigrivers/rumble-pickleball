@@ -2507,7 +2507,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v51";
+const APP_VERSION    = "v52";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -9832,6 +9832,7 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
   // Post-schedule court balancing: for each round, swap courts 1↔2 if it
   // reduces the total court-count imbalance across all players. RR courts
   // are interchangeable, so relabeling doesn't change pairings.
+  if (courtCount !== 2) return rounds;
   for (let pass = 0; pass < rounds.length; pass++) {
     let improved = false;
     for (let ri = 0; ri < rounds.length; ri++) {
