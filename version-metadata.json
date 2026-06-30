@@ -1,5 +1,13 @@
 [
   {
+    "version": "v33",
+    "changes": [
+      "Restore the Round Robin rounds selection dropdown for 8-player / 2-court events",
+      "Update rounds projection statistics and default mixer recommendation badge to respect custom Round Robin rounds count",
+      "Update tournament start scheduler to support custom generated Round Robin round counts for 8-player / 2-court configurations"
+    ]
+  },
+  {
     "version": "v32",
     "changes": [
       "Improve setup phone number field clarity and layout",

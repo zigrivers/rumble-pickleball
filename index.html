@@ -7790,7 +7790,7 @@ function finalRankingCrown() {
   } else {
     state.slots = shuffled;
     writePlayersFromSlots(count, phoneByName);
-    if (count === 8 && state.courtCount === 2 && !state.mixedMode) {
+    if (count === 8 && state.courtCount === 2 && !state.mixedMode && state.rrRounds === 7) {
       state.rrScheduleMode = "wh8";
       state.rrRounds = 7;
       state.rounds = generateRounds();
@@ -10400,7 +10400,7 @@ function updateStartState() {
 }
 
 function setupRoundCountForSummary(players, activeCourts) {
-  if (state.format === "rr") return players === 8 && activeCourts === 2 ? 7 : Math.max(4, Math.min(12, parseInt(state.rrRounds, 10) || 7));
+  if (state.format === "rr") return Math.max(4, Math.min(12, parseInt(state.rrRounds, 10) || 7));
   if (state.format === "stack") return state.stackRounds;
   if (state.format === "king") return state.kingRounds;
   if (state.format === "gauntlet") return state.gauntletRounds;
@@ -11344,7 +11344,7 @@ function renderFormatChooser() {
   // Rounds configuration based on format
   const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
   const rrSetupCount = setupRosterCount();
-  if (state.format === "rr" && !(rrSetupCount === 8 && courtDisplay === 2)) {
+  if (state.format === "rr") {
     const sub = el("div", { class: "settings-row", style: "margin-top: 10px; padding: 0;" });
     sub.appendChild(el("label", null, "Rounds"));
     const sel = el("select");
@@ -11415,7 +11415,7 @@ function renderFormatChooser() {
 
   // Display projection statistics block under rounds selector
   const stats = getRoundStatistics(state.format,
-    state.format === "rr" ? (rrSetupCount === 8 && courtDisplay === 2 ? 7 : state.rrRounds) :
+    state.format === "rr" ? state.rrRounds :
     state.format === "stack" ? state.stackRounds :
     state.format === "king" ? state.kingRounds : state.gauntletRounds,
     rrSetupCount, courtDisplay
@@ -11433,7 +11433,7 @@ function renderFormatChooser() {
     // Recommended badge for Round Robin
     if (state.format === "rr") {
       const defaultR = defaultRoundsForMixer(rrSetupCount, courtDisplay);
-      const currentR = rrSetupCount === 8 && courtDisplay === 2 ? 7 : state.rrRounds;
+      const currentR = state.rrRounds;
       if (currentR === defaultR) {
         statsBox.appendChild(el("div", {
           style: "margin-top:10px; display:inline-block; background:#1a3d24; color:#50fa7b; border:1px solid #245a33; border-radius:99px; padding:4px 10px; font-size:11px; font-weight:700;"
