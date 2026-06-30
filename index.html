@@ -2157,6 +2157,103 @@
     color: #a78bfa;
   }
 
+  /* ── No-championship "standings podium" celebration ──────────────────
+     When a tournament ends with no final game, the top-4 grid IS the
+     champions. Reframe the header (no "Tied!") and spotlight 1st place. */
+  .champions-podium-card--standings {
+    border-color: rgba(251, 191, 36, 0.30);
+  }
+  .champions-podium-card--standings::after {
+    content: "";
+    position: absolute;
+    top: -45%;
+    left: 50%;
+    width: 150%;
+    height: 130%;
+    transform: translateX(-50%) scale(1);
+    background: radial-gradient(ellipse at center,
+      rgba(251, 191, 36, 0.13) 0%,
+      rgba(251, 191, 36, 0.05) 32%,
+      transparent 62%);
+    pointer-events: none;
+    z-index: 0;
+    animation: auroraDrift 9s ease-in-out infinite;
+  }
+  /* keep all real content above the aurora glow */
+  .champions-podium-card--standings > * { position: relative; z-index: 1; }
+  @keyframes auroraDrift {
+    0%, 100% { opacity: 0.65; transform: translateX(-50%) scale(1); }
+    50%      { opacity: 1;    transform: translateX(-50%) scale(1.09); }
+  }
+  .champion-hero-name {
+    background: linear-gradient(180deg, #fde68a 0%, #fbbf24 52%, #d97706 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: #fbbf24; /* fallback for clip-less engines */
+    text-shadow: 0 0 26px rgba(251, 191, 36, 0.35);
+    font-size: 30px;
+    margin-bottom: 8px;
+  }
+  .champion-standings-caption {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    padding: 4px 12px;
+    border: 1px solid rgba(251, 191, 36, 0.22);
+    border-radius: 999px;
+    background: rgba(251, 191, 36, 0.06);
+  }
+  /* 1st-place champion spotlight */
+  .champions-podium-card--standings .placement-card.rank-1 {
+    border-color: rgba(251, 191, 36, 0.5);
+    background: linear-gradient(180deg, rgba(251, 191, 36, 0.14) 0%, rgba(251, 191, 36, 0.02) 100%);
+    overflow: hidden;
+    animation:
+      fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards,
+      championGlow 2.8s ease-in-out 0.7s infinite;
+  }
+  @keyframes championGlow {
+    0%, 100% { box-shadow: 0 8px 26px -14px rgba(251, 191, 36, 0.40); }
+    50%      { box-shadow: 0 10px 34px -8px rgba(251, 191, 36, 0.70); }
+  }
+  /* sweeping shine across the champion card (transform-only) */
+  .champions-podium-card--standings .placement-card.rank-1::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40%;
+    height: 100%;
+    background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.22) 50%, transparent 100%);
+    transform: translateX(-180%) skewX(-18deg);
+    pointer-events: none;
+    animation: championShine 4.6s ease-in-out 1.2s infinite;
+  }
+  @keyframes championShine {
+    0%        { transform: translateX(-180%) skewX(-18deg); }
+    22%, 100% { transform: translateX(360%)  skewX(-18deg); }
+  }
+  /* corner "CHAMPION" ribbon */
+  .champions-podium-card--standings .placement-card.rank-1::after {
+    content: "CHAMPION";
+    position: absolute;
+    top: 12px;
+    right: -32px;
+    transform: rotate(38deg);
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    color: #1a1207;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    padding: 3px 34px;
+    pointer-events: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  }
+
   .standings-header-row {
     display: flex;
     align-items: center;
@@ -2507,7 +2604,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v54";
+const APP_VERSION    = "v55";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -14970,7 +15067,8 @@ function renderUnifiedChampionsPanel(ranking) {
   let champWinName = "";
   let scorecardEl = null;
   let consBlockEl = null;
-  
+  let noFinalGame = false;
+
   if (isCrown) {
     const crownWinner = crownMatchWinner(state.crownFinal);
     const champTeam = crownWinner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
@@ -14989,6 +15087,7 @@ function renderUnifiedChampionsPanel(ranking) {
     consBlockEl = mvpBlock;
   } else {
     const champ = finalTier(0), cons = finalTier(1);
+    noFinalGame = !champ;  // no championship game played → crown from final standings
     const champWin = champ && champ.score1 > champ.score2 ? champ.team1 : (champ && champ.score2 > champ.score1 ? champ.team2 : null);
     const consWin  = cons && cons.score1  > cons.score2  ? cons.team1  : (cons && cons.score2  > cons.score1  ? cons.team2  : null);
     
@@ -15004,11 +15103,20 @@ function renderUnifiedChampionsPanel(ranking) {
     }
   }
   
-  header.appendChild(el("div", { class: "winners celebration-winners" }, champWinName));
-  if (scorecardEl) header.appendChild(scorecardEl);
-  if (consBlockEl) header.appendChild(consBlockEl);
+  if (noFinalGame) {
+    // No championship game: the four players on the podium ARE the champions.
+    // Crown the standings leader as the hero, then let the 1st–4th grid shine.
+    card.classList.add("champions-podium-card--standings");
+    const champName = (ranking[0] && ranking[0].name) || "Champions";
+    header.appendChild(el("div", { class: "winners celebration-winners champion-hero-name" }, champName));
+    header.appendChild(el("div", { class: "champion-standings-caption" }, "Crowned by final standings"));
+  } else {
+    header.appendChild(el("div", { class: "winners celebration-winners" }, champWinName));
+    if (scorecardEl) header.appendChild(scorecardEl);
+    if (consBlockEl) header.appendChild(consBlockEl);
+  }
   card.appendChild(header);
-  
+
   const grid = el("div", { class: "placements-grid" });
   const rankConfigs = [
     { rank: 1, title: "1st Place", classSuffix: "1", emoji: "🥇" },
