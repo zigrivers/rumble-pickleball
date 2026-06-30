@@ -363,6 +363,20 @@
     border-color: var(--bad);
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
   }
+  .player-name-input {
+    padding-left: 36px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 12px center;
+    background-size: 16px 16px;
+  }
+  .phone-input {
+    padding-left: 36px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='2' width='14' height='20' rx='2' ry='2'/%3E%3Cline x1='12' y1='18' x2='12.01' y2='18'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 12px center;
+    background-size: 16px 16px;
+  }
   #start-hint.is-error { color: var(--bad); font-weight: 600; }
   .court-summary {
     margin-top: 10px;
@@ -12628,8 +12642,12 @@ function getRoundStatistics(format, rounds, players, courts) {
     };
     const card = el("div", { class: "card" },
       el("h2", null, "Enter " + playerCount + " Players"),
-      el("p", { class: "muted", style: "margin: 0 0 14px;" },
-        subtitleMap[state.format] || "Names are randomly assigned to slots when the tournament starts.")
+      el("p", { class: "muted", style: "margin: 0 0 8px; line-height: 1.45;" },
+        subtitleMap[state.format] || "Names are randomly assigned to slots when the tournament starts."),
+      el("p", { class: "muted", style: "margin: 0 0 14px; font-size: 12px; line-height: 1.45; display: flex; align-items: flex-start; gap: 6px; color: var(--accent); opacity: 0.85;" },
+        makeSvg('<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>', 14, "0 0 24 24"),
+        "Adding phone numbers (optional) allows you to text match schedules and court updates to players during the tournament."
+      )
     );
     const actions = el("div", { class: "setup-actions" });
     if (!isCrown) {
@@ -12668,7 +12686,7 @@ function getRoundStatistics(format, rounds, players, courts) {
     for (let i = 0; i < playerCount; i++) {
       const row = el("div", { class: "setup-row", style: "display:flex;gap:8px;" });
       const nameInput = el("input", {
-        class: "name-input",
+        class: "name-input player-name-input",
         id: "setup-name-" + i,
         type: "text",
         placeholder: "Player " + (i + 1),
@@ -12681,14 +12699,14 @@ function getRoundStatistics(format, rounds, players, courts) {
         style: "flex:1.4;",
       });
       const phoneInput = el("input", {
-        class: "name-input",
+        class: "name-input phone-input",
         type: "tel",
         inputmode: "tel",
-        placeholder: "📱 optional",
+        placeholder: "Phone (e.g. 555-555-5555)",
         "aria-label": "Phone number for player " + (i + 1),
         value: state.rawPhones[i] || "",
         autocomplete: "off",
-        style: "flex:1.4;font-size:15px;",
+        style: "flex:1.4;font-size:14px;",
       });
       nameInput.addEventListener("input", () => {
         state.rawNames[i] = nameInput.value;

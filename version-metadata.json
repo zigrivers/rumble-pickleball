@@ -1,5 +1,14 @@
 [
   {
+    "version": "v32",
+    "changes": [
+      "Improve setup phone number field clarity and layout",
+      "Add interactive outline SVG user and phone icons inside the roster text fields",
+      "Introduce a helper tips banner explaining that phone numbers are used to text match schedules and court updates",
+      "Provide a clear phone format placeholder (e.g. 555-555-5555) for consistent inputs"
+    ]
+  },
+  {
     "version": "v31",
     "changes": [
       "Redesign tournament setup screen with modern tabbed segmented controls and premium animations",
