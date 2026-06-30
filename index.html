@@ -602,9 +602,31 @@
   }
   .help-th .col-help-btn:hover, .help-th .col-help-btn:focus-visible { color: var(--text); }
   .col-help-modal { max-width: 360px; }
-  .guide-btn { background: none; border: 1px solid var(--muted); color: var(--muted); border-radius: 999px;
-    font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; cursor: pointer; }
-  .guide-btn:hover, .guide-btn:focus-visible { color: var(--text); border-color: var(--text); }
+  .guide-btn {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--muted);
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 6px 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+  }
+  .guide-btn:hover, .guide-btn:focus-visible {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text);
+    transform: translateY(-1px);
+  }
+  .guide-btn:active {
+    transform: translateY(0);
+  }
   .col-guide-modal { max-width: 420px; max-height: 80vh; overflow-y: auto; }
   table.standings tr.r1 td.name { color: var(--gold); }
   table.standings .rank {
@@ -1913,28 +1935,223 @@
     .awards-strip.secondary { grid-template-columns: repeat(4, 1fr); }
   }
   .award-chip {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 12px 14px;
+    transition: all 0.15s ease;
+  }
+  .award-chip:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
   }
   .award-label {
     font-size: 11px;
-    color: var(--muted);
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    color: var(--accent);
+    font-weight: 800;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
+    margin-bottom: 4px;
   }
   .award-value {
     font-size: 16px;
-    font-weight: 700;
-    margin-top: 2px;
+    font-weight: 800;
+    color: var(--text);
     line-height: 1.3;
   }
   .award-detail {
     font-size: 12px;
     color: var(--muted);
+    margin-top: 4px;
+  }
+  
+  /* Champions & Podium Redesign styling */
+  .champions-podium-card {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%);
+    border: 1px solid rgba(251, 191, 36, 0.15);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .champions-podium-card::before {
+    content: "🏆";
+    position: absolute;
+    right: -20px;
+    top: -20px;
+    font-size: 150px;
+    opacity: 0.05;
+    pointer-events: none;
+  }
+  .celebration-header {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .celebration-crown {
+    font-size: 32px;
+    margin-bottom: 8px;
+    display: inline-block;
+    animation: float 3s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  .celebration-title {
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .celebration-winners {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    margin-bottom: 12px;
+    text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+  }
+  .placements-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 24px;
+  }
+  @media (max-width: 600px) {
+    .placements-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  .placement-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 16px 12px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    transition: all 0.2s ease;
+  }
+  .placement-card:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .placement-badge {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-bottom: 8px;
+  }
+  .placement-emoji {
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+  .placement-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+  }
+  .placement-stat {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .placement-card.rank-1 {
+    border-color: rgba(251, 191, 36, 0.3);
+    background: linear-gradient(180deg, rgba(251, 191, 36, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  }
+  .placement-card.rank-1 .placement-badge {
+    background: rgba(251, 191, 36, 0.15);
+    color: #f59e0b;
+  }
+  .placement-card.rank-2 {
+    border-color: rgba(203, 213, 225, 0.3);
+    background: linear-gradient(180deg, rgba(203, 213, 225, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  }
+  .placement-card.rank-2 .placement-badge {
+    background: rgba(203, 213, 225, 0.15);
+    color: #cbd5e1;
+  }
+  .placement-card.rank-3 {
+    border-color: rgba(217, 119, 6, 0.3);
+    background: linear-gradient(180deg, rgba(217, 119, 6, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  }
+  .placement-card.rank-3 .placement-badge {
+    background: rgba(217, 119, 6, 0.15);
+    color: #d97706;
+  }
+  .placement-card.rank-4 {
+    border-color: rgba(167, 139, 250, 0.2);
+    background: linear-gradient(180deg, rgba(167, 139, 250, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  }
+  .placement-card.rank-4 .placement-badge {
+    background: rgba(167, 139, 250, 0.10);
+    color: #a78bfa;
+  }
+
+  .standings-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    padding-bottom: 12px;
+  }
+
+  .mvp-badge-block {
+    margin-top: 16px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    display: inline-block;
+    text-align: left;
+    max-width: 280px;
+    width: 100%;
+  }
+  .mvp-badge-title {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .mvp-badge-name {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  .mvp-badge-tag {
+    font-size: 11px;
+    color: var(--gold);
+    font-weight: 700;
     margin-top: 2px;
+  }
+  .mvp-badge-detail {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+
+  .awards-header-row {
+    margin-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    padding-bottom: 12px;
   }
   /* Settings inline select row */
   .settings-row {
@@ -14207,41 +14424,121 @@ function renderCrownMatchScorecard(crownFinal) {
   return wrap;
 }
 
-function renderPodiumCrown(ranking) {
-  const stats = crownPlayerStats();
-  const matchPts = new Map(stats.map(s => [s.slot, s.matchPoints]));
-  const { gamesWon1, gamesWon2 } = crownGamesWon(state.crownFinal);
-  const winner = crownMatchWinner(state.crownFinal);
-  const winTeam  = winner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
-  const loseTeam = winner === "team1" ? state.crownFinal.team2 : state.crownFinal.team1;
-  const winGames  = winner === "team1" ? gamesWon1 : gamesWon2;
-  const loseGames = winner === "team1" ? gamesWon2 : gamesWon1;
-  const pts = matchPointsForMatch(winGames, loseGames, "Crown");
-
-  const order = ["silver", "gold", "bronze"];
-  const podiumRanks = [ranking[1], ranking[0], ranking[2]];
-  const emojis = { silver: "🥈", gold: "👑", bronze: "🥉" };
-  const podium = el("div", { class: "podium" });
-  order.forEach((kind, i) => {
-    const r = podiumRanks[i];
-    const totalMp = (matchPts.get(r.slot) || 0) + (winTeam.includes(r.slot) ? pts.perWinner : pts.perLoser);
-    const step = el("div", { class: "podium-step " + kind });
-    step.appendChild(el("div", { class: "podium-name" }, r.name));
-    step.appendChild(el("div", { class: "podium-points" }, totalMp.toFixed(1) + " mp"));
-    step.appendChild(el("div", { class: "podium-bar" }, emojis[kind]));
-    podium.appendChild(step);
-  });
-
-  const wrap = el("div");
-  wrap.appendChild(podium);
-  if (ranking[3]) {
-    const r4 = ranking[3];
-    const totalMp = (matchPts.get(r4.slot) || 0) + (winTeam.includes(r4.slot) ? pts.perWinner : pts.perLoser);
-    wrap.appendChild(el("div", { style: "text-align:center;padding:8px;color:var(--muted);font-size:15px;" },
-      "4th: " + r4.name + " · " + totalMp.toFixed(1) + " mp"
-    ));
+function getPlayerPrimaryStat(slot) {
+  if (state.format === "crown") {
+    const stats = crownPlayerStats();
+    const s = stats.find(x => x.slot === slot);
+    if (!s) return "";
+    const winner = crownMatchWinner(state.crownFinal);
+    const winTeam  = winner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
+    const { gamesWon1, gamesWon2 } = crownGamesWon(state.crownFinal);
+    const winGames  = winner === "team1" ? gamesWon1 : gamesWon2;
+    const loseGames = winner === "team1" ? gamesWon2 : gamesWon1;
+    const pts = matchPointsForMatch(winGames, loseGames, "Crown");
+    const bonus = winTeam.includes(slot) ? pts.perWinner : pts.perLoser;
+    return ((s.matchPoints || 0) + bonus).toFixed(1) + " mp";
   }
-  return wrap;
+  if (state.format === "stack") {
+    const stats = computeStackStats(state.rounds.length);
+    const s = stats.find(x => x.slot === slot);
+    return s ? s.stackRate.toFixed(1) + " SS/G" : "";
+  }
+  if (state.format === "king") {
+    const stats = computeKingStats(state.rounds.length);
+    const s = stats.find(x => x.slot === slot);
+    return s ? s.kingRate.toFixed(1) + " KS/G" : "";
+  }
+  const stats = computeMarginStats(totalRegularRounds());
+  const s = stats.find(x => x.slot === slot);
+  return s ? s.adjScore.toFixed(1) + " AM" : "";
+}
+
+function renderUnifiedChampionsPanel(ranking) {
+  const isCrown = state.format === "crown";
+  const card = el("div", { class: "card champions-podium-card" });
+  
+  const header = el("div", { class: "celebration-header" });
+  header.appendChild(el("div", { class: "celebration-crown" }, "👑"));
+  header.appendChild(el("div", { class: "celebration-title" }, "Tournament Champions"));
+  
+  let champWinName = "";
+  let scorecardEl = null;
+  let consBlockEl = null;
+  
+  if (isCrown) {
+    const crownWinner = crownMatchWinner(state.crownFinal);
+    const champTeam = crownWinner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
+    champWinName = teamName(champTeam);
+    scorecardEl = renderCrownMatchScorecard(state.crownFinal);
+    
+    const rsMVP = crownLeaderboard()[0];
+    const mvpOnChampTeam = champTeam.includes(rsMVP.slot);
+    const mvpBlock = el("div", { class: "mvp-badge-block" });
+    mvpBlock.appendChild(el("div", { class: "mvp-badge-title" }, "🌟 Regular Season MVP"));
+    mvpBlock.appendChild(el("div", { class: "mvp-badge-name" }, rsMVP.name));
+    if (mvpOnChampTeam) {
+      mvpBlock.appendChild(el("div", { class: "mvp-badge-tag" }, "Champion · Regular Season MVP"));
+    }
+    mvpBlock.appendChild(el("div", { class: "mvp-badge-detail" }, rsMVP.matchPoints.toFixed(1) + " match pts"));
+    consBlockEl = mvpBlock;
+  } else {
+    const champ = finalTier(0), cons = finalTier(1);
+    const champWin = champ && champ.score1 > champ.score2 ? champ.team1 : (champ && champ.score2 > champ.score1 ? champ.team2 : null);
+    const consWin  = cons && cons.score1  > cons.score2  ? cons.team1  : (cons && cons.score2  > cons.score1  ? cons.team2  : null);
+    
+    champWinName = champWin ? teamName(champWin) : "Tied!";
+    if (champ) scorecardEl = renderScorecard(champ);
+    
+    if (cons) {
+      const consBlock = el("div", { class: "consolation-block" });
+      consBlock.appendChild(el("div", { class: "consolation-title" }, "🥈 Runner-Up Bracket"));
+      consBlock.appendChild(el("div", { class: "consolation-winners" }, consWin ? teamName(consWin) : "Tied!"));
+      consBlock.appendChild(renderScorecard(cons));
+      consBlockEl = consBlock;
+    }
+  }
+  
+  header.appendChild(el("div", { class: "winners celebration-winners" }, champWinName));
+  if (scorecardEl) header.appendChild(scorecardEl);
+  if (consBlockEl) header.appendChild(consBlockEl);
+  card.appendChild(header);
+  
+  const grid = el("div", { class: "placements-grid" });
+  const rankConfigs = [
+    { rank: 1, title: "1st Place", classSuffix: "1", emoji: "🥇" },
+    { rank: 2, title: "2nd Place", classSuffix: "2", emoji: "🥈" },
+    { rank: 3, title: "3rd Place", classSuffix: "3", emoji: "🥉" },
+    { rank: 4, title: "4th Place", classSuffix: "4", emoji: "🎖️" },
+  ];
+  
+  rankConfigs.forEach(cfg => {
+    const r = ranking[cfg.rank - 1];
+    if (r) {
+      const item = el("div", { class: "placement-card rank-" + cfg.classSuffix });
+      item.appendChild(el("div", { class: "placement-badge" }, cfg.title));
+      item.appendChild(el("div", { class: "placement-emoji" }, cfg.emoji));
+      item.appendChild(el("div", { class: "placement-name" }, r.name));
+      
+      const statVal = getPlayerPrimaryStat(r.slot);
+      if (statVal) {
+        item.appendChild(el("div", { class: "placement-stat" }, statVal));
+      }
+      grid.appendChild(item);
+    }
+  });
+  
+  card.appendChild(grid);
+  return card;
+}
+
+function renderAwardsPanel() {
+  const card = el("div", { class: "card awards-panel-card" });
+  const head = el("div", { class: "awards-header-row" },
+    el("h3", { style: "margin: 0; font-size: 18px; font-weight: 800;" }, "🏅 Tournament Awards")
+  );
+  card.appendChild(head);
+  card.appendChild(renderAwardsStrip());
+  return card;
 }
 
 function renderDoneScreenCrown() {
@@ -14254,43 +14551,23 @@ function renderDoneScreenCrown() {
   }
 
   const ranking = finalRankingCrown();
-  const crownWinner = crownMatchWinner(state.crownFinal);
-  const champTeam = crownWinner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
-  const rsMVP = crownLeaderboard()[0];
 
-  const card = el("div", { class: "card champions-card" });
-  const champions = el("div", { class: "champions" });
-  champions.appendChild(el("div", { class: "crown" }, "👑"));
-  champions.appendChild(el("h1", null, "CHAMPIONS"));
-  champions.appendChild(el("div", { class: "winners" }, teamName(champTeam)));
-  champions.appendChild(renderCrownMatchScorecard(state.crownFinal));
+  // 1. Unified Champions & Placements Panel
+  wrap.appendChild(renderUnifiedChampionsPanel(ranking));
 
-  const mvpOnChampTeam = champTeam.includes(rsMVP.slot);
-  const mvpBlock = el("div", { style: "margin-top:24px;padding:14px;background:var(--panel-2);border-radius:12px;" });
-  mvpBlock.appendChild(el("div", { style: "font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px;" }, "🌟 Regular Season MVP"));
-  mvpBlock.appendChild(el("div", { style: "font-size:22px;font-weight:800;" }, rsMVP.name));
-  if (mvpOnChampTeam) {
-    mvpBlock.appendChild(el("div", { style: "font-size:12px;color:var(--gold);font-weight:700;margin-top:4px;" }, "Champion · Regular Season MVP"));
-  }
-  mvpBlock.appendChild(el("div", { style: "font-size:13px;color:var(--muted);margin-top:2px;" }, rsMVP.matchPoints.toFixed(1) + " match pts (regular season)"));
-  champions.appendChild(mvpBlock);
-  card.appendChild(champions);
-  wrap.appendChild(card);
-
-  wrap.appendChild(renderSaveToLifetimeBlock());
-
-  wrap.appendChild(renderPodiumCrown(ranking));
-  wrap.appendChild(renderShareCardsButtonCard());
-  wrap.appendChild(renderAwardsStrip());
-
+  // 2. Final Standings
   const standings = el("div", { class: "card", style: "margin-top:14px;" });
-  standings.appendChild(el("div", { style: "display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:10px;flex-wrap:wrap;" },
-    el("h3", { style: "margin:0;" }, "Final Standings"),
-    el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" },
+  standings.appendChild(el("div", { class: "standings-header-row" },
+    el("div", null,
+      el("h3", { style: "margin: 0; font-size: 18px; font-weight: 800;" }, "Final Standings"),
+      el("span", { class: "muted", style: "font-size: 12px;" }, "Includes crown match")
+    ),
+    el("div", { style: "display:flex;align-items:center;gap:8px;" },
       standingsViewToggle(), guideButton("crown")),
   ));
+
   const doneCrownPoints = isPointsView();
-  const table = el("table", { class: "standings" });
+  const table = el("table", { class: "standings", style: "margin-top: 10px;" });
   const crownDoneColgroup = el("colgroup", null,
     el("col", { class: "c-rank" }),
     el("col", { class: "c-name" }),
@@ -14323,6 +14600,27 @@ function renderDoneScreenCrown() {
   standings.appendChild(table);
   wrap.appendChild(standings);
 
+  // 3. Awards Panel
+  wrap.appendChild(renderAwardsPanel());
+
+  // 4. Lifetime Stats
+  const hasPhones = (state.phones || []).some(isValidPhone);
+  if (hasPhones) {
+    wrap.appendChild(renderSaveToLifetimeBlock());
+  }
+
+  // 5. Text Results / Share Cards
+  if (hasPhones) {
+    if (textResultsSupported()) {
+      wrap.appendChild(renderTextResultsCard("final"));
+    } else {
+      wrap.appendChild(renderShareCardsButtonCard());
+    }
+  } else {
+    wrap.appendChild(renderShareCardsButtonCard());
+  }
+
+  // Back and Start New Buttons
   wrap.appendChild(el("button", {
     class: "ghost", style: "width:100%;margin-bottom:10px;",
     onclick: () => { state.phase = "crown"; save(); render(); }
@@ -14343,9 +14641,6 @@ function renderDoneScreenCrown() {
     }
   }, "Start New Tournament"));
 
-  if (textResultsSupported() && (state.phones || []).some(isValidPhone)) {
-    wrap.appendChild(renderTextResultsCard("final"));
-  }
   return wrap;
 }
 
@@ -15050,7 +15345,9 @@ function openColumnGuideModal(format) {
   mountModal(bg, modal);
 }
 function guideButton(format) {
-  const btn = el("button", { class: "guide-btn", type: "button" }, "ⓘ Column guide");
+  const btn = el("button", { class: "guide-btn", type: "button" });
+  btn.appendChild(makeSvg('<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', 14, "0 0 24 24"));
+  btn.appendChild(el("span", null, "Column guide"));
   btn.addEventListener("click", () => openColumnGuideModal(format || state.format));
   return btn;
 }
@@ -15310,33 +15607,7 @@ function renderFinalsScreen() {
 }
 
 // ---------- done screen ----------
-function renderPodium(ranking) {
-  const isStack = state.format === "stack";
-  let labelBySlot;
-  if (isStack) {
-    const stackStats = computeStackStats(state.rounds.length);
-    labelBySlot = new Map(stackStats.map(s => [s.slot, s.stackRate.toFixed(1) + " SS/G"]));
-  } else if (state.format === "king") {
-    const ks = computeKingStats(state.rounds.length);
-    labelBySlot = new Map(ks.map(s => [s.slot, s.kingRate.toFixed(1) + " KS/G"]));
-  } else {
-    const stats = computeMarginStats(totalRegularRounds());
-    labelBySlot = new Map(stats.map(s => [s.slot, s.adjScore.toFixed(1) + " AM"]));
-  }
-  const order = ["silver", "gold", "bronze"]; // visual left/center/right
-  const ranks = [ranking[1], ranking[0], ranking[2]]; // map to visual order
-  const emojis = { silver: "🥈", gold: "🥇", bronze: "🥉" };
-  const podium = el("div", { class: "podium" });
-  order.forEach((kind, i) => {
-    const r = ranks[i];
-    const step = el("div", { class: "podium-step " + kind });
-    step.appendChild(el("div", { class: "podium-name" }, r.name));
-    step.appendChild(el("div", { class: "podium-points" }, labelBySlot.get(r.slot)));
-    step.appendChild(el("div", { class: "podium-bar" }, emojis[kind]));
-    podium.appendChild(step);
-  });
-  return podium;
-}
+
 
 function renderScorecard(game) {
   const win1 = game.score1 > game.score2;
@@ -16048,63 +16319,26 @@ function renderTextResultsCard(mode) {
 function renderDoneScreen() {
   if (state.format === "crown") return renderDoneScreenCrown();
   const wrap = el("div");
-  const champ = finalTier(0), cons = finalTier(1);
-  const champWin = champ && champ.score1 > champ.score2 ? champ.team1 : (champ && champ.score2 > champ.score1 ? champ.team2 : null);
-  const consWin  = cons && cons.score1  > cons.score2  ? cons.team1  : (cons && cons.score2  > cons.score1  ? cons.team2  : null);
   const ranking = finalRanking();
 
-  // First-view confetti, gated on awardsShown
   if (!state.awardsShown) {
     state.awardsShown = true;
     save();
-    // defer so confetti fires after the DOM is mounted
     queueMicrotask(runConfetti);
   }
 
-  const card = el("div", { class: "card champions-card" });
-  const champions = el("div", { class: "champions" });
-  champions.appendChild(el("div", { class: "crown" }, "👑"));
-  champions.appendChild(el("h1", null, "CHAMPIONS"));
-  champions.appendChild(el("div", { class: "winners" }, champWin ? teamName(champWin) : "Tied!"));
-  if (champ) champions.appendChild(renderScorecard(champ));
+  // 1. Unified Champions & Placements Panel
+  wrap.appendChild(renderUnifiedChampionsPanel(ranking));
 
-  if (cons) {
-    const consBlock = el("div", { class: "consolation-block" });
-    consBlock.appendChild(el("div", { class: "consolation-title" }, "🥈 Runner-Up Bracket"));
-    consBlock.appendChild(el("div", { class: "consolation-winners" }, consWin ? teamName(consWin) : "Tied!"));
-    consBlock.appendChild(renderScorecard(cons));
-    champions.appendChild(consBlock);
-  }
-
-  card.appendChild(champions);
-  wrap.appendChild(card);
-
-  wrap.appendChild(renderSaveToLifetimeBlock());
-
-  wrap.appendChild(renderPodium(ranking));
-  // Surface the primary post-game action (texting) above the awards/standings
-  // scroll instead of burying it at the bottom. Only formats that support
-  // texting (RR/Gauntlet) get the card — others skip it rather than show a
-  // dead "not available" placeholder.
-  if (textResultsSupported() && (state.phones || []).some(isValidPhone)) {
-    wrap.appendChild(renderTextResultsCard("final"));
-  } else {
-    wrap.appendChild(renderShareCardsButtonCard());
-  }
-  // Awards collapsed by default to shorten the results scroll — champions and
-  // podium carry the celebration; tap to explore the full awards.
-  const awardsDetails = el("details", { class: "history" });
-  awardsDetails.appendChild(el("summary", null, el("span", null, "🏅 Awards")));
-  awardsDetails.appendChild(renderAwardsStrip());
-  wrap.appendChild(awardsDetails);
-
-  // Final standings — uses the same renderStandingsCard, with finals included in totals
+  // 2. Final Standings
   const finalCard = el("div", { class: "card" });
-  const head = el("div", { style: "display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; gap: 10px; flex-wrap: wrap;" },
-    el("h3", { style: "margin: 0;" }, "Final Standings"),
-    el("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap;" },
-      el("span", { class: "muted" }, "Includes finals games"),
-      standingsViewToggle(), guideButton(state.format)),
+  const head = el("div", { class: "standings-header-row" },
+    el("div", null,
+      el("h3", { style: "margin: 0; font-size: 18px; font-weight: 800;" }, "Final Standings"),
+      el("span", { class: "muted", style: "font-size: 12px;" }, "Includes finals games")
+    ),
+    el("div", { style: "display:flex;align-items:center;gap:8px;" },
+      standingsViewToggle(), guideButton(state.format))
   );
   finalCard.appendChild(head);
 
@@ -16231,6 +16465,27 @@ function renderDoneScreen() {
   finalCard.appendChild(el("p", { class: "standings-footer" }, footerText));
   wrap.appendChild(finalCard);
 
+  // 3. Awards Panel
+  wrap.appendChild(renderAwardsPanel());
+
+  // 4. Lifetime Stats
+  const hasPhones = (state.phones || []).some(isValidPhone);
+  if (hasPhones) {
+    wrap.appendChild(renderSaveToLifetimeBlock());
+  }
+
+  // 5. Text Results / Share Cards
+  if (hasPhones) {
+    if (textResultsSupported()) {
+      wrap.appendChild(renderTextResultsCard("final"));
+    } else {
+      wrap.appendChild(renderShareCardsButtonCard());
+    }
+  } else {
+    wrap.appendChild(renderShareCardsButtonCard());
+  }
+
+  // Back and Start New Buttons
   wrap.appendChild(el("button", {
     class: "ghost",
     style: "width: 100%; margin-bottom: 10px;",
