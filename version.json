@@ -1,5 +1,15 @@
 [
   {
+    "version": "v39",
+    "changes": [
+      "Redesign Round and Court Pages UI into a premium, polished layout using Design Critic guidelines",
+      "Style court labels as modern color-coded capsules matching the court color tokens",
+      "Add glowing live indicator pulse dots to active match timers to signify live status",
+      "Add circular vector checkmark badges to team rows when they win a match",
+      "Improve spacing and typography hierarchy scales of player names and scorecard inputs"
+    ]
+  },
+  {
     "version": "v38",
     "changes": [
       "Redesign the Settings modal as a premium tabbed dashboard (General, Rules & Match, Roster & Courts) to eliminate scroll height and improve usability",
