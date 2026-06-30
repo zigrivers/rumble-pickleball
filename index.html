@@ -985,19 +985,27 @@
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     padding: 14px 20px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
     z-index: 100;
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
     box-sizing: border-box;
     padding-bottom: calc(14px + env(safe-area-inset-bottom));
   }
-  
+  .setup-bottom-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: 100%;
+  }
+
   .setup-bottom-summary {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-width: 0;
   }
   .setup-summary-title {
     font-size: 15px;
@@ -1008,27 +1016,27 @@
     font-size: 13px;
     color: var(--muted);
   }
-  
-  .setup-bottom-bar-right {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
+  #start-hint {
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: right;
   }
-  .setup-bottom-bar-right button.primary {
+
+  .setup-bottom-main button.primary {
     min-height: 44px;
     padding: 10px 24px;
     font-size: 16px;
     font-weight: 700;
     border-radius: 10px;
     white-space: nowrap;
+    flex: 0 0 auto;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .setup-bottom-bar-right button.primary:hover:not(:disabled) {
+  .setup-bottom-main button.primary:hover:not(:disabled) {
     box-shadow: 0 0 16px rgba(251, 191, 36, 0.3);
     scale: 1.02;
   }
-  .setup-bottom-bar-right button.primary:active:not(:disabled) {
+  .setup-bottom-main button.primary:active:not(:disabled) {
     scale: 0.98;
   }
   
@@ -1306,37 +1314,45 @@
       border-radius: 8px;
     }
     .setup-bottom-bar {
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
+      flex-direction: column;
+      align-items: stretch;
       padding: 10px 14px;
-      gap: 12px;
+      gap: 6px;
       padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+    .setup-bottom-main {
+      gap: 10px;
     }
     .setup-bottom-summary {
       text-align: left;
-      flex: 1;
+      flex: 1 1 auto;
+      min-width: 0;
     }
     .setup-summary-title {
       font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .setup-summary-details {
       font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .setup-bottom-bar-right {
-      align-items: flex-end;
-      width: auto;
-      flex: 0 0 auto;
-    }
-    .setup-bottom-bar-right button.primary {
+    .setup-bottom-main button.primary {
       width: auto;
       min-height: 40px;
       padding: 8px 16px;
       font-size: 14px;
       border-radius: 8px;
     }
+    #start-hint {
+      text-align: left;
+      font-size: 11px;
+    }
     .setup-container {
-      padding-bottom: 90px;
+      padding-bottom: 124px;
     }
   }
 
@@ -2588,10 +2604,17 @@
   /* Mobile UI/UX overrides — placed last so they win over the base rules above
      (equal specificity → later source order wins) when the media query matches. */
   @media (max-width: 480px) {
-    /* Standings: drop the "N left" badge and let the name cell wrap so the
-       next-partner chip ("→ Fay") isn't clipped to an ellipsis. */
-    table.standings .partner-badge { display: none; }
-    table.standings td.name { white-space: normal; }
+    /* Standings on phones: table-layout:fixed split the row into equal columns
+       and starved the name column down to ~47px, truncating "Sofia" to "S…".
+       Switch to content-based sizing so the short stat values ("1.2", "1–0")
+       stay compact and the name column absorbs the rest, then shrink the
+       oversized 20px stat font so two-digit stats never force a wrap. */
+    table.standings { table-layout: auto; }
+    table.standings td.num,
+    table.standings th.num { font-size: 15px; padding-left: 3px; padding-right: 4px; white-space: nowrap; }
+    table.standings td.name { white-space: normal; font-size: 16px; line-height: 1.25; word-break: break-word; }
+    table.standings th, table.standings td { padding-top: 9px; padding-bottom: 9px; padding-left: 5px; padding-right: 5px; }
+    table.standings .partner-chip { font-size: 11px; margin-top: 1px; }
     /* Championship names carry seed pills; shrink so "#1 Ava & #4 Eli" fits one line. */
     .court-card.gold .team-name { font-size: 18px; }
   }
@@ -2604,7 +2627,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v55";
+const APP_VERSION    = "v56";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -6230,6 +6253,23 @@ function runSelfTests() {
       "badge: same-group team stays unlabeled outside a gender round");
     console.assert(mixedBadgeForTeam([1, 5], true).trim() === "M·W",
       "badge: a mixed team is labeled normally regardless of round type");
+
+    // Champions place-card metrics must never render "undefined" — the stat
+    // objects differ per format (stack/king use pointsScored & no/derived losses;
+    // crown uses gamesWon/gamesLost), so the place card must read the right fields.
+    {
+      const scored = (court, t1, t2, s1, s2) => { const g = makeGame(court, t1, t2); g.score1 = s1; g.score2 = s2; return g; };
+      const noUndef = (fmt) => getPlayerChampionsStats(1, fmt).every(m => !/undefined/.test(String(m.value)));
+      const fourPlayers = Array.from({ length: 4 }, (_, i) => ({ slot: i + 1, name: "P" + (i + 1), phone: "", status: "active", eligibleFromRound: 1, joinedRound: 1, leftRound: null }));
+      state = { phase: "done", format: "stack", courtCount: 1, slots: ["P1","P2","P3","P4"], players: fourPlayers,
+        rounds: [makeRound(1, [scored(1, [1,2], [3,4], 11, 7)])], currentRound: 1, tiebreakRandom: [0,1,2,3],
+        previousRanks: [], notifiedRounds: [], awardsShown: true, winScore: 11, finals: null };
+      console.assert(noUndef("stack"), "place card: stack metrics have no undefined", getPlayerChampionsStats(1, "stack"));
+      state = { phase: "done", format: "king", courtCount: 1, slots: ["P1","P2","P3","P4"], players: fourPlayers,
+        rounds: [makeRound(1, [scored(1, [1,2], [3,4], 11, 7)])], currentRound: 1, tiebreakRandom: [0,1,2,3],
+        previousRanks: [], notifiedRounds: [], awardsShown: true, winScore: 11, finals: null };
+      console.assert(noUndef("king"), "place card: king metrics have no undefined", getPlayerChampionsStats(1, "king"));
+    }
 
     state = newState();
   })();
@@ -14245,6 +14285,8 @@ function getRoundStatistics(format, rounds, players, courts) {
     const activeCourts = effectiveCourtCountForFormat(state.format, state.courtCount);
 
     const bottomBar = el("div", { class: "setup-bottom-bar" });
+    // Top row: summary on the left, Start button on the right.
+    const barMain = el("div", { class: "setup-bottom-main" });
     const summaryEl = el("div", { class: "setup-bottom-summary" });
     const summaryTitle = el("div", { class: "setup-summary-title" }, playerCount + " Players · " + formatLabel);
     const summaryDetails = el("div", { class: "setup-summary-details" },
@@ -14253,23 +14295,24 @@ function getRoundStatistics(format, rounds, players, courts) {
     );
     summaryEl.appendChild(summaryTitle);
     summaryEl.appendChild(summaryDetails);
-    bottomBar.appendChild(summaryEl);
+    barMain.appendChild(summaryEl);
 
-    const rightEl = el("div", { class: "setup-bottom-bar-right" });
     const startBtn = el("button", {
       id: "start-btn",
       class: "primary",
       onclick: () => { if (canStart()) openPreStartSummary(); }
     }, "Start Tournament");
     startBtn.disabled = !canStart();
-    rightEl.appendChild(startBtn);
+    barMain.appendChild(startBtn);
+    bottomBar.appendChild(barMain);
 
+    // Hint lives on its own full-width row so a long recommendation never
+    // squeezes the summary into one-word-per-line or overflows off-screen.
     const startHint = el("div", {
       id: "start-hint",
       class: "muted",
     });
-    rightEl.appendChild(startHint);
-    bottomBar.appendChild(rightEl);
+    bottomBar.appendChild(startHint);
 
     wrap.appendChild(bottomBar);
 
@@ -15025,7 +15068,8 @@ function getPlayerChampionsStats(slot, format) {
       const bonus = winTeam.includes(slot) ? pts.perWinner : pts.perLoser;
       const totalMp = (s.matchPoints || 0) + bonus;
       metrics.push({ label: "Match Pts", value: totalMp.toFixed(1) + " mp" });
-      metrics.push({ label: "Record", value: `${s.wins}–${s.losses}` });
+      // Crown stats track games won/lost (not wins/losses) — use the right fields.
+      metrics.push({ label: "Record", value: `${s.gamesWon}–${s.gamesLost}` });
     }
   } else if (format === "stack") {
     const stats = computeStackStats(state.rounds.length);
@@ -15033,15 +15077,17 @@ function getPlayerChampionsStats(slot, format) {
     if (s) {
       metrics.push({ label: "Stack Rate", value: s.stackRate.toFixed(1) + " SS/G" });
       metrics.push({ label: "Record", value: `${s.wins}–${s.losses}` });
-      metrics.push({ label: "Points", value: s.points + " pts" });
+      // Stack stats expose pointsScored (not points).
+      metrics.push({ label: "Points", value: s.pointsScored + " pts" });
     }
   } else if (format === "king") {
     const stats = computeKingStats(state.rounds.length);
     const s = stats.find(x => x.slot === slot);
     if (s) {
       metrics.push({ label: "King Rate", value: s.kingRate.toFixed(1) + " KS/G" });
-      metrics.push({ label: "Record", value: `${s.wins}–${s.losses}` });
-      metrics.push({ label: "Points", value: s.points + " pts" });
+      // King stats track wins + games played (no explicit losses field) and pointsScored.
+      metrics.push({ label: "Record", value: `${s.wins}–${Math.max(0, s.gp - s.wins)}` });
+      metrics.push({ label: "Points", value: s.pointsScored + " pts" });
     }
   } else {
     const stats = computeMarginStats(totalRegularRounds());
