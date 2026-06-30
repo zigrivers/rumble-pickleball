@@ -1,5 +1,14 @@
 [
   {
+    "version": "v31",
+    "changes": [
+      "Redesign tournament setup screen with modern tabbed segmented controls and premium animations",
+      "Introduce smooth input focus glows and a slide switch toggle component for Mixed Mode",
+      "Optimize mobile sticky bottom bar layout to free up screen real estate when editing rosters",
+      "Upgrade interface buttons with high-quality outline vector SVG icons"
+    ]
+  },
+  {
     "version": "v30",
     "changes": [
       "Calibrate default round duration to 11–20 minutes under side-out to 11 (win by 2) scoring systems",
