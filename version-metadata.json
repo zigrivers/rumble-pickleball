@@ -1,5 +1,13 @@
 [
   {
+    "version": "v38",
+    "changes": [
+      "Redesign the Settings modal as a premium tabbed dashboard (General, Rules & Match, Roster & Courts) to eliminate scroll height and improve usability",
+      "Implement mid-tournament total rounds adjustment helper supporting Round Robin, Stack, King of the Court, and Gauntlet formats",
+      "Allow adding or subtracting rounds dynamically based on real-time event budget and schedule constraints"
+    ]
+  },
+  {
     "version": "v37",
     "changes": [
       "Fix timing projection out-of-sync bug by dynamically syncing 'rrScheduleMode' in the save pipeline during setup",

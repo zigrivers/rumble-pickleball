@@ -16070,7 +16070,7 @@ function openHowItWorksModal() {
 
 // RUMBLE:RENDER:end
 // RUMBLE:MODALS:start
-function openSettings() {
+function oldOpenSettings() {
   const bg = el("div", { class: "modal-bg" });
   let statusTimer = null;
   const close = () => {
@@ -17371,6 +17371,1032 @@ function setupDisplayModeRefresh() {
   window.addEventListener("storage", e => {
     if (e.key === STORAGE_KEY) refreshIfChanged(e.newValue);
   });
+}
+
+function adjustTournamentRounds(newCount) {
+  if (state.phase === "setup") {
+    if (state.format === "rr") state.rrRounds = newCount;
+    else if (state.format === "stack") state.stackRounds = newCount;
+    else if (state.format === "king") state.kingRounds = newCount;
+    else if (state.format === "gauntlet") state.gauntletRounds = newCount;
+    save();
+    return { ok: true };
+  }
+  
+  const currentCount = totalRegularRounds();
+  if (newCount === currentCount) return { ok: true };
+  
+  if (newCount < state.currentRound) {
+    return { ok: false, error: "Cannot reduce rounds below the current round (" + state.currentRound + ")." };
+  }
+  
+  if (state.format === "crown") {
+    return { ok: false, error: "Crown Court format has a fixed number of rounds." };
+  }
+  
+  const beforeState = stateSnapshotForUndo();
+  
+  if (state.format === "rr") {
+    if (state.rrScheduleMode === "wh8") {
+      return { ok: false, error: "Wheel of 8 schedule cannot be adjusted mid-tournament." };
+    }
+    
+    if (newCount < currentCount) {
+      state.rounds = state.rounds.slice(0, newCount);
+      state.rrRounds = newCount;
+    } else {
+      const additionalCount = newCount - currentCount;
+      const actives = state.players.filter(p => p.status === "active").map(p => p.slot);
+      const newRounds = generateRRSchedule(
+        actives,
+        state.courtCount,
+        additionalCount,
+        state.rounds,
+        mulberry32(state.scheduleSeed + state.rounds.length)
+      );
+      state.rounds = [...state.rounds, ...newRounds];
+      state.rrRounds = newCount;
+    }
+  } else {
+    if (state.format === "stack") state.stackRounds = newCount;
+    else if (state.format === "king") state.kingRounds = newCount;
+    else if (state.format === "gauntlet") state.gauntletRounds = newCount;
+  }
+  
+  recordEvent({
+    kind: "roundsAdjusted",
+    label: `Adjusted total rounds to ${newCount}`,
+    beforeState,
+    reversible: true,
+  });
+  
+  save();
+  return { ok: true };
+}
+
+function openSettings() {
+  openSettingsTabbed();
+}
+
+function openSettingsTabbed() {
+  const bg = el("div", { class: "modal-bg" });
+  let statusTimer = null;
+  const close = () => {
+    if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+    bg.remove();
+    render();
+  };
+  bg.addEventListener("click", e => { if (e.target === bg) close(); });
+
+  // Inject settings-specific CSS rules dynamically
+  if (!document.getElementById("settings-tabs-style")) {
+    const style = document.createElement("style");
+    style.id = "settings-tabs-style";
+    style.textContent = `
+      .premium-settings-modal {
+        background: rgba(20, 26, 33, 0.98) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+      }
+      .settings-tabs {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+        margin-bottom: 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        padding-bottom: 8px;
+        flex-shrink: 0;
+      }
+      .settings-tab-btn {
+        flex: 1;
+        padding: 10px 8px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--muted);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+      }
+      .settings-tab-btn:hover {
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        border-color: rgba(255, 255, 255, 0.1);
+      }
+      .settings-tab-btn.active {
+        background: rgba(251, 191, 36, 0.08);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const modal = el("div", { 
+    class: "modal premium-settings-modal", 
+    style: "max-width: 520px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; padding: 24px; border-radius: 20px;" 
+  });
+  
+  // Header
+  modal.appendChild(el("h2", { style: "margin: 0; font-size: 22px; font-weight: 800;" }, "Settings"));
+  
+  let activeTab = "general"; // general | rules | roster
+  
+  const tabContainer = el("div", { class: "settings-tabs" });
+  const tabContent = el("div", { class: "settings-tab-content-container", style: "flex: 1; overflow-y: auto; padding-right: 4px; margin-bottom: 16px;" });
+  
+  function renderTabs() {
+    tabContainer.innerHTML = "";
+    const showRosterTab = state.phase !== "setup" && state.format !== "crown";
+    
+    // General Tab
+    const tabGen = el("button", {
+      class: "settings-tab-btn" + (activeTab === "general" ? " active" : "")
+    }, "General");
+    tabGen.addEventListener("click", () => { activeTab = "general"; drawSettingsContent(); });
+    tabContainer.appendChild(tabGen);
+    
+    // Rules Tab
+    const tabRules = el("button", {
+      class: "settings-tab-btn" + (activeTab === "rules" ? " active" : "")
+    }, "Rules & Match");
+    tabRules.addEventListener("click", () => { activeTab = "rules"; drawSettingsContent(); });
+    tabContainer.appendChild(tabRules);
+    
+    // Roster Tab
+    if (showRosterTab) {
+      const tabRost = el("button", {
+        class: "settings-tab-btn" + (activeTab === "roster" ? " active" : "")
+      }, "Roster & Courts");
+      tabRost.addEventListener("click", () => { activeTab = "roster"; drawSettingsContent(); });
+      tabContainer.appendChild(tabRost);
+    }
+  }
+  
+  function drawSettingsContent() {
+    tabContent.innerHTML = "";
+    renderTabs();
+    
+    if (activeTab === "general") {
+      // Reference & Links
+      tabContent.appendChild(el("div", { class: "ka-section-title" }, "Reference & Links"));
+      
+      const linksContainer = el("div", { style: "display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;" });
+      linksContainer.appendChild(el("button", {
+        style: "width: 100%; margin: 0; padding: 10px; font-weight:600;",
+        onclick: openHowItWorksModal
+      }, "How this works"));
+      linksContainer.appendChild(el("button", {
+        style: "width: 100%; margin: 0; padding: 10px; font-weight:600;",
+        onclick: openVersionHistoryModal
+      }, "Version History"));
+      linksContainer.appendChild(el("button", {
+        style: "width: 100%; margin: 0; padding: 10px; font-weight:600;",
+        onclick: () => { window.open(displayModeUrl(), "_blank", "noopener"); }
+      }, "TV Mode"));
+      linksContainer.appendChild(el("button", {
+        style: "width: 100%; margin: 0; padding: 10px; font-weight:600;",
+        onclick: openCareer
+      }, "Lifetime Stats"));
+      
+      if (state.phase !== "setup") {
+        const fullScheduleBtn = el("button", {
+          style: "width: 100%; grid-column: span 2; margin: 0; padding: 10px; font-weight:600;",
+          onclick: openScheduleModal
+        }, "View Full Schedule");
+        linksContainer.appendChild(fullScheduleBtn);
+      }
+      tabContent.appendChild(linksContainer);
+      
+      // Display & TV
+      tabContent.appendChild(el("div", { class: "ka-section-title" }, "Display & TV"));
+      
+      const kaPrimaryRow = el("div", { class: "ka-row" });
+      const kaPrimaryText = el("div", { class: "ka-text" });
+      kaPrimaryText.appendChild(el("div", { class: "ka-title" }, "Keep display awake"));
+      kaPrimaryText.appendChild(el("div", { class: "ka-sub" }, "Prevents TV or device from sleeping during tournament."));
+      const kaPrimarySwitch = el("label", { class: "ka-switch" });
+      const kaPrimaryInput = el("input", { type: "checkbox", "aria-label": "Keep display awake" });
+      if (state.keepAwake) kaPrimaryInput.setAttribute("checked", "checked");
+      kaPrimarySwitch.appendChild(kaPrimaryInput);
+      kaPrimarySwitch.appendChild(el("span", { class: "slider" }));
+      kaPrimaryRow.appendChild(kaPrimaryText);
+      kaPrimaryRow.appendChild(kaPrimarySwitch);
+      tabContent.appendChild(kaPrimaryRow);
+      
+      const kaAggRow = el("div", { class: "ka-row indent" });
+      const kaAggText = el("div", { class: "ka-text" });
+      kaAggText.appendChild(el("div", { class: "ka-title" }, "Aggressive mode (silent audio)"));
+      kaAggText.appendChild(el("div", { class: "ka-sub" }, "Adds silent audio loop if TV still sleeps."));
+      const kaAggSwitch = el("label", { class: "ka-switch" });
+      const kaAggInput = el("input", { type: "checkbox", "aria-label": "Aggressive mode (silent audio)" });
+      if (state.keepAwakeAggressive) kaAggInput.setAttribute("checked", "checked");
+      if (!state.keepAwake) kaAggInput.disabled = true;
+      kaAggSwitch.appendChild(kaAggInput);
+      kaAggSwitch.appendChild(el("span", { class: "slider" }));
+      kaAggRow.appendChild(kaAggText);
+      kaAggRow.appendChild(kaAggSwitch);
+      tabContent.appendChild(kaAggRow);
+      
+      const kaStatusRow = el("div", { class: "ka-row" });
+      kaStatusRow.appendChild(el("div", { class: "ka-title", style: "font-size:13px; font-weight:700;" }, "Status"));
+      const kaStatusDisplay = el("div", { class: "ka-status-text" });
+      kaStatusRow.appendChild(kaStatusDisplay);
+      tabContent.appendChild(kaStatusRow);
+      
+      const refreshKaStatusLocal = () => {
+        const s = KeepAwake.getStatus();
+        let dotClass = "gray", text = "Keep-awake off", detail = "";
+        if (!s.active) {}
+        else if (s.error && !s.canvasRunning) {
+          dotClass = "red"; text = "Keep-awake error"; detail = s.error;
+        } else if (s.active && s.canvasRunning && s.wakeLockHeld) {
+          dotClass = "green"; text = "Keep-awake active";
+        } else if (s.active && s.canvasRunning && !s.wakeLockHeld) {
+          dotClass = "yellow"; text = "Keep-awake partial"; detail = "wake lock unavailable";
+        } else if (s.active && !s.canvasRunning) {
+          dotClass = "red"; text = "Keep-awake error"; detail = s.error || "canvas not running";
+        }
+        kaStatusDisplay.innerHTML = "";
+        kaStatusDisplay.appendChild(el("span", { class: "ka-status-dot " + dotClass }));
+        kaStatusDisplay.appendChild(el("span", null, text));
+        if (detail) kaStatusDisplay.appendChild(el("span", { class: "ka-detail" }, "(" + detail + ")"));
+      };
+      refreshKaStatusLocal();
+      
+      kaPrimaryInput.addEventListener("change", () => {
+        state.keepAwake = kaPrimaryInput.checked;
+        if (state.keepAwake) {
+          KeepAwake.enable();
+          showKeepAwakeActivationToast();
+        } else {
+          KeepAwake.disable();
+          state.keepAwakeAggressive = false;
+          kaAggInput.checked = false;
+          KeepAwake.setAggressive(false);
+          _keepAwakeToastShown = false;
+        }
+        kaAggInput.disabled = !state.keepAwake;
+        save();
+        refreshKaStatusLocal();
+      });
+      kaAggInput.addEventListener("change", () => {
+        state.keepAwakeAggressive = kaAggInput.checked;
+        KeepAwake.setAggressive(state.keepAwakeAggressive);
+        save();
+        refreshKaStatusLocal();
+      });
+      
+      if (statusTimer) clearInterval(statusTimer);
+      statusTimer = setInterval(() => {
+        if (!document.body.contains(bg)) { clearInterval(statusTimer); statusTimer = null; return; }
+        refreshKaStatusLocal();
+      }, 2000);
+      
+      // Readability & Preferences
+      tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:16px;" }, "Readability"));
+      
+      const mkPrefToggle = (key, title, sub) => {
+        const row = el("div", { class: "ka-row" });
+        const text = el("div", { class: "ka-text" });
+        text.appendChild(el("div", { class: "ka-title" }, title));
+        if (sub) text.appendChild(el("div", { class: "ka-sub" }, sub));
+        const sw = el("label", { class: "ka-switch" });
+        const input = el("input", { type: "checkbox", "aria-label": title });
+        if (state.accessibilityPrefs[key]) input.setAttribute("checked", "checked");
+        input.addEventListener("change", () => { state.accessibilityPrefs[key] = input.checked; save(); render(); });
+        sw.appendChild(input); sw.appendChild(el("span", { class: "slider" }));
+        row.appendChild(text); row.appendChild(sw);
+        tabContent.appendChild(row);
+      };
+      
+      const mkSubToggle = (key, title) => {
+        const row = el("div", { class: "ka-row indent" });
+        const text = el("div", { class: "ka-text" });
+        text.appendChild(el("div", { class: "ka-title" }, title));
+        const sw = el("label", { class: "ka-switch" });
+        const input = el("input", { type: "checkbox", "aria-label": title });
+        if (state.accessibilityPrefs[key] !== false) input.setAttribute("checked", "checked");
+        if (state.accessibilityPrefs.reduceVisualNoise) input.disabled = true;
+        input.addEventListener("change", () => { state.accessibilityPrefs[key] = input.checked; save(); render(); });
+        sw.appendChild(input); sw.appendChild(el("span", { class: "slider" }));
+        row.appendChild(text); row.appendChild(sw);
+        tabContent.appendChild(row);
+      };
+      
+      mkPrefToggle("largeScoreEntry", "Large score entry", "Bigger score inputs and quick-fill targets.");
+      mkPrefToggle("highContrastCourts", "High-contrast court labels", "Show court labels with bold text badges.");
+      mkPrefToggle("compactMobileView", "Compact mobile view", "Focus the current scoring task with tabs.");
+      mkPrefToggle("reduceVisualNoise", "Reduce visual noise", "Hide partner chips, badges, and trajectory arrows.");
+      
+      mkSubToggle("showPartnerChips", "Partner chips");
+      mkSubToggle("showPartnerBadges", "Partner badges");
+      mkSubToggle("showTrajectory", "Trajectory arrows");
+      mkSubToggle("showAdvancedStats", "Advanced stat columns");
+      
+      // Saved Numbers
+      tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:16px;" }, "Saved Numbers"));
+      tabContent.appendChild(el("p", { class: "muted", style: "margin:0 0 10px; font-size:12px; line-height:1.45;" },
+        "Remembered by name for next time. Stored locally in this browser."));
+      
+      const rosterWrap = el("div");
+      const refreshRoster = () => {
+        rosterWrap.textContent = "";
+        const roster = loadRoster();
+        const names = Object.keys(roster).sort();
+        if (!names.length) {
+          rosterWrap.appendChild(el("p", { class: "muted", style: "margin:0;" }, "No saved numbers yet."));
+          return;
+        }
+        names.forEach(key => {
+          const r = el("div", { style: "display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px;" },
+            el("div", { style: "flex:1;" }, key + " — " + roster[key]),
+            el("button", {
+              class: "secondary",
+              style: "padding:6px 10px; min-height:28px;",
+              onclick: () => { deleteRosterEntry(key); refreshRoster(); }
+            }, "Delete")
+          );
+          rosterWrap.appendChild(r);
+        });
+      };
+      refreshRoster();
+      tabContent.appendChild(rosterWrap);
+      
+      const clearNumsBtn = el("button", { class: "secondary", style: "width:100%; margin-top:8px; min-height:36px;", onclick: () => {
+        showConfirm("Delete all saved phone numbers?", () => {
+          clearRoster();
+          refreshRoster();
+        }, { title: "Delete saved numbers", confirmText: "Delete", danger: true });
+      }}, "Clear all saved numbers");
+      tabContent.appendChild(clearNumsBtn);
+      
+      // Diagnostics
+      tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:16px;" }, "Diagnostics"));
+      const simBtn = el("button", { style: "width: 100%;" }, "🧪 Verify Scoreboard");
+      const simResult = el("div", { class: "ka-sub", style: "margin-top: 6px; min-height: 1em;" }, "");
+      simBtn.addEventListener("click", () => {
+        const simCount = 3 + simulationConfigs().length;
+        simBtn.disabled = true;
+        simBtn.textContent = "Running " + simCount + " simulated tournaments…";
+        simResult.textContent = "";
+        setTimeout(() => {
+          const fails = runSimulation();
+          simBtn.disabled = false;
+          simBtn.textContent = "🧪 Verify Scoreboard";
+          simResult.textContent = fails === 0
+            ? "✅ Verified — " + simCount + " simulated tournaments, every round's standings correct."
+            : "❌ " + fails + " error(s) found — open console.";
+        }, 50);
+      });
+      tabContent.appendChild(simBtn);
+      tabContent.appendChild(simResult);
+    }
+    
+    else if (activeTab === "rules") {
+      // Scoring & Limits
+      tabContent.appendChild(el("div", { class: "ka-section-title" }, "Scoring & Limits"));
+      
+      let winScoreRow = null;
+      if (state.format === "crown") {
+        tabContent.appendChild(el("p", { class: "muted", style: "margin-bottom:12px; font-size:12px;" },
+          "Scores are fixed by Crown Court format (Opening/Power to 11, Sudden Death to 7)."));
+      } else {
+        winScoreRow = el("div", { class: "settings-row" });
+        winScoreRow.appendChild(el("label", null, "Win score"));
+        const winSelect = el("select");
+        [11, 15, 21].forEach(v => {
+          const opt = el("option", { value: String(v) }, String(v));
+          if (state.winScore === v) opt.setAttribute("selected", "selected");
+          winSelect.appendChild(opt);
+        });
+        winSelect.addEventListener("change", () => {
+          state.winScore = parseInt(winSelect.value, 10);
+          save();
+        });
+        winScoreRow.appendChild(winSelect);
+        tabContent.appendChild(winScoreRow);
+        if (state.timeBudget.enabled) winScoreRow.style.display = "none";
+      }
+      
+      // Adjust Total Rounds
+      const roundsRow = el("div", { class: "settings-row", style: "margin-top:12px;" });
+      roundsRow.appendChild(el("label", null, "Total Rounds"));
+      
+      if (state.format === "crown") {
+        roundsRow.appendChild(el("span", { style: "font-weight:600; color:var(--muted);" }, "3 (Fixed for Crown)"));
+      } else if (state.format === "rr" && state.rrScheduleMode === "wh8") {
+        roundsRow.appendChild(el("span", { style: "font-weight:600; color:var(--muted);" }, "7 (Fixed Wheel of 8)"));
+      } else {
+        const roundsSel = el("select");
+        const minRounds = state.phase === "setup" ? 4 : state.currentRound;
+        const maxRounds = 12;
+        const currentVal = totalRegularRounds();
+        
+        for (let r = minRounds; r <= maxRounds; r++) {
+          const opt = el("option", { value: String(r) }, `${r} Round${r === 1 ? "" : "s"}`);
+          if (r === currentVal) opt.setAttribute("selected", "selected");
+          roundsSel.appendChild(opt);
+        }
+        
+        roundsSel.addEventListener("change", () => {
+          const val = parseInt(roundsSel.value, 10);
+          const res = adjustTournamentRounds(val);
+          if (res.ok) {
+            showToast(`Total rounds adjusted to ${val}.`);
+            drawSettingsContent();
+          } else {
+            showToast(res.error || "Failed to update rounds.");
+            roundsSel.value = String(currentVal);
+          }
+        });
+        roundsRow.appendChild(roundsSel);
+      }
+      tabContent.appendChild(roundsRow);
+      
+      // Time Budget
+      if (state.format !== "crown") {
+        tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:20px;" }, "Time Budget"));
+        
+        const tbToggleRow = el("div", { class: "ka-row" });
+        const tbToggleText = el("div", { class: "ka-text" });
+        tbToggleText.appendChild(el("div", { class: "ka-title" }, "Set a time budget"));
+        tbToggleText.appendChild(el("div", { class: "ka-sub" }, "Fit games to tournament timeframe."));
+        const tbToggleSwitch = el("label", { class: "ka-switch" });
+        const tbToggleInput = el("input", { type: "checkbox", id: "tb-s-enabled", "aria-label": "Set a time budget" });
+        if (state.timeBudget.enabled) tbToggleInput.setAttribute("checked", "checked");
+        if (state.phase !== "setup") { tbToggleInput.disabled = true; tbToggleInput.title = "Locked after start"; }
+        tbToggleSwitch.appendChild(tbToggleInput);
+        tbToggleSwitch.appendChild(el("span", { class: "slider" }));
+        tbToggleRow.appendChild(tbToggleText);
+        tbToggleRow.appendChild(tbToggleSwitch);
+        tabContent.appendChild(tbToggleRow);
+        
+        const tbDetails = el("div", {
+          style: "display:" + (state.timeBudget.enabled ? "block" : "none") + "; margin-top:8px;"
+        });
+        
+        const tbTimeRow = el("div", { class: "settings-row" });
+        tbTimeRow.appendChild(el("label", { for: "tb-s-minutes" }, "Event time"));
+        const tbMinutesSel = el("select", { id: "tb-s-minutes" });
+        if (state.phase !== "setup") { tbMinutesSel.disabled = true; }
+        const tbTimeOptions = [
+          { value: 60,  label: "60 min (very tight)" },
+          { value: 75,  label: "75 min (very tight)" },
+          { value: 90,  label: "90 min" },
+          { value: 105, label: "105 min" },
+          { value: 120, label: "120 min" },
+          { value: 150, label: "150 min" },
+          { value: 180, label: "180 min" },
+        ];
+        const tbSavedMinutes = state.timeBudget.minutes || 90;
+        tbTimeOptions.forEach(opt => {
+          const o = el("option", { value: String(opt.value) }, opt.label);
+          if (opt.value === tbSavedMinutes) o.setAttribute("selected", "selected");
+          tbMinutesSel.appendChild(o);
+        });
+        tbTimeRow.appendChild(tbMinutesSel);
+        tbDetails.appendChild(tbTimeRow);
+        
+        const tbReadout = el("div", { class: "muted", style: "font-size:13px; margin:6px 0;" });
+        tbReadout.appendChild(el("div", null, "Will play: ", el("span", { id: "tb-s-will-play" }, "—")));
+        tbReadout.appendChild(el("div", { id: "tb-s-likely-done-row" }, "Likely done: ", el("span", { id: "tb-s-likely-done" }, "—")));
+        tbReadout.appendChild(el("div", { id: "tb-s-confidence-row" }, "Confidence: ", el("span", { id: "tb-s-confidence" }, "—")));
+        tbDetails.appendChild(tbReadout);
+        
+        const tbTightBanner = el("div", {
+          id: "tb-s-tight-banner",
+          class: "tb-tight-banner",
+          style: "display:none;"
+        }, "This budget is tight — even our shortest games may run over.");
+        tbDetails.appendChild(tbTightBanner);
+        
+        const tbAutoRow = el("div", { class: "settings-row" });
+        const tbAutoChk = el("input", { type: "checkbox", id: "tb-s-auto-tighten" });
+        if (state.timeBudget.autoTighten) tbAutoChk.setAttribute("checked", "checked");
+        const tbAutoLabel = el("label", { for: "tb-s-auto-tighten" });
+        tbAutoLabel.appendChild(document.createTextNode("Auto-tighten if running long"));
+        tbAutoLabel.appendChild(el("span", { class: "muted", style: "font-size:11px; margin-left:6px;" }, "(default: prompt)"));
+        tbAutoRow.appendChild(tbAutoChk);
+        tbAutoRow.appendChild(tbAutoLabel);
+        tbDetails.appendChild(tbAutoRow);
+        
+        tabContent.appendChild(tbDetails);
+        
+        tbToggleInput.addEventListener("change", () => {
+          state.timeBudget.enabled = tbToggleInput.checked;
+          tbDetails.style.display = tbToggleInput.checked ? "block" : "none";
+          if (winScoreRow) winScoreRow.style.display = tbToggleInput.checked ? "none" : "";
+          if (tbToggleInput.checked) {
+            const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+            if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+              showRallyAckDialog(
+                () => {
+                  state.timeBudget.rallyAcknowledged = true;
+                  save();
+                  updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+                },
+                () => {
+                  const STEPS = [60, 75, 90, 105, 120, 150, 180];
+                  const idx = STEPS.indexOf(state.timeBudget.minutes);
+                  if (idx < STEPS.length - 1) {
+                    state.timeBudget.minutes = STEPS[idx + 1];
+                    tbMinutesSel.value = String(state.timeBudget.minutes);
+                    const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
+                    save();
+                    updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+                  }
+                }
+              );
+            } else {
+              save();
+              updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+            }
+          } else {
+            state.timeBudget.plannedConfig = null;
+            save();
+          }
+        });
+        
+        tbMinutesSel.addEventListener("change", () => {
+          state.timeBudget.minutes = parseInt(tbMinutesSel.value, 10);
+          const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+          if (config && config.scoring === "rally" && !state.timeBudget.rallyAcknowledged) {
+            showRallyAckDialog(
+              () => {
+                state.timeBudget.rallyAcknowledged = true;
+                save();
+                updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+              },
+              () => {
+                const STEPS = [60, 75, 90, 105, 120, 150, 180];
+                const idx = STEPS.indexOf(state.timeBudget.minutes);
+                if (idx < STEPS.length - 1) {
+                  state.timeBudget.minutes = STEPS[idx + 1];
+                  tbMinutesSel.value = String(state.timeBudget.minutes);
+                  const { config: c2, error: e2, isTight: t2, suggestion: s2 } = applyTimeBudgetSolve();
+                  save();
+                  updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(c2, state.timeBudget.minutes, s2), t2, !!e2);
+                }
+              }
+            );
+          } else {
+            save();
+            updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+          }
+        });
+        
+        tbAutoChk.addEventListener("change", () => {
+          state.timeBudget.autoTighten = tbAutoChk.checked;
+          save();
+        });
+        
+        if (state.timeBudget.enabled) {
+          const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
+          updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
+        }
+      }
+      
+      // Danger Zone
+      tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:20px; color:var(--bad);" }, "Danger Zone"));
+      
+      const allFormats = [
+        { id: "rr",       label: "Round Robin" },
+        { id: "stack",    label: "Stack Format" },
+        { id: "king",     label: "King of the Court" },
+        { id: "gauntlet", label: "Gauntlet" },
+        { id: "crown",    label: "Crown Court" },
+      ];
+      const fmtDetails = el("details", { style: "margin-top: 8px;" });
+      fmtDetails.appendChild(el("summary", { style: "cursor:pointer; padding:8px 0; font-weight:600; color:var(--muted);" }, "Switch format"));
+      allFormats.filter(f => f.id !== state.format).forEach(f => {
+        fmtDetails.appendChild(el("button", {
+          style: "width: 100%; margin-top: 8px;",
+          onclick: () => {
+            const inSetup = state.phase === "setup";
+            const msg = inSetup
+              ? "Switch to " + f.label + "?"
+              : "Switch to " + f.label + "? This wipes the current tournament (names are kept).";
+            showConfirm(msg, () => {
+              if (inSetup) {
+                state.format = f.id;
+              } else {
+                const keptNames = state.rawNames.slice();
+                const keptWinScore = state.winScore;
+                const keptWinBy = state.winBy;
+                const keptScoringSystem = state.scoringSystem;
+                const keptStackRounds = state.stackRounds;
+                const keptKingRounds = state.kingRounds;
+                const keptGauntletRounds = state.gauntletRounds;
+                const keptKeepAwake = state.keepAwake;
+                const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+                state = newState();
+                state.rawNames = keptNames;
+                state.winScore = keptWinScore;
+                state.winBy = keptWinBy;
+                state.scoringSystem = keptScoringSystem;
+                state.format = f.id;
+                state.stackRounds = keptStackRounds;
+                state.kingRounds = keptKingRounds;
+                state.gauntletRounds = keptGauntletRounds;
+                state.keepAwake = keptKeepAwake;
+                state.keepAwakeAggressive = keptKeepAwakeAggressive;
+                syncKeepAwakeToState();
+              }
+              save();
+              close();
+              render();
+            }, { title: "Switch format", confirmText: "Switch", danger: !inSetup });
+          },
+        }, "Switch to " + f.label));
+      });
+      tabContent.appendChild(fmtDetails);
+      
+      if (state.phase !== "setup") {
+        const resetBtn = el("button", {
+          style: "width: 100%; margin-top: 10px; background: var(--accent); color: #1a1207; border-color: var(--accent);",
+          onclick: () => {
+            const isCrown = state.format === "crown";
+            const pCount = isCrown ? 4 : activeCount();
+            showConfirm("Reset scores and re-shuffle the schedule? Your " + pCount + " names will be kept.", () => {
+              const keptNames = state.slots.filter(Boolean);
+              const keptPhones = (state.phones || []).slice();
+              const keptPhoneByName = {};
+              keptNames.forEach((n, i) => { if (n) keptPhoneByName[n] = keptPhones[i] || ""; });
+              const keptWinScore = state.winScore;
+              const keptWinBy = state.winBy;
+              const keptScoringSystem = state.scoringSystem;
+              const keptFormat = state.format;
+              const keptCourtCount = state.courtCount;
+              const keptRrRounds = state.rrRounds;
+              const keptStackRounds = state.stackRounds;
+              const keptKingRounds = state.kingRounds;
+              const keptGauntletRounds = state.gauntletRounds;
+              const keptKeepAwake = state.keepAwake;
+              const keptKeepAwakeAggressive = state.keepAwakeAggressive;
+              state = newState();
+              state.format = keptFormat;
+              state.courtCount = keptCourtCount;
+              state.rrRounds = keptRrRounds;
+              state.stackRounds = keptStackRounds;
+              state.kingRounds = keptKingRounds;
+              state.gauntletRounds = keptGauntletRounds;
+              state.winScore = keptWinScore;
+              state.winBy = keptWinBy;
+              state.scoringSystem = keptScoringSystem;
+              state.keepAwake = keptKeepAwake;
+              state.keepAwakeAggressive = keptKeepAwakeAggressive;
+              state.phase = "playing";
+              state.currentRound = 1;
+              if (isCrown) {
+                const crowNames = keptNames.slice(0, 4);
+                const shuffled = shuffle(crowNames.slice());
+                state.rawNames = [...crowNames, "", "", "", ""];
+                state.rawPhones = crowNames.map(n => keptPhoneByName[n] || "").concat(["", "", "", ""]);
+                state.slots = [...shuffled, "", "", "", ""];
+                writePlayersFromSlots(4, keptPhoneByName);
+                state.tiebreakRandom = shuffle([0,1,2,3]);
+                state.crownMatches = CROWN_SCHEDULE.map(s => ({
+                  team1: s.team1.slice(), team2: s.team2.slice(), theme: s.theme,
+                  games: [{score1:null,score2:null},{score1:null,score2:null},{score1:null,score2:null}],
+                }));
+                state.currentMatch = 0;
+                state.crownFinal = null;
+              } else {
+                state.rawNames = keptNames.slice();
+                state.rawPhones = keptNames.map(n => keptPhoneByName[n] || "");
+                state.slots = shuffle(keptNames);
+                writePlayersFromSlots(keptNames.length, keptPhoneByName);
+                state.tiebreakRandom = shuffle(Array.from({ length: keptNames.length }, (_, i) => i));
+                if (keptFormat === "stack") {
+                  state.rounds = [assignInitialStackCourts()];
+                } else if (keptFormat === "king") {
+                  state.rounds = [assignInitialKingCourts()];
+                } else if (keptFormat === "gauntlet") {
+                  state.rounds = [assignInitialGauntletCourts()];
+                } else if (keptNames.length === 8 && state.courtCount === 2) {
+                  state.rrScheduleMode = "wh8";
+                  state.rrRounds = 7;
+                  state.rounds = generateRounds();
+                } else {
+                  state.rrScheduleMode = "generated";
+                  state.rrRounds = Math.max(4, Math.min(12, parseInt(state.rrRounds, 10) || 7));
+                  state.rounds = generateRRSchedule(
+                    Array.from({ length: keptNames.length }, (_, i) => i + 1),
+                    state.courtCount,
+                    state.rrRounds,
+                    [],
+                    mulberry32(state.scheduleSeed)
+                  );
+                }
+              }
+              syncKeepAwakeToState();
+              save();
+              close();
+              render();
+            }, { title: "Reset tournament", confirmText: "Reset", danger: true });
+          }
+        }, "Reset Tournament");
+        tabContent.appendChild(resetBtn);
+      }
+      
+      const clearBtn = el("button", {
+        class: "danger",
+        style: "width: 100%; margin-top: 10px;",
+        onclick: () => {
+          showConfirm("Clear all data including names? This can't be undone.", () => {
+            clearRoster();
+            const keptKeepAwakeClear = state.keepAwake;
+            const keptKeepAwakeAggressiveClear = state.keepAwakeAggressive;
+            state = newState();
+            state.keepAwake = keptKeepAwakeClear;
+            state.keepAwakeAggressive = keptKeepAwakeAggressiveClear;
+            syncKeepAwakeToState();
+            save();
+            close();
+            render();
+          }, { title: "Clear all data", confirmText: "Clear all", danger: true });
+        }
+      }, "Clear All");
+      tabContent.appendChild(clearBtn);
+    }
+    
+    else if (activeTab === "roster") {
+      // Edit Names Slot Renaming
+      const editNamesWrap = el("div", { style: "border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:16px;" });
+      editNamesWrap.appendChild(el("h3", { style: "margin:0 0 4px; font-size:14px;" }, "Edit Names"));
+      editNamesWrap.appendChild(el("p", { class: "muted", style: "margin: 0 0 10px; font-size:12px;" },
+        "Slots are fixed. Renaming updates the player everywhere."));
+      const editableSlots = state.format === "crown" ? 4 : playerCount();
+      for (let i = 0; i < editableSlots; i++) {
+        const input = el("input", {
+          class: "name-input",
+          style: "margin-bottom: 8px; width:100%;",
+          type: "text",
+          value: state.slots[i] || "",
+          autocomplete: "off",
+          autocapitalize: "words",
+          autocorrect: "off",
+          spellcheck: "false",
+        });
+        input.addEventListener("input", () => {
+          state.slots[i] = input.value;
+          const p = playerBySlot(i + 1);
+          if (p) p.name = input.value;
+          save();
+        });
+        editNamesWrap.appendChild(input);
+      }
+      tabContent.appendChild(editNamesWrap);
+      
+      // Court Management
+      tabContent.appendChild(el("div", { class: "ka-section-title" }, "Courts & Locations"));
+      
+      const manageError = el("div", { class: "paste-error", style: "display:none; margin-bottom:12px;" });
+      tabContent.appendChild(manageError);
+      
+      const refreshSettingsLocal = () => {
+        drawSettingsContent();
+      };
+      
+      const applyRosterResultLocal = (result, message) => {
+        if (!result || !result.ok) {
+          manageError.textContent = (result && result.error) || "Could not update players.";
+          manageError.style.display = "";
+          return;
+        }
+        showToast(message);
+        refreshSettingsLocal();
+      };
+      
+      const courtRow = el("div", { class: "settings-row" });
+      courtRow.appendChild(el("label", null, "Active Courts"));
+      const courtSelect = el("select");
+      [1,2,3,4,5,6].forEach(v => {
+        const opt = el("option", { value: String(v) }, String(v));
+        if (state.courtCount === v) opt.setAttribute("selected", "selected");
+        courtSelect.appendChild(opt);
+      });
+      courtSelect.addEventListener("change", () => {
+        const beforeState = stateSnapshotForUndo();
+        const result = changeCourtCountMidEvent(parseInt(courtSelect.value, 10));
+        if (!result || !result.ok) courtSelect.value = String(state.courtCount);
+        if (result && result.ok && result.changed) {
+          recordEvent({
+            kind: "courtCount",
+            label: mutationEventLabel("courtCount", { courts: state.courtCount }),
+            beforeState,
+            reversible: true,
+          });
+        }
+        applyRosterResultLocal(result, "Courts updated for Round " + nextRosterRound() + ".");
+      });
+      courtRow.appendChild(courtSelect);
+      tabContent.appendChild(courtRow);
+      
+      // Rename Courts
+      const editCourtsWrap = el("div", { style: "margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px;" });
+      editCourtsWrap.appendChild(el("h3", { style: "margin-bottom: 8px; font-size:14px;" }, "Rename Courts"));
+      if (!state.courtNames) state.courtNames = [];
+      for (let i = 0; i < state.courtCount; i++) {
+        const defaultPlaceholder = courtLocationLabel(i + 1, state.format, true);
+        const val = state.courtNames[i] !== undefined ? state.courtNames[i] : "";
+        
+        const row = el("div", { class: "settings-row", style: "margin-bottom:8px;" });
+        row.appendChild(el("label", { style: "font-size:13px; color:var(--muted);" }, `Court ${i + 1}`));
+        const input = el("input", {
+          class: "name-input",
+          style: "margin:0; flex:1;",
+          type: "text",
+          placeholder: defaultPlaceholder,
+          value: val
+        });
+        input.addEventListener("input", () => {
+          state.courtNames[i] = input.value.trim();
+          save();
+        });
+        row.appendChild(input);
+        editCourtsWrap.appendChild(row);
+      }
+      tabContent.appendChild(editCourtsWrap);
+      
+      // Player Roster Management
+      tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:20px;" }, "Active Players"));
+      
+      const activePlayers = (state.players || [])
+        .filter(p => p.status === "active")
+        .sort((a, b) => a.slot - b.slot);
+      const leftPlayers = (state.players || [])
+        .filter(p => p.status === "left")
+        .sort((a, b) => a.slot - b.slot);
+      const currentRound = parseInt(state.currentRound, 10) || 1;
+      const activeTotal = activeCount();
+      
+      const activeList = el("div", { class: "manage-player-list" });
+      activePlayers.forEach(p => {
+        const row = el("div", { class: "manage-player-row" });
+        const main = el("div", { class: "manage-player-main" });
+        main.appendChild(el("div", { class: "manage-player-name" }, p.name || ("Player " + p.slot)));
+        const bits = ["Slot " + p.slot];
+        if (p.joinedRound > 1) bits.push("joined R" + p.joinedRound);
+        if (p.eligibleFromRound > currentRound) bits.push("starts R" + p.eligibleFromRound);
+        main.appendChild(el("div", { class: "manage-player-meta" }, bits.join(" · ")));
+        row.appendChild(main);
+        
+        const leaveBtn = el("button", {
+          class: "secondary",
+          style: "min-height:32px; padding:6px 12px;",
+          disabled: activeTotal <= 4,
+          title: activeTotal <= 4 ? "At least 4 active players required." : "",
+        }, "Leave");
+        
+        leaveBtn.addEventListener("click", () => {
+          const beforeState = stateSnapshotForUndo();
+          const round = parseInt(state.currentRound, 10) || 1;
+          const result = markPlayerLeft(p.slot);
+          if (result && result.ok) {
+            recordEvent({
+              kind: "roster",
+              label: mutationEventLabel("rosterLeave", { name: p.name || "Player", round }),
+              beforeState,
+              reversible: true,
+            });
+          }
+          applyRosterResultLocal(result, (p.name || "Player") + " leaves after Round " + round + ".");
+        });
+        row.appendChild(leaveBtn);
+        activeList.appendChild(row);
+      });
+      tabContent.appendChild(activeList);
+      
+      // Departed Players List
+      if (leftPlayers.length) {
+        tabContent.appendChild(el("h3", { style: "margin-top:16px; font-size:14px;" }, "Departed Players"));
+        const leftList = el("div", { class: "manage-player-list" });
+        leftPlayers.forEach(p => {
+          const row = el("div", { class: "manage-player-row" });
+          const main = el("div", { class: "manage-player-main" });
+          main.appendChild(el("div", { class: "manage-player-name" }, p.name || ("Player " + p.slot)));
+          main.appendChild(el("div", { class: "manage-player-meta" }, "Slot " + p.slot + " · " + departedText(p.slot)));
+          row.appendChild(row.appendChild(main));
+          
+          const returnBtn = el("button", {
+            class: "secondary",
+            style: "min-height:32px; padding:6px 12px;",
+            disabled: activeTotal >= 24,
+            title: activeTotal >= 24 ? "Active player cap is 24." : "",
+          }, "Return");
+          
+          returnBtn.addEventListener("click", () => {
+            const beforeState = stateSnapshotForUndo();
+            const result = returnMidEventPlayer(p.slot);
+            if (result && result.ok) {
+              recordEvent({
+                kind: "roster",
+                label: mutationEventLabel("rosterReturn", { name: p.name || "Player", round: nextRosterRound() }),
+                beforeState,
+                reversible: true,
+              });
+            }
+            applyRosterResultLocal(result, (p.name || "Player") + " returns in Round " + nextRosterRound() + ".");
+          });
+          row.appendChild(returnBtn);
+          leftList.appendChild(row);
+        });
+        tabContent.appendChild(leftList);
+      }
+      
+      // Add Player Section
+      tabContent.appendChild(el("h3", { style: "margin-top:16px; font-size:14px;" }, "Add Player"));
+      const addRow = el("div", { class: "manage-add-row" });
+      const nameInput = el("input", {
+        class: "name-input",
+        style: "margin-bottom: 6px;",
+        type: "text",
+        placeholder: "Name",
+        autocomplete: "off",
+        autocapitalize: "words",
+        autocorrect: "off",
+        spellcheck: "false",
+      });
+      const phoneInput = el("input", {
+        class: "name-input",
+        style: "margin-bottom: 8px;",
+        type: "tel",
+        placeholder: "Phone (optional)",
+        autocomplete: "tel",
+      });
+      let selectedGroup = "";
+      const addBtn = el("button", {
+        class: "primary",
+        style: "width:100%; min-height:40px; margin-top:8px;",
+        disabled: activeTotal >= 24,
+        title: activeTotal >= 24 ? "Active player cap is 24." : "",
+      }, "Add Player");
+      
+      addBtn.addEventListener("click", () => {
+        const beforeState = stateSnapshotForUndo();
+        const cleanName = (nameInput.value || "").trim();
+        const result = addMidEventPlayer(nameInput.value, phoneInput.value, selectedGroup);
+        if (result && result.ok) {
+          recordEvent({
+            kind: "roster",
+            label: mutationEventLabel("rosterAdd", { name: cleanName || "Player" }),
+            beforeState,
+            reversible: true,
+          });
+        }
+        applyRosterResultLocal(result, "Player added for Round " + nextRosterRound() + ".");
+      });
+      
+      nameInput.addEventListener("keydown", e => { if (e.key === "Enter") addBtn.click(); });
+      phoneInput.addEventListener("keydown", e => { if (e.key === "Enter") addBtn.click(); });
+      
+      addRow.appendChild(nameInput);
+      addRow.appendChild(phoneInput);
+      
+      if (state.mixedMode) {
+        const labels = mixedToggleLabels();
+        const groupBtn = (groupVal, label) => {
+          const btn = el("button", {
+            style: "min-height:36px; padding:4px 12px; font-size:13px; font-weight:600; flex:1;",
+            "aria-label": "Set group " + label + " for new player",
+          }, label);
+          const sync = () => { btn.className = selectedGroup === groupVal ? "primary" : "secondary"; };
+          btn.addEventListener("click", () => {
+            selectedGroup = selectedGroup === groupVal ? "" : groupVal;
+            sync();
+          });
+          sync();
+          return btn;
+        };
+        addRow.appendChild(el("div", { style: "display:flex; gap:6px; margin-bottom:8px;" },
+          groupBtn("a", labels.a),
+          groupBtn("b", labels.b)
+        ));
+      }
+      addRow.appendChild(addBtn);
+      tabContent.appendChild(addRow);
+    }
+  }
+  
+  modal.appendChild(tabContainer);
+  modal.appendChild(tabContent);
+  
+  const doneBtn = el("button", {
+    style: "width: 100%; min-height: 44px; margin-top: auto; flex-shrink: 0; font-weight:700;",
+    onclick: () => { syncKeepAwakeToState(); close(); }
+  }, "Done");
+  modal.appendChild(doneBtn);
+  
+  bg.appendChild(modal);
+  mountModal(bg, modal);
+  
+  drawSettingsContent();
 }
 
 // RUMBLE:MODALS:end
