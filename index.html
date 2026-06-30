@@ -610,6 +610,40 @@
     color: var(--accent);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
+  .setup-tab-btn.unreviewed::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    background-color: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+  .setup-tab-btn.active.unreviewed::after {
+    box-shadow: 0 0 0 2px var(--panel-2);
+  }
+  .wizard-btn {
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid rgba(251, 191, 36, 0.25);
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+  }
+  .wizard-btn:hover {
+    background: rgba(251, 191, 36, 0.08);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15);
+  }
   .setup-tab-btn.has-error::after {
     content: "";
     position: absolute;
@@ -5636,6 +5670,7 @@ function runSimulation() {
 }
 let state = isSnapshotRoute() ? newState() : (isDisplayMode() ? (readDisplayState() || newState()) : (load() || newState()));
 let _activeSetupTab = "players";
+let _reviewedTabs = { format: false, timing: false };
 let displayRefreshStarted = false;
 let displayLastSaved = null;
 
@@ -10382,15 +10417,23 @@ function updateStartState() {
   if (playersTabBtn) {
     playersTabBtn.classList.toggle("has-error", !validation.ok);
   }
+  const formatTabBtn = document.querySelector(".setup-tab-btn[data-tab='format']");
+  if (formatTabBtn) {
+    formatTabBtn.classList.toggle("unreviewed", !_reviewedTabs.format);
+  }
   const timingTabBtn = document.querySelector(".setup-tab-btn[data-tab='timing']");
   if (timingTabBtn) {
     const timingError = state.timeBudget && state.timeBudget.enabled && !state.timeBudget.plannedConfig;
     timingTabBtn.classList.toggle("has-error", !!timingError);
+    timingTabBtn.classList.toggle("unreviewed", !_reviewedTabs.timing);
   }
 
   const hint = document.getElementById("start-hint");
   if (hint) {
-    const reason = startBlockReason();
+    let reason = startBlockReason();
+    if (!reason && (!_reviewedTabs.format || !_reviewedTabs.timing)) {
+      reason = "👉 Recommended: Review the 'Format' and 'Timing & Rules' tabs before starting.";
+    }
     hint.textContent = reason;
     hint.style.display = reason ? "" : "none";
     // A duplicate/range problem is a real error (red); an incomplete count is neutral guidance.
@@ -12540,8 +12583,8 @@ function getRoundStatistics(format, rounds, players, courts) {
     );
 
     tabPlayersBtn.addEventListener("click", () => { _activeSetupTab = "players"; render(); });
-    tabFormatBtn.addEventListener("click", () => { _activeSetupTab = "format"; render(); });
-    tabTimingBtn.addEventListener("click", () => { _activeSetupTab = "timing"; render(); });
+    tabFormatBtn.addEventListener("click", () => { _activeSetupTab = "format"; _reviewedTabs.format = true; render(); });
+    tabTimingBtn.addEventListener("click", () => { _activeSetupTab = "timing"; _reviewedTabs.timing = true; render(); });
 
     tabsContainer.appendChild(tabPlayersBtn);
     tabsContainer.appendChild(tabFormatBtn);
@@ -12787,9 +12830,31 @@ function getRoundStatistics(format, rounds, players, courts) {
     }
     contentPlayers.appendChild(card);
     contentPlayers.appendChild(renderSaveToLifetimeBlock());
+    const nextToFormat = el("div", { style: "display:flex;justify-content:flex-end;margin-top:16px;" },
+      el("button", {
+        class: "wizard-btn",
+        onclick: () => {
+          _activeSetupTab = "format";
+          _reviewedTabs.format = true;
+          render();
+        }
+      }, "Continue to Format ", makeSvg('<path d="M5 12h14M12 5l7 7-7 7"/>', 14))
+    );
+    contentPlayers.appendChild(nextToFormat);
 
     // --- Tab 2: Format & Courts ---
     contentFormat.appendChild(renderFormatChooser());
+    const nextToTiming = el("div", { style: "display:flex;justify-content:flex-end;margin-top:16px;" },
+      el("button", {
+        class: "wizard-btn",
+        onclick: () => {
+          _activeSetupTab = "timing";
+          _reviewedTabs.timing = true;
+          render();
+        }
+      }, "Continue to Timing & Rules ", makeSvg('<path d="M5 12h14M12 5l7 7-7 7"/>', 14))
+    );
+    contentFormat.appendChild(nextToTiming);
 
     // --- Tab 3: Timing & Rules ---
     contentTiming.appendChild(renderTimeBudgetBlock());

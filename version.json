@@ -1,5 +1,14 @@
 [
   {
+    "version": "v34",
+    "changes": [
+      "Introduce a wizard navigation flow to guide game managers sequentially through setup tabs",
+      "Add interactive 'Continue to Format' and 'Continue to Timing & Rules' outline buttons at the bottom of the tab content cards",
+      "Add subtle amber unreviewed notification dots to tabs that have not yet been visited",
+      "Display a friendly, non-blocking recommendation tip next to the Start button if the tournament is ready but configuration tabs have not been reviewed"
+    ]
+  },
+  {
     "version": "v33",
     "changes": [
       "Restore the Round Robin rounds selection dropdown for 8-player / 2-court events",
