@@ -1,8 +1,8 @@
 {
-  "version": "v22",
+  "version": "v23",
   "changes": [
-    "Rename and customize court names in setup and mid-tournament settings",
-    "Select start times in 15-minute intervals",
-    "View games, byes, and partner mix projections in Format tab"
+    "Manage active rosters with the new Roster Manager tool",
+    "Load players from Lifetime Stats club history or save custom Tuesday/Thursday roster groups",
+    "Rename and customize court names in setup and mid-tournament settings"
   ]
 }
