@@ -1,5 +1,11 @@
 [
   {
+    "version": "v53",
+    "changes": [
+      "Add MLP-format support to Round Robin: set each round's pairing to Mixed (one man + one woman per team) or Same-gender (men/men and women/women teams) in the Format tab, add a 'Same-gender opponents only' toggle that keeps men's and women's games on separate courts, and add a 'Skip championship' option that ends the event after the final round and crowns winners from the standings"
+    ]
+  },
+  {
     "version": "v52",
     "changes": [
       "Fix a scheduler bug in Round Robin court assignment: restrict the post-schedule court balancing / relabeling pass to tournaments running on exactly two courts, preventing it from incorrectly swapping and collapsing Court 3+ games into Court 1 and 2"
