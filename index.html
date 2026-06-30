@@ -10758,10 +10758,7 @@ function renderFormatChooser() {
     sel.addEventListener("change", () => {
       state.rrRounds = parseInt(sel.value, 10);
       save();
-      if (state.timeBudget.enabled) {
-        const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
-      }
+      render();
     });
     sub.appendChild(sel);
     wrap.appendChild(sub);
@@ -10778,10 +10775,7 @@ function renderFormatChooser() {
     sel.addEventListener("change", () => {
       state.stackRounds = parseInt(sel.value, 10);
       save();
-      if (state.timeBudget.enabled) {
-        const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
-      }
+      render();
     });
     sub.appendChild(sel);
     wrap.appendChild(sub);
@@ -10798,10 +10792,7 @@ function renderFormatChooser() {
     sel.addEventListener("change", () => {
       state.kingRounds = parseInt(sel.value, 10);
       save();
-      if (state.timeBudget.enabled) {
-        const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
-      }
+      render();
     });
     sub.appendChild(sel);
     wrap.appendChild(sub);
@@ -10818,13 +10809,47 @@ function renderFormatChooser() {
     sel.addEventListener("change", () => {
       state.gauntletRounds = parseInt(sel.value, 10);
       save();
-      if (state.timeBudget.enabled) {
-        const { config, error, isTight, suggestion } = applyTimeBudgetSolve();
-        updateTimeBudgetReadoutDOM(formatTimeBudgetReadout(config, state.timeBudget.minutes, suggestion), isTight, !!error);
-      }
+      render();
     });
     sub.appendChild(sel);
     wrap.appendChild(sub);
+  }
+
+  // Display projection statistics block under rounds selector
+  const stats = getRoundStatistics(state.format,
+    state.format === "rr" ? (rrSetupCount === 8 && courtDisplay === 2 ? 7 : state.rrRounds) :
+    state.format === "stack" ? state.stackRounds :
+    state.format === "king" ? state.kingRounds : state.gauntletRounds,
+    rrSetupCount, courtDisplay
+  );
+
+  if (stats) {
+    const statsBox = el("div", {
+      style: "margin-top:14px; background:var(--panel-2); border:1px solid var(--border); border-radius:12px; padding:16px; font-size:13px; line-height:1.5;"
+    });
+    statsBox.appendChild(el("h4", { style: "margin:0 0 8px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted);" }, "Rounds Projection Info"));
+    
+    const ul = el("ul", { style: "margin:0; padding-left:18px; color:var(--muted); display:flex; flex-direction:column; gap:4px;" });
+    ul.appendChild(el("li", null, el("strong", { style: "color:var(--text);" }, "Games per player: "), stats.games));
+    ul.appendChild(el("li", null, el("strong", { style: "color:var(--text);" }, "Byes per player: "), stats.byes));
+    ul.appendChild(el("li", null, el("strong", { style: "color:var(--text);" }, "Partner variety: "), stats.partners));
+    
+    // Recommended badge for Round Robin
+    if (state.format === "rr") {
+      const defaultR = defaultRoundsForMixer(rrSetupCount, courtDisplay);
+      const currentR = rrSetupCount === 8 && courtDisplay === 2 ? 7 : state.rrRounds;
+      if (currentR === defaultR) {
+        statsBox.appendChild(el("div", {
+          style: "margin-top:10px; display:inline-block; background:#1a3d24; color:#50fa7b; border:1px solid #245a33; border-radius:99px; padding:4px 10px; font-size:11px; font-weight:700;"
+        }, "✨ Recommended Mix"));
+      } else {
+        statsBox.appendChild(el("div", {
+          style: "margin-top:10px; color:var(--accent); font-size:12px; font-weight:600;"
+        }, `👉 Recommended: Set to ${defaultR} rounds for a perfect partner mixer.`));
+      }
+    }
+    statsBox.appendChild(ul);
+    wrap.appendChild(statsBox);
   }
 
   // Collapsible Presets & Setup Assistant at the bottom
@@ -11810,9 +11835,87 @@ function renderSaveToLifetimeBlock() {
   return card;
 }
 
+function defaultRoundsForMixer(players, courts) {
+  const active = Math.min(players, 4 * courts);
+  if (active <= 0) return 7;
+  return Math.max(4, Math.min(12, Math.ceil(players * (players - 1) / active)));
+}
+
+function updateRoundsDefaultIfNeeded(players, courts) {
+  if (state.lastSetupPlayers === undefined) {
+    state.lastSetupPlayers = players;
+    state.lastSetupCourts = courts;
+    return;
+  }
+  if (state.lastSetupPlayers !== players || state.lastSetupCourts !== courts) {
+    const prevDefault = defaultRoundsForMixer(state.lastSetupPlayers, state.lastSetupCourts);
+    const newDefault = defaultRoundsForMixer(players, courts);
+    if (state.rrRounds === prevDefault || !state.rrRounds) {
+      state.rrRounds = newDefault;
+    }
+    state.lastSetupPlayers = players;
+    state.lastSetupCourts = courts;
+    save();
+  }
+}
+
+function getRoundStatistics(format, rounds, players, courts) {
+  const active = Math.min(players, 4 * courts);
+  if (active <= 0) return null;
+
+  const avgGames = rounds * active / players;
+  const avgByes = rounds - avgGames;
+
+  let gamesText = "";
+  if (Math.abs(avgGames - Math.round(avgGames)) < 0.01) {
+    const g = Math.round(avgGames);
+    gamesText = `${g} game${g !== 1 ? "s" : ""}`;
+  } else {
+    gamesText = `${Math.floor(avgGames)} or ${Math.ceil(avgGames)} game${Math.ceil(avgGames) !== 1 ? "s" : ""}`;
+  }
+
+  let byesText = "";
+  if (Math.abs(avgByes - Math.round(avgByes)) < 0.01) {
+    const b = Math.round(avgByes);
+    byesText = b === 0 ? "0 byes" : `${b} bye${b !== 1 ? "s" : ""}`;
+  } else {
+    byesText = `${Math.floor(avgByes)} or ${Math.ceil(avgByes)} bye${Math.ceil(avgByes) !== 1 ? "s" : ""}`;
+  }
+
+  let partnerText = "";
+  if (format === "rr") {
+    const defaultR = defaultRoundsForMixer(players, courts);
+    if (rounds >= defaultR) {
+      partnerText = `All ${players - 1} other players (full mix)`;
+    } else {
+      const minG = Math.floor(avgGames);
+      const maxG = Math.ceil(avgGames);
+      if (minG === maxG) {
+        partnerText = `${minG} different partner${minG !== 1 ? "s" : ""} (out of ${players - 1})`;
+      } else {
+        partnerText = `${minG}–${maxG} different partner${maxG !== 1 ? "s" : ""} (out of ${players - 1})`;
+      }
+    }
+  } else if (format === "stack") {
+    partnerText = "Partnered based on ladder rank adjacency";
+  } else {
+    partnerText = "Ad-hoc court pairings based on ranks";
+  }
+
+  return {
+    games: gamesText,
+    byes: byesText,
+    partners: partnerText
+  };
+}
+
   function renderSetup() {
     const playerCount = setupRosterCount();
     ensureSetupRosterArrays(playerCount);
+    const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
+    
+    // Auto-update rounds count if it was left on default
+    updateRoundsDefaultIfNeeded(playerCount, courtDisplay);
     const isCrown = state.format === "crown";
     const wrap = el("div", { class: "setup-container" });
 
@@ -11845,10 +11948,8 @@ function renderSaveToLifetimeBlock() {
     const contentFormat = el("div", { class: "setup-tab-content" + (_activeSetupTab === "format" ? " active" : "") });
     const contentTiming = el("div", { class: "setup-tab-content" + (_activeSetupTab === "timing" ? " active" : "") });
 
-    // --- Tab 1: Players & Courts ---
     // Courts Card
     const crownCourts = state.format === "crown";
-    const courtDisplay = effectiveCourtCountForFormat(state.format, state.courtCount);
     const courtCard = el("div", { class: "card" });
     const courtRow = el("div", { class: "setup-control-row", style: "margin-top:0;" });
     courtRow.appendChild(el("div", null,
