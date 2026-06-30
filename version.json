@@ -1,5 +1,11 @@
 [
   {
+    "version": "v45",
+    "changes": [
+      "Redesign and polish the header toolbar to use a modern, two-row grid layout: Row 1 handles brand branding and compact actions (Undo, Log, Settings) with hover effects, while Row 2 wraps status pills and time projections cleanly without vertical wrap clutter"
+    ]
+  },
+  {
     "version": "v44",
     "changes": [
       "Hide the Text Results panel on the Champions/Done screen if no players have phone numbers entered, showing the share actions instead"
