@@ -1,5 +1,14 @@
 [
   {
+    "version": "v35",
+    "changes": [
+      "Upgrade the tournament/round shuffle reveal animation with premium design flair",
+      "Extend show time to 2.2–2.6 seconds to build anticipation when drawing courts",
+      "Introduce a smooth quadratic slowdown curve so shuffling names are legible as they resolve",
+      "Add Frosted glass backdrop blurs and hardware-accelerated bounce/pop animations when slots lock in"
+    ]
+  },
+  {
     "version": "v34",
     "changes": [
       "Introduce a wizard navigation flow to guide game managers sequentially through setup tabs",

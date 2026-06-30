@@ -1253,7 +1253,8 @@
   .shuffle-overlay {
     position: fixed;
     inset: 0;
-    background: var(--bg);
+    background: rgba(15, 20, 25, 0.98);
+    backdrop-filter: blur(12px);
     z-index: 200;
     display: flex;
     flex-direction: column;
@@ -1261,6 +1262,11 @@
     justify-content: center;
     padding: 24px;
     cursor: pointer;
+    animation: overlayFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes overlayFadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
   }
   .shuffle-title {
     font-size: 22px;
@@ -1285,11 +1291,26 @@
     font-size: 22px;
     font-weight: 700;
     text-align: center;
-    transition: border-color 0.18s ease, color 0.18s ease;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .shuffle-slot.shuffling {
+    animation: shuffleScale 0.1s ease-out;
+  }
+  @keyframes shuffleScale {
+    0% { transform: scale(0.97); opacity: 0.95; }
+    100% { transform: scale(1); opacity: 1; }
   }
   .shuffle-slot.locked {
     border-color: var(--accent);
     color: var(--accent);
+    background: rgba(251, 191, 36, 0.05);
+    box-shadow: 0 0 16px rgba(251, 191, 36, 0.12);
+    animation: lockPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes lockPop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.08); filter: brightness(1.2); }
+    100% { transform: scale(1); }
   }
   .shuffle-skip {
     margin-top: 18px;
@@ -6735,7 +6756,8 @@ function runShuffleReveal(finalSlots, onDone, opts) {
   document.body.appendChild(overlay);
 
   const startTime = performance.now();
-  const totalMs = finalSlots.length <= 4 ? 1600 : 1200; // longer reveal for 4-player to maintain suspense
+  const totalMs = finalSlots.length <= 4 ? 2600 : 2200; // longer reveal for better suspense & flair
+  let lastShuffleElapsed = 0;
   let frame;
   let done = false;
 
@@ -6743,15 +6765,16 @@ function runShuffleReveal(finalSlots, onDone, opts) {
     if (done) return;
     done = true;
     cancelAnimationFrame(frame);
-    // lock-in: show finalSlots with locked styling
+    // lock-in: show finalSlots with locked styling and remove shuffling pulse
     for (let i = 0; i < cells.length; i++) {
       cells[i].textContent = finalSlots[i];
+      cells[i].classList.remove("shuffling");
       cells[i].classList.add("locked");
     }
     setTimeout(() => {
       overlay.remove();
       onDone();
-    }, 220);
+    }, 450); // longer delay to appreciate final layout
   }
 
   overlay.addEventListener("click", finish);
@@ -6759,19 +6782,32 @@ function runShuffleReveal(finalSlots, onDone, opts) {
   function tick(now) {
     const elapsed = now - startTime;
     if (elapsed >= totalMs) { finish(); return; }
-    // ease-out: shuffle frequency slows toward the end
     const progress = elapsed / totalMs;
-    const interval = 60 + 280 * progress; // 60ms early, 340ms late
-    const stepIndex = Math.floor(elapsed / interval);
-    // re-randomize cells (cosmetic only — finalSlots is the real assignment)
-    const perm = shuffle(finalSlots);
-    for (let i = 0; i < cells.length; i++) cells[i].textContent = perm[i];
-    // progressive lock-in: start locking final cells in the last 35% of the animation
-    if (progress > 0.65) {
-      const lockedCount = Math.min(cells.length, Math.floor((progress - 0.65) / 0.35 * cells.length) + 1);
-      for (let i = 0; i < lockedCount; i++) {
-        cells[i].textContent = finalSlots[i];
-        cells[i].classList.add("locked");
+    // quadratic slowdown: starts fast (50ms interval) and slows down to ~380ms
+    const currentInterval = 50 + 330 * Math.pow(progress, 2);
+
+    if (elapsed - lastShuffleElapsed >= currentInterval) {
+      lastShuffleElapsed = elapsed;
+      const perm = shuffle(finalSlots);
+      // Lock-in phase runs in the last 45% of the animation (progress > 0.55)
+      const lockedCount = progress > 0.55
+        ? Math.min(cells.length, Math.floor((progress - 0.55) / 0.45 * cells.length) + 1)
+        : 0;
+
+      for (let i = 0; i < cells.length; i++) {
+        if (i < lockedCount) {
+          if (!cells[i].classList.contains("locked")) {
+            cells[i].textContent = finalSlots[i];
+            cells[i].classList.remove("shuffling");
+            cells[i].classList.add("locked");
+          }
+        } else {
+          cells[i].textContent = perm[i];
+          // Force CSS scale animation restart
+          cells[i].classList.remove("shuffling");
+          void cells[i].offsetWidth;
+          cells[i].classList.add("shuffling");
+        }
       }
     }
     frame = requestAnimationFrame(tick);
