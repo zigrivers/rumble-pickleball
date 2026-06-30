@@ -29,6 +29,8 @@
     --court4: #f472b6;
     --court5: #f59e0b;
     --court6: #22d3ee;
+    --court7: #f87171;
+    --court8: #a3e635;
     --gold: #fbbf24;
     --silver: #cbd5e1;
   }
@@ -280,6 +282,8 @@
   .court-card.c4 { border-top-color: var(--court4); box-shadow: 0 4px 20px rgba(244, 114, 182, 0.04); }
   .court-card.c5 { border-top-color: var(--court5); box-shadow: 0 4px 20px rgba(245, 158, 11, 0.04); }
   .court-card.c6 { border-top-color: var(--court6); box-shadow: 0 4px 20px rgba(34, 211, 238, 0.04); }
+  .court-card.c7 { border-top-color: var(--court7); box-shadow: 0 4px 20px rgba(248, 113, 113, 0.04); }
+  .court-card.c8 { border-top-color: var(--court8); box-shadow: 0 4px 20px rgba(163, 230, 53, 0.04); }
   .court-card.gold { border-top-color: var(--gold); box-shadow: 0 4px 24px rgba(251, 191, 36, 0.06); }
   .court-card.silver { border-top-color: var(--silver); box-shadow: 0 4px 20px rgba(203, 213, 225, 0.04); }
   .bye-banner {
@@ -349,6 +353,8 @@
   .court-card.c4 .court-label { color: var(--court4); background: rgba(244, 114, 182, 0.08); border-color: rgba(244, 114, 182, 0.15); }
   .court-card.c5 .court-label { color: var(--court5); background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.15); }
   .court-card.c6 .court-label { color: var(--court6); background: rgba(34, 211, 238, 0.08); border-color: rgba(34, 211, 238, 0.15); }
+  .court-card.c7 .court-label { color: var(--court7); background: rgba(248, 113, 113, 0.08); border-color: rgba(248, 113, 113, 0.15); }
+  .court-card.c8 .court-label { color: var(--court8); background: rgba(163, 230, 53, 0.08); border-color: rgba(163, 230, 53, 0.15); }
   .court-card.gold .court-label { color: var(--gold); background: rgba(251, 191, 36, 0.08); border-color: rgba(251, 191, 36, 0.15); }
   .court-card.silver .court-label { color: var(--silver); background: rgba(203, 213, 225, 0.08); border-color: rgba(203, 213, 225, 0.15); }
   .court-label.hc {
@@ -722,6 +728,8 @@
   .history-game .court-tag.c4 { background: rgba(244, 114, 182, 0.15); color: var(--court4); }
   .history-game .court-tag.c5 { background: rgba(245, 158, 11, 0.15); color: var(--court5); }
   .history-game .court-tag.c6 { background: rgba(34, 211, 238, 0.15); color: var(--court6); }
+  .history-game .court-tag.c7 { background: rgba(248, 113, 113, 0.15); color: var(--court7); }
+  .history-game .court-tag.c8 { background: rgba(163, 230, 53, 0.15); color: var(--court8); }
   .history-game .court-tag.hc { color: var(--text); background: var(--panel-2); border: 1.5px solid var(--text); }
   .history-game .game-text { flex: 1; }
   .history-game .game-score {
@@ -1695,6 +1703,8 @@
   .partner-chip.c4 { color: var(--court4); background: rgba(244, 114, 182, 0.15); }
   .partner-chip.c5 { color: var(--court5); background: rgba(245, 158, 11, 0.15); }
   .partner-chip.c6 { color: var(--court6); background: rgba(34, 211, 238, 0.15); }
+  .partner-chip.c7 { color: var(--court7); background: rgba(248, 113, 113, 0.15); }
+  .partner-chip.c8 { color: var(--court8); background: rgba(163, 230, 53, 0.15); }
   .partner-chip.bye { color: var(--muted); background: var(--panel-2); }
   .mixed-badge {
     display: inline-block;
@@ -2408,6 +2418,8 @@
   .schedule-game .court-tag.c4 { background: rgba(244, 114, 182, 0.15); color: var(--court4); }
   .schedule-game .court-tag.c5 { background: rgba(245, 158, 11, 0.15); color: var(--court5); }
   .schedule-game .court-tag.c6 { background: rgba(34, 211, 238, 0.15); color: var(--court6); }
+  .schedule-game .court-tag.c7 { background: rgba(248, 113, 113, 0.15); color: var(--court7); }
+  .schedule-game .court-tag.c8 { background: rgba(163, 230, 53, 0.15); color: var(--court8); }
   .schedule-game .court-tag.gold { background: rgba(251, 191, 36, 0.18); color: var(--gold); }
   .schedule-game .court-tag.silver { background: rgba(203, 213, 225, 0.15); color: var(--silver); }
   .schedule-game .court-tag.hc { color: var(--text); background: var(--panel-2); border: 1.5px solid var(--text); }
@@ -2638,7 +2650,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v57";
+const APP_VERSION    = "v58";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -5166,8 +5178,11 @@ function runSelfTests() {
         "setup validation accepts 10-player RR / 2 courts", valid10);
       console.assert(!validate("rr", names(3), 1).ok,
         "setup validation rejects fewer than 4 flexible players");
-      console.assert(!validate("rr", names(25), 6).ok,
-        "setup validation rejects more than 24 flexible players");
+      const valid32 = validate("rr", names(32), 8);
+      console.assert(valid32.ok && valid32.playerCount === 32 && valid32.effectiveCourtCount === 8,
+        "setup validation accepts 32-player RR / 8 courts", valid32);
+      console.assert(!validate("rr", names(33), 8).ok,
+        "setup validation rejects more than 32 flexible players");
       console.assert(!validate("rr", ["A","B","C","a"], 1).ok,
         "setup validation rejects duplicate names");
       const crownValid = validate("crown", ["A","B","C","D"], 6);
@@ -5240,10 +5255,10 @@ function runSelfTests() {
         && state.rounds.slice(1).map(roundSig).join("|") !== futureBeforeJoin,
         "join regenerates RR future rounds and exits golden path", state.rounds);
 
-      start("rr", 24, 6);
-      const capResult = addPlayer("Player 25", "");
-      console.assert(!capResult.ok && activeCount() === 24,
-        "join enforces 24-active-player cap", { capResult, active: activeCount() });
+      start("rr", 32, 8);
+      const capResult = addPlayer("Player 33", "");
+      console.assert(!capResult.ok && activeCount() === 32,
+        "join enforces 32-active-player cap", { capResult, active: activeCount() });
 
       start("rr", 5, 1);
       const leaveOk = leavePlayer(5);
@@ -6301,6 +6316,15 @@ function simulationConfigs() {
     { label: "Mixed Stack 8/2", format: "stack", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4202 },
     { label: "Mixed King 8/2", format: "king", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4203 },
     { label: "Mixed Gauntlet 8/2", format: "gauntlet", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4204 },
+    // Large fields (up to 32 players / 8 courts) — verify scheduling/standings at scale.
+    { label: "RR 32/8", format: "rr", players: 32, courts: 8, rounds: 6, seed: 4301 },
+    { label: "RR 28/6 byes", format: "rr", players: 28, courts: 6, rounds: 6, seed: 4302 },
+    { label: "RR 24/8 idle-courts", format: "rr", players: 24, courts: 8, rounds: 5, seed: 4303 },
+    { label: "Stack 28/7", format: "stack", players: 28, courts: 7, rounds: 6, seed: 4304 },
+    { label: "King 32/8", format: "king", players: 32, courts: 8, rounds: 6, seed: 4305 },
+    { label: "Gauntlet 30/7 byes", format: "gauntlet", players: 30, courts: 7, rounds: 6, seed: 4306 },
+    { label: "Mixed RR 24/6", format: "rr", players: 24, courts: 6, rounds: 6, mixed: true, seed: 4307 },
+    { label: "RR 20/5 churn", format: "rr", players: 20, courts: 5, rounds: 5, churn: true, nextCourts: 4, seed: 4308 },
   ];
 }
 
@@ -6704,16 +6728,16 @@ function makeScheduleSeed() {
   return Math.floor(Math.random() * 0x100000000);
 }
   function setCourtCount(count) {
-    const next = Math.max(1, Math.min(6, parseInt(count, 10) || state.courtCount || 2));
+    const next = Math.max(1, Math.min(8, parseInt(count, 10) || state.courtCount || 2));
     const changed = next !== state.courtCount;
     state.courtCount = next;
     if (changed && state.format === "rr" && state.phase !== "setup") state.rrScheduleMode = "generated";
   }
   function effectiveCourtCountForFormat(format, courtCount) {
-    return format === "crown" ? 1 : Math.max(1, Math.min(6, parseInt(courtCount, 10) || 2));
+    return format === "crown" ? 1 : Math.max(1, Math.min(8, parseInt(courtCount, 10) || 2));
   }
   function clampSetupRosterCount(count) {
-    return Math.max(4, Math.min(24, parseInt(count, 10) || 8));
+    return Math.max(4, Math.min(32, parseInt(count, 10) || 8));
   }
   function setupRosterCount(format = state.format) {
     if (format === "crown") return 4;
@@ -6745,10 +6769,10 @@ function makeScheduleSeed() {
     const effectiveCourtCount = effectiveCourtCountForFormat(format, courtCount);
     const playerCount = trimmed.length;
     const min = format === "crown" ? 4 : 4;
-    const max = format === "crown" ? 4 : 24;
+    const max = format === "crown" ? 4 : 32;
     if (playerCount < min || playerCount > max) {
       return { ok: false, playerCount, effectiveCourtCount, errorKind: "range",
-        error: format === "crown" ? "Crown Court requires exactly 4 players." : "Use 4–24 players." };
+        error: format === "crown" ? "Crown Court requires exactly 4 players." : "Use 4–32 players." };
     }
     const filled = trimmed.filter(Boolean).length;
     if (filled < playerCount) {
@@ -6834,7 +6858,7 @@ function makeScheduleSeed() {
     const cleanName = (name || "").trim();
     if (!cleanName) return { ok: false, error: "Enter a player name." };
     if (rosterNameExists(cleanName)) return { ok: false, error: "Duplicate name: “" + cleanName + "”." };
-    if (activeCount() >= 24) return { ok: false, error: "Active player cap is 24." };
+    if (activeCount() >= 32) return { ok: false, error: "Active player cap is 32." };
     const nextRound = nextRosterRound();
     const slot = (state.players || []).reduce((m, p) => Math.max(m, p.slot || 0), 0) + 1;
     const cleanPhone = normalizePhone(phone || "");
@@ -6877,7 +6901,7 @@ function makeScheduleSeed() {
     if (blocked) return { ok: false, error: blocked };
     const p = playerBySlot(slot);
     if (!p || p.status !== "left") return { ok: false, error: "Player is not marked left." };
-    if (activeCount() >= 24) return { ok: false, error: "Active player cap is 24." };
+    if (activeCount() >= 32) return { ok: false, error: "Active player cap is 32." };
     p.status = "active";
     p.eligibleFromRound = nextRosterRound();
     p.leftRound = null;
@@ -7009,7 +7033,7 @@ function backfillStateDefaults(obj) {
   if (typeof obj.startedAt !== "number") obj.startedAt = 0;            // do NOT read the clock here (runs on display reads + undo)
   if (typeof obj.tournamentId !== "string") obj.tournamentId = "";    // boot path stamps legacy in-progress tournaments
   if (!["rr","stack","crown","king","gauntlet"].includes(obj.format)) obj.format = "rr";
-  if (!Number.isInteger(obj.courtCount) || obj.courtCount < 1 || obj.courtCount > 6) obj.courtCount = 2;
+  if (!Number.isInteger(obj.courtCount) || obj.courtCount < 1 || obj.courtCount > 8) obj.courtCount = 2;
   if (!Number.isInteger(obj.scheduleSeed)) obj.scheduleSeed = makeScheduleSeed();
   if (!Number.isInteger(obj.rrRounds) || obj.rrRounds < 4 || obj.rrRounds > 12) obj.rrRounds = 7;
   if (obj.rrScheduleMode !== "wh8" && obj.rrScheduleMode !== "generated") {
@@ -9893,7 +9917,7 @@ function activeSlots(round) {
     return "Court " + court;
   }
   function courtIdentity(court, format = state.format, opts = {}) {
-    const c = Math.max(1, Math.min(6, parseInt(court, 10) || 1));
+    const c = Math.max(1, Math.min(8, parseInt(court, 10) || 1));
     let label;
     if (state.courtNames && state.courtNames[c - 1]) {
       label = state.courtNames[c - 1];
@@ -10401,7 +10425,7 @@ function rankPlayersForFormat(throughRound) {
   return rankPlayers(throughRound); // rr, gauntlet: same ranking
 }
 
-const FINAL_TIER_NAMES = ["Championship", "Consolation", "Bronze", "Copper", "Iron", "Stone"];
+const FINAL_TIER_NAMES = ["Championship", "Consolation", "Bronze", "Copper", "Iron", "Stone", "Slate", "Clay"];
 
 function buildFinals() {
   const total = totalRegularRounds();
@@ -10423,7 +10447,7 @@ function buildFinals() {
       team1 = [block[0], block[3]];
       team2 = [block[1], block[2]];
     }
-    tiers.push(makeFinalTier(FINAL_TIER_NAMES[i], i + 1, team1, team2));
+    tiers.push(makeFinalTier(FINAL_TIER_NAMES[i] || ("Tier " + (i + 1)), i + 1, team1, team2));
   }
   state.finals = {
     tiers,
@@ -11873,7 +11897,7 @@ function openPreStartSummary() {
 }
 
 const RULES_RR = [
-  "4–24 players, 1–6 courts, doubles. Each round fills the active courts; anyone extra sits that round.",
+  "4–32 players, 1–8 courts, doubles. Each round fills the active courts; anyone extra sits that round.",
   "With exactly 8 players and 2 courts, Rumble keeps the classic 7-round schedule: every partner once, every opponent twice. Other setups use generated pairings with fair bye rotation.",
   "Score games however you normally would (typically first to 11, win by 2). Type any final score.",
   "Standings rank by Adjusted Margin — your average winning margin on a diminishing-returns scale, adjusted for opponent and partner strength — then win rate, head-to-head, and the initial random draw. Players with 0 GP rank below anyone who has played.",
@@ -11891,7 +11915,7 @@ const RULES_CROWN = [
   "Tiebreakers (within tier): match points → points scored → point differential → random draw.",
 ];
 const RULES_STACK = [
-  "4–24 players, 1–6 courts, doubles. Court 1 is the top court (🏆); lower courts are climbing courts.",
+  "4–32 players, 1–8 courts, doubles. Court 1 is the top court (🏆); lower courts are climbing courts.",
   "Games to 11, win by 1 — quick games. Ties not allowed; play it out.",
   "After every round: winners move up or stay at the top, losers move down or stay at the bottom. Bye returners re-enter near their last played court; new players start near the bottom.",
   "Partners rotate every round. On each court, the highest + lowest Stack Score pair up vs. the middle two — and never the same partner twice in a row on the same court.",
@@ -11899,7 +11923,7 @@ const RULES_STACK = [
   "Finals seat one four-player tier per active court, seeded #1+#4 vs #2+#3 within each tier. Extra active players remain unseated by season rank.",
 ];
 const RULES_KING = [
-  "4–24 players, 1–6 courts. Court 1 is the 👑 King's Court; lower courts fight upward.",
+  "4–32 players, 1–8 courts. Court 1 is the 👑 King's Court; lower courts fight upward.",
   "Each round fills the active courts; anyone extra sits that round. Byes are allocated fairly and avoid back-to-back sits unless unavoidable.",
   "After each round: winners move up or stay on Court 1, losers move down or stay at the bottom. Players on each court are randomly re-paired into two new teams.",
   "Ranking: King Score/game = wins + points scored + Court 1 wins, divided by games played. Highest King Score/game after regular rounds = #1 seed.",
@@ -11907,7 +11931,7 @@ const RULES_KING = [
   "Tiebreaker: the initial random seed drawn at tournament start.",
 ];
 const RULES_GAUNTLET = [
-  "4–24 players, 1–6 courts, doubles. Each round fills rank blocks of four; anyone extra sits by fair rotation.",
+  "4–32 players, 1–8 courts, doubles. Each round fills rank blocks of four; anyone extra sits by fair rotation.",
   "After every round, players are re-ranked by Adjusted Margin (diminishing-returns winning margin, adjusted for opponent and partner strength) → win rate → head-to-head.",
   "Pairing rule: Court 1 gets #1+#4 vs #2+#3; Court 2 gets #5+#8 vs #6+#7; lower courts continue the same rank-block pattern.",
   "Round 1 uses a random seed order.",
@@ -12305,8 +12329,8 @@ function openRosterManagerModal() {
       
       loadBtn.addEventListener("click", () => {
         const count = checkedKeys.size;
-        if (count < 4 || count > 24) {
-          showToast("Select between 4 and 24 players.");
+        if (count < 4 || count > 32) {
+          showToast("Select between 4 and 32 players.");
           return;
         }
         state.rawNames = [];
@@ -12620,7 +12644,7 @@ function applyTournamentTemplate(id) {
   const shape = roundShapeFor(players, state.courtCount);
   if (shape.byesNeeded > players / 3) {
     // Find lowest court count that reduces byes, up to 6 and floor(players/4)
-    const maxCourts = Math.min(6, Math.floor(players / 4));
+    const maxCourts = Math.min(8, Math.floor(players / 4));
     for (let c = state.courtCount + 1; c <= maxCourts; c++) {
       const s2 = roundShapeFor(players, c);
       if (s2.byesNeeded <= players / 3) {
@@ -12721,13 +12745,13 @@ function openSetupAssistant() {
   // Inputs row
   const row1 = el("div", { class: "settings-row" });
   row1.appendChild(el("label", null, "Players"));
-  const playersInput = el("input", { type: "number", min: 4, max: 24, value: setupRosterCount(), style: "width:60px;" });
+  const playersInput = el("input", { type: "number", min: 4, max: 32, value: setupRosterCount(), style: "width:60px;" });
   row1.appendChild(playersInput);
   modal.appendChild(row1);
 
   const row2 = el("div", { class: "settings-row" });
   row2.appendChild(el("label", null, "Courts"));
-  const courtsInput = el("input", { type: "number", min: 1, max: 6, value: state.courtCount, style: "width:60px;" });
+  const courtsInput = el("input", { type: "number", min: 1, max: 8, value: state.courtCount, style: "width:60px;" });
   row2.appendChild(courtsInput);
   modal.appendChild(row2);
 
@@ -14046,7 +14070,7 @@ function getRoundStatistics(format, rounds, players, courts) {
     ));
     const stepper = el("div", { class: "stepper" });
     const minus = el("button", { "aria-label": "Use fewer courts", disabled: crownCourts || courtDisplay <= 1 }, "-");
-    const plus = el("button", { "aria-label": "Use more courts", disabled: crownCourts || courtDisplay >= 6 }, "+");
+    const plus = el("button", { "aria-label": "Use more courts", disabled: crownCourts || courtDisplay >= 8 }, "+");
     minus.addEventListener("click", () => {
       setCourtCount(courtDisplay - 1);
       save();
@@ -14139,7 +14163,7 @@ function getRoundStatistics(format, rounds, players, courts) {
           save();
           render();
         },
-        disabled: playerCount >= 24,
+        disabled: playerCount >= 32,
       },
         makeSvg('<path d="M5 12h14M12 5v14"/>', 14),
         "Add player"
@@ -15588,7 +15612,7 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   else if (courtKey === "cons") { className += " silver"; labelText = "🥈 CONSOLATION"; }
     else if (courtKey === "tier") { className += " silver"; labelText = (game.name || "Final").toUpperCase(); }
     else {
-      const courtNum = Math.max(1, Math.min(6, parseInt(courtKey, 10) || 1));
+      const courtNum = Math.max(1, Math.min(8, parseInt(courtKey, 10) || 1));
       className += " c" + courtNum + (isStack && courtNum === 1 ? " stack-top" : "");
       labelText = courtCardLabel(courtNum);
     }
@@ -17577,8 +17601,8 @@ function oldOpenSettings() {
           row.appendChild(main);
           const returnBtn = el("button", {
             class: "secondary",
-            disabled: activeTotal >= 24,
-            title: activeTotal >= 24 ? "Active player cap is 24." : "",
+            disabled: activeTotal >= 32,
+            title: activeTotal >= 32 ? "Active player cap is 32." : "",
           }, "Return");
           returnBtn.addEventListener("click", () => {
             const beforeState = stateSnapshotForUndo();
@@ -17619,8 +17643,8 @@ function oldOpenSettings() {
       let selectedGroup = "";
       const addBtn = el("button", {
         class: "primary",
-        disabled: activeTotal >= 24,
-        title: activeTotal >= 24 ? "Active player cap is 24." : "",
+        disabled: activeTotal >= 32,
+        title: activeTotal >= 32 ? "Active player cap is 32." : "",
       }, "Add");
       addBtn.addEventListener("click", () => {
         const beforeState = stateSnapshotForUndo();
@@ -19786,8 +19810,8 @@ function openSettingsTabbed() {
           const returnBtn = el("button", {
             class: "secondary",
             style: "min-height:32px; padding:6px 12px; font-size:12px; font-weight:700;",
-            disabled: activeTotal >= 24,
-            title: activeTotal >= 24 ? "Active player cap is 24." : "",
+            disabled: activeTotal >= 32,
+            title: activeTotal >= 32 ? "Active player cap is 32." : "",
           }, "Return");
           
           returnBtn.addEventListener("click", () => {
@@ -19833,8 +19857,8 @@ function openSettingsTabbed() {
       const addBtn = el("button", {
         class: "primary",
         style: "width:100%; min-height:40px; margin-top:8px;",
-        disabled: activeTotal >= 24,
-        title: activeTotal >= 24 ? "Active player cap is 24." : "",
+        disabled: activeTotal >= 32,
+        title: activeTotal >= 32 ? "Active player cap is 32." : "",
       }, "Add Player");
       
       addBtn.addEventListener("click", () => {

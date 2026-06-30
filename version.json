@@ -1,5 +1,14 @@
 [
   {
+    "version": "v58",
+    "changes": [
+      "Support large tournaments: raise the limits from 24 players / 6 courts to up to 32 players and 8 courts across Round Robin, Stack, King of the Court, and Gauntlet — every screen (setup, rounds, byes, finals, champions, awards) scales to the bigger field",
+      "Add distinct court colors for the 7th and 8th courts (red and lime) so all eight courts stay visually color-coded on the round cards, schedule, history, and partner chips",
+      "Name the 7th and 8th finals tiers (Slate and Clay) so big-field events with up to 8 finals courts no longer show a blank tier label",
+      "Verify the new scale with the built-in simulation harness (Round Robin 32/8, Stack 28/7, King 32/8, Gauntlet 30/7 with byes, idle-court and churn cases) and a new large-field visual baseline"
+    ]
+  },
+  {
     "version": "v57",
     "changes": [
       "Mixed-mode roster rows on phones: the player name now gets its own full-width line (instead of being squeezed to ~4 characters by the phone field and Men/Women group buttons), with phone + group + remove flowing onto a second line",
