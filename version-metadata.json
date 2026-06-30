@@ -1,5 +1,11 @@
 [
   {
+    "version": "v49",
+    "changes": [
+      "Combine the Edit Names & Phones list and the Active Players list into a single unified grid in the Settings Roster tab, styling each slot row with slot numbering badges, inline text/phone editors, and Leave buttons"
+    ]
+  },
+  {
     "version": "v48",
     "changes": [
       "Add Scoring System selector (Side-out vs. Rally) to the Rules tab under Scoring & Limits, and implement a live, real-time Estimated Finish Time forecast dashboard showing remaining time projections and pace mid-tournament"
