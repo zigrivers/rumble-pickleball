@@ -10362,14 +10362,15 @@ function renderMixedModeToggle() {
     }, state.mixedMode ? "ON" : "OFF")
   ));
   if (!state.mixedMode) {
-    const desc = el("p", { class: "muted", style: "font-size:13px; margin:6px 0 0; line-height:1.45;" },
-      "Pairs one player from Group A with one from Group B on every team (e.g. Men + Women).");
+    const desc = el("div", { class: "muted", style: "font-size:13px; margin:8px 0 0; line-height:1.45; border-left:2px solid var(--border); padding-left:8px;" });
+    desc.appendChild(el("strong", null, "ℹ️ Pairing Behavior:"));
+    desc.appendChild(el("div", { style: "margin-top:4px;" }, "Players will be partnered and matched randomly each round without group constraints."));
     wrap.appendChild(desc);
   } else {
     const desc = el("div", { class: "muted", style: "font-size:13px; margin:8px 0 12px; line-height:1.45; border-left:2px solid var(--accent); padding-left:8px;" });
-    desc.appendChild(el("strong", null, "Mixed Doubles Rules:"));
-    desc.appendChild(el("div", { style: "margin-top:4px;" }, "Forces teams to be comprised of exactly one player from Group A and one from Group B."));
-    desc.appendChild(el("div", { style: "margin-top:4px;" }, "Assign players to their groups (A/B) on the ", el("strong", null, "Players & Courts"), " tab."));
+    desc.appendChild(el("strong", null, "⚡ Mixed Doubles Rules:"));
+    desc.appendChild(el("div", { style: "margin-top:4px;" }, "Every doubles team will consist of exactly one player from Group A and one from Group B. Opposing teams will face each other with opposite-group partners (e.g. A+B vs A+B) to run a balanced mixed doubles event."));
+    desc.appendChild(el("div", { style: "margin-top:4px; font-weight:600; color:var(--accent);" }, "👉 Assign each player in the roster below to Group A or Group B using the buttons next to their names."));
     wrap.appendChild(desc);
 
     const presetId = detectPreset();
@@ -11738,6 +11739,9 @@ function renderSaveToLifetimeBlock() {
 
     contentPlayers.appendChild(courtCard);
 
+    const mixedToggle = renderMixedModeToggle();
+    if (mixedToggle) contentPlayers.appendChild(mixedToggle);
+
     // --- Players Roster Card ---
     const subtitleMap = {
       stack: "Names are randomly assigned to courts when the tournament starts.",
@@ -11872,8 +11876,6 @@ function renderSaveToLifetimeBlock() {
 
     // --- Tab 2: Format & Courts ---
     contentFormat.appendChild(renderFormatChooser());
-    const mixedToggle = renderMixedModeToggle();
-    if (mixedToggle) contentFormat.appendChild(mixedToggle);
 
     // --- Tab 3: Timing & Rules ---
     contentTiming.appendChild(renderTimeBudgetBlock());
