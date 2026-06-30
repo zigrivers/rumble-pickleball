@@ -115,6 +115,32 @@ export function doneTextResultsState() {
   return s;
 }
 
+// Large-field playing state: 32 players across all 8 courts (one round scored)
+// so the 7th/8th court colors and the dense standings render. Guards the
+// 8-court / 32-player support.
+export function playing32p8cState() {
+  const s = baseState();
+  s.phase = "playing";
+  const N = 32;
+  s.rawNames = Array.from({ length: N }, (_, i) => names[i] || "Player " + (i + 1));
+  s.rawPhones = Array(N).fill("");
+  s.slots = s.rawNames.slice();
+  s.phones = Array(N).fill("");
+  s.players = s.rawNames.map((_, i) => player(i + 1));
+  s.tiebreakRandom = Array.from({ length: N }, (_, i) => i);
+  s.courtCount = 8;
+  s.rrRounds = 8;
+  s.rrScheduleMode = "generated";
+  const games = [];
+  for (let c = 1; c <= 8; c++) {
+    const base = (c - 1) * 4;
+    games.push(game(c, [base + 1, base + 4], [base + 2, base + 3], 11, 5 + (c % 6)));
+  }
+  s.rounds = [{ round: 1, games, byes: [] }];
+  s.currentRound = 1;
+  return s;
+}
+
 // Setup view with the "Save to lifetime stats" toggle switched on.
 export function setupLifetimeToggleState() {
   const s = baseState();
@@ -179,6 +205,7 @@ export function lifetimeLedgerPopulated() {
 export function stateForVisual(name) {
   if (name === "setup-desktop" || name === "setup-mobile") return setupDesktopState();
   if (name === "playing-13p-3c" || name === "settings-modal") return playing13p3cState();
+  if (name === "playing-32p-8c") return playing32p8cState();
   if (name === "finals-13p-3c") return finals13p3cState();
   if (name === "text-results") return doneTextResultsState();
   if (name === "setup-lifetime-toggle") return setupLifetimeToggleState();

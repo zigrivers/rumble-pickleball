@@ -89,6 +89,14 @@ test("playing 13 players 3 courts", async ({ page }) => {
   await expect(page).toHaveScreenshot("playing-13p-3c.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
 });
 
+test("playing 32 players 8 courts", async ({ page }) => {
+  // Guards large-field support: all 8 courts render with distinct colors
+  // (including the new court 7 / court 8 tokens) and the 32-row standings.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await seedState(page, "playing-32p-8c");
+  await expect(page).toHaveScreenshot("playing-32p-8c.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
+});
+
 test("playing mobile standings", async ({ page }) => {
   // Guards the phone-width Live Standings layout (full names + partner chips,
   // compact stat columns) so the name-truncation regression can't return.
