@@ -1,5 +1,11 @@
 [
   {
+    "version": "v44",
+    "changes": [
+      "Hide the Text Results panel on the Champions/Done screen if no players have phone numbers entered, showing the share actions instead"
+    ]
+  },
+  {
     "version": "v43",
     "changes": [
       "Redesign and reorganize the Settings modal to reduce scrolling: separate visual preferences into a clean Display tab, use grid toggles, display reference items as chevrons, and wrap Saved Numbers & Diagnostics in accordions"

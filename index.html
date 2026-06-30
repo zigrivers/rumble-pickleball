@@ -14231,7 +14231,9 @@ function renderDoneScreenCrown() {
     }
   }, "Start New Tournament"));
 
-  if (textResultsSupported()) wrap.appendChild(renderTextResultsCard("final"));
+  if (textResultsSupported() && (state.phones || []).some(isValidPhone)) {
+    wrap.appendChild(renderTextResultsCard("final"));
+  }
   return wrap;
 }
 
@@ -15972,8 +15974,11 @@ function renderDoneScreen() {
   // scroll instead of burying it at the bottom. Only formats that support
   // texting (RR/Gauntlet) get the card — others skip it rather than show a
   // dead "not available" placeholder.
-  if (textResultsSupported()) wrap.appendChild(renderTextResultsCard("final"));
-  else wrap.appendChild(renderShareCardsButtonCard());
+  if (textResultsSupported() && (state.phones || []).some(isValidPhone)) {
+    wrap.appendChild(renderTextResultsCard("final"));
+  } else {
+    wrap.appendChild(renderShareCardsButtonCard());
+  }
   // Awards collapsed by default to shorten the results scroll — champions and
   // podium carry the celebration; tap to explore the full awards.
   const awardsDetails = el("details", { class: "history" });
