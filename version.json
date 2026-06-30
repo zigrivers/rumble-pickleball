@@ -1,5 +1,11 @@
 [
   {
+    "version": "v51",
+    "changes": [
+      "Upgrade the Drawing Slots screen: introduce a dynamic background particle canvas with glowing blue and gold elements, integrate golden spark/spitfire burst effects that trigger from the center of each card upon locking in, and increase the reveal animation duration by 50% to build anticipation and suspense"
+    ]
+  },
+  {
     "version": "v50",
     "changes": [
       "Redesign and upgrade the placements card in the Tournament Champions panel: replace the single primary stat line with a detailed statistics table (incorporating Win-Loss Record, Total Points, and Net Point Difference alongside Average Margin/Stack Rate/King Rate), and introduce premium floating crown, pulsing medal, and staggered fade-in-up reveal animations"
