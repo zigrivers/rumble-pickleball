@@ -10987,6 +10987,41 @@ function getNowTimeStr() {
   return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 }
 
+function generate15MinIntervals() {
+  const options = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      const hh = String(h).padStart(2, "0");
+      const mm = String(m).padStart(2, "0");
+      const val = `${hh}:${mm}`;
+      
+      const ampm = h >= 12 ? "PM" : "AM";
+      const displayHour = h % 12 || 12;
+      const displayMin = mm;
+      const displayLabel = `${displayHour}:${displayMin} ${ampm}`;
+      options.push({ val, label: displayLabel });
+    }
+  }
+  return options;
+}
+
+function getClosest15MinInterval() {
+  const d = new Date();
+  const m = d.getMinutes();
+  const roundedMin = Math.round(m / 15) * 15;
+  
+  let h = d.getHours();
+  let finalMin = roundedMin;
+  if (roundedMin === 60) {
+    finalMin = 0;
+    h = (h + 1) % 24;
+  }
+  
+  const hh = String(h).padStart(2, "0");
+  const mm = String(finalMin).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 function getBaseTimestamp() {
   const timeStr = state.timeBudget && state.timeBudget.startTime;
   if (!timeStr) return Date.now();
@@ -11367,18 +11402,23 @@ function renderTimeBudgetBlock() {
   // Start Time selector
   const startRow = el("div", { class: "settings-row", style: "margin-bottom:12px;" });
   startRow.appendChild(el("label", { for: "tb-start-time", style: "font-weight:600;" }, "Start Time"));
-  const startInput = el("input", {
-    type: "time",
+  const startSelect = el("select", {
     id: "tb-start-time",
-    value: state.timeBudget.startTime || getNowTimeStr(),
-    style: "min-height:36px;font-size:14px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-family:inherit;width:120px;"
+    style: "min-height:36px;font-size:14px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-family:inherit;width:140px;"
   });
-  startInput.addEventListener("change", () => {
-    state.timeBudget.startTime = startInput.value;
+  const intervals = generate15MinIntervals();
+  const currentStart = state.timeBudget.startTime || getClosest15MinInterval();
+  intervals.forEach(item => {
+    const opt = el("option", { value: item.val }, item.label);
+    if (item.val === currentStart) opt.setAttribute("selected", "selected");
+    startSelect.appendChild(opt);
+  });
+  startSelect.addEventListener("change", () => {
+    state.timeBudget.startTime = startSelect.value;
     save();
     render();
   });
-  startRow.appendChild(startInput);
+  startRow.appendChild(startSelect);
   card.appendChild(startRow);
 
   // Time Budget Toggle and Inputs
@@ -11600,7 +11640,21 @@ function renderTimeBudgetBlock() {
 
   // Setup Details list
   const detailsList = el("div", { class: "tb-readout", style: "border-top:1px solid var(--border);padding-top:12px;font-size:13px;" });
-  detailsList.appendChild(el("div", null, "Will play: ", el("span", { id: "tb-will-play", style: "font-weight:600;" }, readout.willPlay)));
+  
+  const displayRounds = getTimeBudgetRounds();
+  let roundsText = "";
+  if (state.format === "crown") {
+    roundsText = "4 matches (3 themed rounds + 1 Championship)";
+  } else {
+    const formatLabel = state.format === "rr" ? "Round Robin" :
+                        state.format === "stack" ? "Stack Format" :
+                        state.format === "king" ? "King of the Court" :
+                        state.format === "gauntlet" ? "Gauntlet" : "Tournament";
+    roundsText = `${displayRounds} rounds of ${formatLabel} + 1 Championship round`;
+  }
+  
+  detailsList.appendChild(el("div", { style: "margin-bottom:6px;" }, "Rounds / Matches: ", el("span", { style: "font-weight:700;color:var(--accent);" }, roundsText)));
+  detailsList.appendChild(el("div", { style: "margin-bottom:6px;" }, "Will play: ", el("span", { id: "tb-will-play", style: "font-weight:600;" }, readout.willPlay)));
   detailsList.appendChild(el("div", { id: "tb-confidence-row", style: readout.confidence ? "" : "display:none;" }, "Confidence: ", el("span", { id: "tb-confidence", class: "muted" }, readout.confidence)));
   summaryPanel.appendChild(detailsList);
 
