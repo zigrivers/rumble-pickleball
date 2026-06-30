@@ -1,5 +1,12 @@
 [
   {
+    "version": "v26",
+    "changes": [
+      "Calibrate tournament duration estimates: side-out to 11 matches default to 10–20 minutes (avg 15m)",
+      "Recalibrate time-budget solver to prevent overly pessimistic time ranges"
+    ]
+  },
+  {
     "version": "v25",
     "changes": [
       "Generalized Roster Manager help text and placeholders for all league formats",
