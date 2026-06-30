@@ -18021,6 +18021,7 @@ function openSettingsTabbed() {
       }
       .settings-tabs {
         display: flex;
+        flex-wrap: wrap;
         gap: 6px;
         margin-top: 14px;
         margin-bottom: 18px;
@@ -18158,6 +18159,7 @@ function openSettingsTabbed() {
   function renderTabs() {
     tabContainer.innerHTML = "";
     const showRosterTab = state.phase !== "setup" && state.format !== "crown";
+    const showCourtsTab = state.phase !== "setup" && state.format !== "crown";
     
     // General Tab
     const tabGen = el("button", {
@@ -18187,6 +18189,15 @@ function openSettingsTabbed() {
       }, "Roster");
       tabRost.addEventListener("click", () => { activeTab = "roster"; drawSettingsContent(); });
       tabContainer.appendChild(tabRost);
+    }
+    
+    // Courts Tab
+    if (showCourtsTab) {
+      const tabCourts = el("button", {
+        class: "settings-tab-btn" + (activeTab === "courts" ? " active" : "")
+      }, "Courts");
+      tabCourts.addEventListener("click", () => { activeTab = "courts"; drawSettingsContent(); });
+      tabContainer.appendChild(tabCourts);
     }
   }
   
@@ -18811,35 +18822,59 @@ function openSettingsTabbed() {
     }
     
     else if (activeTab === "roster") {
-      // Edit Names Slot Renaming
+      // Edit Names & Phone Numbers
       const editNamesWrap = el("div", { style: "border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:16px;" });
-      editNamesWrap.appendChild(el("h3", { style: "margin:0 0 4px; font-size:14px;" }, "Edit Names"));
-      editNamesWrap.appendChild(el("p", { class: "muted", style: "margin: 0 0 10px; font-size:12px;" },
-        "Slots are fixed. Renaming updates the player everywhere."));
+      editNamesWrap.appendChild(el("h3", { style: "margin:0 0 4px; font-size:14px; font-weight:800;" }, "Edit Names & Phones"));
+      editNamesWrap.appendChild(el("p", { class: "muted", style: "margin: 0 0 12px; font-size:12px;" },
+        "Slots are fixed. Renaming or updating phone numbers updates them everywhere."));
+      
       const editableSlots = state.format === "crown" ? 4 : playerCount();
+      if (!Array.isArray(state.phones)) state.phones = [];
+      
       for (let i = 0; i < editableSlots; i++) {
-        const input = el("input", {
+        const row = el("div", { class: "roster-edit-row", style: "display:flex; gap:8px; margin-bottom:8px;" });
+        
+        const nameInput = el("input", {
           class: "name-input",
-          style: "margin-bottom: 8px; width:100%;",
+          style: "margin:0; flex:2; min-height:40px; padding:6px 12px; font-size:14px;",
           type: "text",
           value: state.slots[i] || "",
+          placeholder: `Player ${i + 1}`,
           autocomplete: "off",
           autocapitalize: "words",
           autocorrect: "off",
           spellcheck: "false",
         });
-        input.addEventListener("input", () => {
-          state.slots[i] = input.value;
+        nameInput.addEventListener("input", () => {
+          state.slots[i] = nameInput.value;
           const p = playerBySlot(i + 1);
-          if (p) p.name = input.value;
+          if (p) p.name = nameInput.value;
           save();
         });
-        editNamesWrap.appendChild(input);
+        
+        const phoneInput = el("input", {
+          class: "name-input phone-input",
+          style: "margin:0; flex:1.2; min-height:40px; padding:6px 12px; font-size:14px;",
+          type: "tel",
+          value: state.phones[i] || "",
+          placeholder: "Phone",
+          autocomplete: "off",
+        });
+        phoneInput.addEventListener("input", () => {
+          state.phones[i] = phoneInput.value;
+          const p = playerBySlot(i + 1);
+          if (p) p.phone = phoneInput.value;
+          save();
+        });
+        
+        row.appendChild(nameInput);
+        row.appendChild(phoneInput);
+        editNamesWrap.appendChild(row);
       }
       tabContent.appendChild(editNamesWrap);
       
-      // Court Management
-      tabContent.appendChild(el("div", { class: "ka-section-title" }, "Courts & Locations"));
+      // Player Roster Management
+      tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:20px;" }, "Active Players"));
       
       const manageError = el("div", { class: "paste-error", style: "display:none; margin-bottom:12px;" });
       tabContent.appendChild(manageError);
@@ -18858,60 +18893,6 @@ function openSettingsTabbed() {
         refreshSettingsLocal();
       };
       
-      const courtRow = el("div", { class: "settings-row" });
-      courtRow.appendChild(el("label", null, "Active Courts"));
-      const courtSelect = el("select");
-      [1,2,3,4,5,6].forEach(v => {
-        const opt = el("option", { value: String(v) }, String(v));
-        if (state.courtCount === v) opt.setAttribute("selected", "selected");
-        courtSelect.appendChild(opt);
-      });
-      courtSelect.addEventListener("change", () => {
-        const beforeState = stateSnapshotForUndo();
-        const result = changeCourtCountMidEvent(parseInt(courtSelect.value, 10));
-        if (!result || !result.ok) courtSelect.value = String(state.courtCount);
-        if (result && result.ok && result.changed) {
-          recordEvent({
-            kind: "courtCount",
-            label: mutationEventLabel("courtCount", { courts: state.courtCount }),
-            beforeState,
-            reversible: true,
-          });
-        }
-        applyRosterResultLocal(result, "Courts updated for Round " + nextRosterRound() + ".");
-      });
-      courtRow.appendChild(courtSelect);
-      tabContent.appendChild(courtRow);
-      
-      // Rename Courts
-      const editCourtsWrap = el("div", { style: "margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px;" });
-      editCourtsWrap.appendChild(el("h3", { style: "margin-bottom: 8px; font-size:14px;" }, "Rename Courts"));
-      if (!state.courtNames) state.courtNames = [];
-      for (let i = 0; i < state.courtCount; i++) {
-        const defaultPlaceholder = courtLocationLabel(i + 1, state.format, true);
-        const val = state.courtNames[i] !== undefined ? state.courtNames[i] : "";
-        
-        const row = el("div", { class: "settings-row", style: "margin-bottom:8px;" });
-        row.appendChild(el("label", { style: "font-size:13px; color:var(--muted);" }, `Court ${i + 1}`));
-        const input = el("input", {
-          class: "name-input",
-          style: "margin:0; flex:1;",
-          type: "text",
-          placeholder: defaultPlaceholder,
-          value: val
-        });
-        input.addEventListener("input", () => {
-          state.courtNames[i] = input.value.trim();
-          save();
-        });
-        row.appendChild(input);
-        editCourtsWrap.appendChild(row);
-      }
-      tabContent.appendChild(editCourtsWrap);
-      
-      // Player Roster Management
-      tabContent.appendChild(el("div", { class: "ka-section-title", style: "margin-top:20px;" }, "Active Players"));
-      
       const activePlayers = (state.players || [])
         .filter(p => p.status === "active")
         .sort((a, b) => a.slot - b.slot);
@@ -18923,18 +18904,18 @@ function openSettingsTabbed() {
       
       const activeList = el("div", { class: "manage-player-list" });
       activePlayers.forEach(p => {
-        const row = el("div", { class: "manage-player-row" });
+        const row = el("div", { class: "manage-player-row", style: "display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.02);" });
         const main = el("div", { class: "manage-player-main" });
-        main.appendChild(el("div", { class: "manage-player-name" }, p.name || ("Player " + p.slot)));
+        main.appendChild(el("div", { class: "manage-player-name", style: "font-weight:700;" }, p.name || ("Player " + p.slot)));
         const bits = ["Slot " + p.slot];
         if (p.joinedRound > 1) bits.push("joined R" + p.joinedRound);
         if (p.eligibleFromRound > currentRound) bits.push("starts R" + p.eligibleFromRound);
-        main.appendChild(el("div", { class: "manage-player-meta" }, bits.join(" · ")));
+        main.appendChild(el("div", { class: "manage-player-meta", style: "font-size:12px; color:var(--muted); margin-top:2px;" }, bits.join(" · ")));
         row.appendChild(main);
         
         const leaveBtn = el("button", {
           class: "secondary",
-          style: "min-height:32px; padding:6px 12px;",
+          style: "min-height:32px; padding:6px 12px; font-size:12px; font-weight:700;",
           disabled: activeTotal <= 4,
           title: activeTotal <= 4 ? "At least 4 active players required." : "",
         }, "Leave");
@@ -18960,18 +18941,18 @@ function openSettingsTabbed() {
       
       // Departed Players List
       if (leftPlayers.length) {
-        tabContent.appendChild(el("h3", { style: "margin-top:16px; font-size:14px;" }, "Departed Players"));
+        tabContent.appendChild(el("h3", { style: "margin-top:16px; font-size:14px; font-weight:800;" }, "Departed Players"));
         const leftList = el("div", { class: "manage-player-list" });
         leftPlayers.forEach(p => {
-          const row = el("div", { class: "manage-player-row" });
+          const row = el("div", { class: "manage-player-row", style: "display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.02);" });
           const main = el("div", { class: "manage-player-main" });
-          main.appendChild(el("div", { class: "manage-player-name" }, p.name || ("Player " + p.slot)));
-          main.appendChild(el("div", { class: "manage-player-meta" }, "Slot " + p.slot + " · " + departedText(p.slot)));
-          row.appendChild(row.appendChild(main));
+          main.appendChild(el("div", { class: "manage-player-name", style: "font-weight:700;" }, p.name || ("Player " + p.slot)));
+          main.appendChild(el("div", { class: "manage-player-meta", style: "font-size:12px; color:var(--muted); margin-top:2px;" }, "Slot " + p.slot + " · " + departedText(p.slot)));
+          row.appendChild(main);
           
           const returnBtn = el("button", {
             class: "secondary",
-            style: "min-height:32px; padding:6px 12px;",
+            style: "min-height:32px; padding:6px 12px; font-size:12px; font-weight:700;",
             disabled: activeTotal >= 24,
             title: activeTotal >= 24 ? "Active player cap is 24." : "",
           }, "Return");
@@ -18996,11 +18977,11 @@ function openSettingsTabbed() {
       }
       
       // Add Player Section
-      tabContent.appendChild(el("h3", { style: "margin-top:16px; font-size:14px;" }, "Add Player"));
+      tabContent.appendChild(el("h3", { style: "margin-top:20px; font-size:14px; font-weight:800;" }, "Add Player"));
       const addRow = el("div", { class: "manage-add-row" });
       const nameInput = el("input", {
         class: "name-input",
-        style: "margin-bottom: 6px;",
+        style: "margin-bottom: 6px; min-height:40px; padding:6px 12px; font-size:14px;",
         type: "text",
         placeholder: "Name",
         autocomplete: "off",
@@ -19010,7 +18991,7 @@ function openSettingsTabbed() {
       });
       const phoneInput = el("input", {
         class: "name-input",
-        style: "margin-bottom: 8px;",
+        style: "margin-bottom: 8px; min-height:40px; padding:6px 12px; font-size:14px;",
         type: "tel",
         placeholder: "Phone (optional)",
         autocomplete: "tel",
@@ -19066,6 +19047,44 @@ function openSettingsTabbed() {
       }
       addRow.appendChild(addBtn);
       tabContent.appendChild(addRow);
+    }
+    
+    else if (activeTab === "courts") {
+      // Courts Section
+      tabContent.appendChild(el("div", { class: "ka-section-title" }, "Courts & Locations"));
+      
+      const courtRow = el("div", { class: "settings-row" });
+      courtRow.appendChild(el("label", null, "Active Courts"));
+      courtRow.appendChild(el("span", { style: "font-weight: 700; color: var(--text);" }, String(state.courtCount)));
+      tabContent.appendChild(courtRow);
+      
+      // Rename Courts
+      const editCourtsWrap = el("div", { style: "margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;" });
+      editCourtsWrap.appendChild(el("h3", { style: "margin:0 0 12px; font-size:14px; font-weight:800;" }, "Rename Courts"));
+      
+      if (!state.courtNames) state.courtNames = [];
+      for (let i = 0; i < state.courtCount; i++) {
+        const defaultPlaceholder = courtLocationLabel(i + 1, state.format, true);
+        const val = state.courtNames[i] !== undefined ? state.courtNames[i] : "";
+        
+        const row = el("div", { class: "settings-row", style: "margin-bottom:8px; display:flex; align-items:center; gap:12px;" });
+        row.appendChild(el("label", { style: "font-size:13px; color:var(--muted); width: 80px;" }, `Court ${i + 1}`));
+        
+        const input = el("input", {
+          class: "name-input",
+          style: "margin:0; flex:1; min-height:40px; padding:6px 12px; font-size:14px;",
+          type: "text",
+          placeholder: defaultPlaceholder,
+          value: val
+        });
+        input.addEventListener("input", () => {
+          state.courtNames[i] = input.value.trim();
+          save();
+        });
+        row.appendChild(input);
+        editCourtsWrap.appendChild(row);
+      }
+      tabContent.appendChild(editCourtsWrap);
     }
   }
   

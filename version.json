@@ -1,5 +1,11 @@
 [
   {
+    "version": "v47",
+    "changes": [
+      "Add phone number input fields next to names in the Settings Roster tab allowing real-time edits, move the Active Courts count and Rename Courts text inputs to a dedicated Courts tab, and restrict active court count to a read-only static display"
+    ]
+  },
+  {
     "version": "v46",
     "changes": [
       "Redesign and optimize the Champions/Done screen layout: consolidate champions celebration and 1st-4th visual placements inside a single premium grid card, style the column guide button with outline themes and SVG icons, display tournament awards as top-level micro-cards, and conditionally arrange Lifetime Stats and Text Results based on player phone records"
