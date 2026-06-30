@@ -1,5 +1,12 @@
 [
   {
+    "version": "v30",
+    "changes": [
+      "Calibrate default round duration to 11–20 minutes under side-out to 11 (win by 2) scoring systems",
+      "Update default side-out PPM to 1.6 and align all time-budget solver algorithms"
+    ]
+  },
+  {
     "version": "v29",
     "changes": [
       "Bypass service worker completely for changelog requests (version.json and version-metadata.json) to solve cross-version network loading errors",
