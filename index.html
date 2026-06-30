@@ -1422,7 +1422,10 @@
     font-size: 16px;
     min-width: 26px;
   }
-  .seed-meta { color: var(--muted); font-size: 12px; margin-left: auto; }
+  /* Name flexes and ellipsizes so the seed meta ("0.9 AM · GP 7") and the why
+     button are never clipped off the right edge of a narrow grid cell. */
+  .seed-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .seed-meta { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; flex: 0 0 auto; }
 
   .champions-card {
     background: radial-gradient(circle at top, rgba(251, 191, 36, 0.12) 0%, rgba(18, 24, 32, 0.95) 100%);
@@ -2617,6 +2620,14 @@
     table.standings .partner-chip { font-size: 11px; margin-top: 1px; }
     /* Championship names carry seed pills; shrink so "#1 Ava & #4 Eli" fits one line. */
     .court-card.gold .team-name { font-size: 18px; }
+    /* Mixed-mode roster rows: name + phone + group (M/W) + remove won't fit one
+       phone row, squeezing the name to ~4 chars. Give the name its own full-width
+       line, then phone + group buttons + remove flow onto a second line. */
+    .setup-row--mixed { flex-wrap: wrap; }
+    .setup-row--mixed .player-name-input { flex: 1 1 100% !important; }
+    /* Finals seeds: one column per row on phones so the seed meta + why button
+       have room instead of being clipped inside a ~180px half-width cell. */
+    .seeds-grid { grid-template-columns: 1fr; }
   }
 </style>
 <!-- RUMBLE:STYLE:end -->
@@ -2627,7 +2638,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v56";
+const APP_VERSION    = "v57";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -6286,6 +6297,7 @@ function simulationConfigs() {
     { label: "King 16/4 churn", format: "king", players: 16, courts: 4, rounds: 6, churn: true, nextCourts: 3, seed: 4103 },
     { label: "Gauntlet 9/2 churn", format: "gauntlet", players: 9, courts: 2, rounds: 6, churn: true, nextCourts: 1, seed: 4104 },
     { label: "Mixed RR 10/2", format: "rr", players: 10, courts: 2, rounds: 5, mixed: true, seed: 4201 },
+    { label: "Mixed RR 8/2", format: "rr", players: 8, courts: 2, rounds: 7, mixed: true, seed: 4205 },
     { label: "Mixed Stack 8/2", format: "stack", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4202 },
     { label: "Mixed King 8/2", format: "king", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4203 },
     { label: "Mixed Gauntlet 8/2", format: "gauntlet", players: 8, courts: 2, rounds: 6, mixed: true, seed: 4204 },
@@ -6438,7 +6450,10 @@ function runSimulation() {
     state.notifiedRounds = Array.from({ length: 12 }, (_, i) => i + 1);
     state.awardsShown = true;
     if (cfg.format === "rr") {
-      state.rrScheduleMode = cfg.players === 8 && cfg.courts === 2 ? "wh8" : "generated";
+      // Mixed mode can't use the fixed Wh(8) schedule (its round-2 teams are
+      // same-gender); fall back to the generated mixed-aware schedule, matching
+      // production startTournament's `!state.mixedMode` guard.
+      state.rrScheduleMode = cfg.players === 8 && cfg.courts === 2 && !cfg.mixed ? "wh8" : "generated";
       state.rrRounds = cfg.rounds;
       state.rounds = state.rrScheduleMode === "wh8"
         ? generateRounds()
@@ -7216,6 +7231,7 @@ function readDisplayState() {
   } catch (e) { return null; }
 }
 
+let _saveFailed = false;
 function save() {
   if (state && state.phase === "setup") {
     const playerCount = setupRosterCount();
@@ -7226,8 +7242,19 @@ function save() {
       state.rrScheduleMode = "generated";
     }
   }
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-  catch (e) { console.warn("save failed", e); }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    _saveFailed = false;
+  } catch (e) {
+    console.warn("save failed", e);
+    // Surface a one-time warning so a silent persistence failure (e.g. storage
+    // full) doesn't read as saved progress that then vanishes on reload. Warn
+    // once until a save succeeds again so we never spam toasts on every input.
+    if (!_saveFailed) {
+      _saveFailed = true;
+      try { showToast("⚠️ Couldn't save progress — device storage may be full. Keep this tab open."); } catch (_) {}
+    }
+  }
 }
 
 function stateSnapshotForUndo() {
@@ -11660,7 +11687,9 @@ function preStartSummaryModel() {
       };
       const baseTs = getBaseTimestamp();
       const likelyDone = "~" + fmtTs(baseTs + loMin * 60000) + "–" + fmtTs(baseTs + hiMin * 60000);
-      estimatedDuration = "Untimed · " + likelyDone;
+      // Untimed events show the projected finish window; label it as such so the
+      // time isn't mistaken for a start/duration.
+      estimatedDuration = "Est. finish · " + likelyDone;
     }
   }
   const tierCount = state.format === "crown" ? 0 : Math.min(activeCourts, Math.floor(players / 4));
@@ -14137,7 +14166,7 @@ function getRoundStatistics(format, rounds, players, courts) {
 
     const list = el("div", { class: "setup-list" });
     for (let i = 0; i < playerCount; i++) {
-      const row = el("div", { class: "setup-row", style: "display:flex;gap:8px;" });
+      const row = el("div", { class: "setup-row" + (state.mixedMode ? " setup-row--mixed" : ""), style: "display:flex;gap:8px;" });
       const nameInput = el("input", {
         class: "name-input player-name-input",
         id: "setup-name-" + i,
@@ -16250,7 +16279,7 @@ function renderFinalsScreen() {
         : s.adjScore.toFixed(1) + " AM · GP " + s.gp;
     grid.appendChild(el("div", { class: "seed-row" },
       el("span", { class: "seed-rank" }, "#" + (i + 1)),
-      el("span", null, s.name),
+      el("span", { class: "seed-name" }, s.name),
       el("span", { class: "seed-meta" }, meta),
       whyButton("finals", { slot: s.slot, seed: i + 1, tier: finalsTierForSlot(s.slot) }),
     ));
