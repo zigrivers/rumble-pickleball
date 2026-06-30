@@ -2024,6 +2024,28 @@
       grid-template-columns: repeat(2, 1fr);
     }
   }
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes crownFloat {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-4px) scale(1.08); }
+  }
+  @keyframes placementEmojiPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+  }
+  .celebration-crown {
+    display: inline-block;
+    animation: crownFloat 2s ease-in-out infinite;
+  }
   .placement-card {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -2035,10 +2057,44 @@
     align-items: center;
     position: relative;
     transition: all 0.2s ease;
+    opacity: 0;
+    animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .placement-card.rank-1 { animation-delay: 0.1s; }
+  .placement-card.rank-2 { animation-delay: 0.22s; }
+  .placement-card.rank-3 { animation-delay: 0.34s; }
+  .placement-card.rank-4 { animation-delay: 0.46s; }
+  
+  .placement-card.rank-1 .placement-emoji {
+    animation: placementEmojiPulse 2.5s ease-in-out infinite;
   }
   .placement-card:hover {
     transform: translateY(-2px);
     background: rgba(255, 255, 255, 0.04);
+  }
+  .placement-stats-container {
+    width: 100%;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .placement-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .placement-stat-row .stat-label {
+    color: var(--muted);
+  }
+  .placement-stat-row .stat-val {
+    font-family: monospace;
+    font-weight: 700;
+    color: var(--text);
   }
   .placement-badge {
     font-size: 11px;
@@ -14480,6 +14536,53 @@ function getPlayerPrimaryStat(slot) {
   return s ? s.adjScore.toFixed(1) + " AM" : "";
 }
 
+function getPlayerChampionsStats(slot, format) {
+  const metrics = [];
+  
+  if (format === "crown") {
+    const stats = crownPlayerStats();
+    const s = stats.find(x => x.slot === slot);
+    if (s) {
+      const winner = crownMatchWinner(state.crownFinal);
+      const winTeam = winner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
+      const { gamesWon1, gamesWon2 } = crownGamesWon(state.crownFinal);
+      const winGames = winner === "team1" ? gamesWon1 : gamesWon2;
+      const loseGames = winner === "team1" ? gamesWon2 : gamesWon1;
+      const pts = matchPointsForMatch(winGames, loseGames, "Crown");
+      const bonus = winTeam.includes(slot) ? pts.perWinner : pts.perLoser;
+      const totalMp = (s.matchPoints || 0) + bonus;
+      metrics.push({ label: "Match Pts", value: totalMp.toFixed(1) + " mp" });
+      metrics.push({ label: "Record", value: `${s.wins}–${s.losses}` });
+    }
+  } else if (format === "stack") {
+    const stats = computeStackStats(state.rounds.length);
+    const s = stats.find(x => x.slot === slot);
+    if (s) {
+      metrics.push({ label: "Stack Rate", value: s.stackRate.toFixed(1) + " SS/G" });
+      metrics.push({ label: "Record", value: `${s.wins}–${s.losses}` });
+      metrics.push({ label: "Points", value: s.points + " pts" });
+    }
+  } else if (format === "king") {
+    const stats = computeKingStats(state.rounds.length);
+    const s = stats.find(x => x.slot === slot);
+    if (s) {
+      metrics.push({ label: "King Rate", value: s.kingRate.toFixed(1) + " KS/G" });
+      metrics.push({ label: "Record", value: `${s.wins}–${s.losses}` });
+      metrics.push({ label: "Points", value: s.points + " pts" });
+    }
+  } else {
+    const stats = computeMarginStats(totalRegularRounds());
+    const s = stats.find(x => x.slot === slot);
+    if (s) {
+      metrics.push({ label: "Avg Margin", value: (s.adjScore >= 0 ? "+" : "") + s.adjScore.toFixed(1) + " AM" });
+      metrics.push({ label: "Record", value: `${s.wins}–${s.losses}` });
+      metrics.push({ label: "Points", value: s.points + " pts" });
+      metrics.push({ label: "Diff", value: (s.diff >= 0 ? "+" : "") + s.diff + " diff" });
+    }
+  }
+  return metrics;
+}
+
 function renderUnifiedChampionsPanel(ranking) {
   const isCrown = state.format === "crown";
   const card = el("div", { class: "card champions-podium-card" });
@@ -14546,9 +14649,16 @@ function renderUnifiedChampionsPanel(ranking) {
       item.appendChild(el("div", { class: "placement-emoji" }, cfg.emoji));
       item.appendChild(el("div", { class: "placement-name" }, r.name));
       
-      const statVal = getPlayerPrimaryStat(r.slot);
-      if (statVal) {
-        item.appendChild(el("div", { class: "placement-stat" }, statVal));
+      const statsList = getPlayerChampionsStats(r.slot, state.format);
+      if (statsList.length) {
+        const container = el("div", { class: "placement-stats-container" });
+        statsList.forEach(stat => {
+          const row = el("div", { class: "placement-stat-row" });
+          row.appendChild(el("span", { class: "stat-label" }, stat.label));
+          row.appendChild(el("span", { class: "stat-val" }, stat.value));
+          container.appendChild(row);
+        });
+        item.appendChild(container);
       }
       grid.appendChild(item);
     }
