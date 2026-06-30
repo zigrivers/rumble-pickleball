@@ -1,5 +1,14 @@
 [
   {
+    "version": "v36",
+    "changes": [
+      "Redesign the 'Review & Start' tournament confirmation modal with a premium dashboard card layout",
+      "Introduce a 2x2 statistics grid of summary cards for Players, Active Courts, Rounds, and Time Projections",
+      "Add clean, scan-friendly custom SVG outline icons for tournament format, scoring system, and finals rules details",
+      "Introduce interactive success and warning alert banners for active SMS text notifications depending on roster phone count"
+    ]
+  },
+  {
     "version": "v35",
     "changes": [
       "Upgrade the tournament/round shuffle reveal animation with premium design flair",
