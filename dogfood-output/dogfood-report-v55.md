@@ -48,11 +48,28 @@ End-to-end dogfooding of the live app driven through the real UI (Playwright, 39
 - **Court rename mid-tournament isn't undoable** (minor consistency gap).
 - **`?simulate` has no Mixed-RR-8/2 config**, and the flexible-scenario init uses the Wh(8) schedule without checking mixed mode (test-harness only; production `startTournament` correctly checks `!mixedMode`).
 
+## v57 Follow-up — remaining findings addressed
+After the v56 bug-fix ship, the rest of this report was worked through:
+
+**Fixed & shipped in v57:**
+- ✅ Pain Point — **mixed-mode roster rows cramped**: the name now takes its own full-width line on phones (verified live: "Marcus/Hannah/Mei" fully readable; phone + M/W + remove on a second line).
+- ✅ Pain Point / Suggested #3 — **projection label**: untimed events now read **"Est. finish"** instead of a bare "Untimed".
+- ✅ Pain Point — **Finals "Seeds" grid clipping**: seeds stack one-per-row on phones and the name ellipsizes before the stats, so "0.5 AM · GP 7" + "Why?" never clip (verified live).
+- ✅ Suggested #4 — **mobile-width standings visual baseline** added (`playing-mobile-standings`), guarding the BUG-2 fix at 390px.
+- ✅ Audit lead — **save() failure now warns** once via toast (perceived-data-loss path).
+- ✅ Audit lead — **Mixed-RR-8/2 simulate coverage** added + flexible-scenario Wh(8)/mixed guard fixed (matches production).
+
+**Deliberately deferred (rationale):**
+- ⏭️ Audit lead — **court-rename undo**: a correct implementation needs focus-snapshot/commit-debounce on a text field (every keystroke would otherwise pollute the undo stack). Cosmetic, easily retyped — not worth the undo-system risk. Skipped per simplicity/surgical rules.
+- ⏭️ Missing feature — **export standings as image**: already covered by the existing **Share Cards** + **QR Snapshot** actions.
+- ⏭️ Missing feature — **per-game individual score undo**: round-level Undo + "Edit Final Scores" already provide recovery; a per-game undo is a larger feature with marginal added value.
+
 ## Post-Dogfood Assessment
 **Confidence: 8.5 / 10.**
 - All 5 formats + the MLP mixed/skip-championship variant complete cleanly end-to-end through the real UI; standings logic is independently verified across 60+ seeded tournaments; the three user-visible bugs found are fixed, two with re-verified live screenshots and one with a new locked self-test; all 12 visual baselines and the boundary/self-test/simulate suites stay green.
 
-**Remaining risks:**
-- Mobile-standings rendering now relies on content-based sizing; an extreme name length or an unusual stat-column set could still wrap awkwardly (no mobile-width snapshot guards it yet).
-- The `save()`-quota edge case is unaddressed (rare, but it is a perceived-data-loss path on a full device).
+**Remaining risks (after v57):**
+- Mobile-standings rendering relies on content-based sizing; an *extreme* name length could still wrap awkwardly — now partially guarded by the new `playing-mobile-standings` baseline (short-name fixture; very long names aren't stress-tested by a snapshot yet).
+- The `save()`-quota path now warns the user, but the in-memory state still advances ahead of the failed write — a reload after a failed save would still show the last successfully-saved phase. The warning mitigates the surprise; it doesn't recover the unsaved step.
 - Deep audit leads on ladder formats under *mid-tournament court-count changes* (Stack/King) were not reproduced through the UI; the simulate harness covers fixed-court play but not every churn permutation.
+- Court renames mid-tournament remain non-undoable by design (see deferred list above).

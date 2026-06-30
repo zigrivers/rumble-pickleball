@@ -89,6 +89,14 @@ test("playing 13 players 3 courts", async ({ page }) => {
   await expect(page).toHaveScreenshot("playing-13p-3c.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
 });
 
+test("playing mobile standings", async ({ page }) => {
+  // Guards the phone-width Live Standings layout (full names + partner chips,
+  // compact stat columns) so the name-truncation regression can't return.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedState(page, "playing-13p-3c");
+  await expect(page).toHaveScreenshot("playing-mobile-standings.png", { fullPage: true, maxDiffPixelRatio: 0.01 });
+});
+
 test("settings modal", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await seedState(page, "settings-modal");

@@ -1,5 +1,15 @@
 [
   {
+    "version": "v57",
+    "changes": [
+      "Mixed-mode roster rows on phones: the player name now gets its own full-width line (instead of being squeezed to ~4 characters by the phone field and Men/Women group buttons), with phone + group + remove flowing onto a second line",
+      "Untimed events label the projected time as 'Est. finish' so the finish window isn't mistaken for a start time or duration",
+      "Finals 'Seeds' list no longer clips the stat readout ('0.5 AM · GP 7') or the 'Why?' button off the right edge on phones — seeds stack one-per-row with the name truncating gracefully before the stats",
+      "Warn once with a toast if progress can't be saved (e.g. device storage full) so a silent persistence failure isn't mistaken for saved progress that vanishes on reload",
+      "Add Mixed Round Robin 8-player / 2-court coverage to the built-in simulation harness and stop the flexible test scenario from using the fixed Wh(8) schedule in mixed mode"
+    ]
+  },
+  {
     "version": "v56",
     "changes": [
       "Fix the celebration screen showing 'undefined' on the 1st–4th place cards in Stack, King of the Court, and Crown Court events: those formats track different stat fields than Round Robin, so the Record (e.g. Crown's 'undefined–undefined') and Points (Stack/King 'undefined pts') now read the correct per-format values",
