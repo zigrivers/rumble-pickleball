@@ -1,5 +1,11 @@
 [
   {
+    "version": "v46",
+    "changes": [
+      "Redesign and optimize the Champions/Done screen layout: consolidate champions celebration and 1st-4th visual placements inside a single premium grid card, style the column guide button with outline themes and SVG icons, display tournament awards as top-level micro-cards, and conditionally arrange Lifetime Stats and Text Results based on player phone records"
+    ]
+  },
+  {
     "version": "v45",
     "changes": [
       "Redesign and polish the header toolbar to use a modern, two-row grid layout: Row 1 handles brand branding and compact actions (Undo, Log, Settings) with hover effects, while Row 2 wraps status pills and time projections cleanly without vertical wrap clutter"

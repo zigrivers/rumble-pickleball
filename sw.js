@@ -3,7 +3,7 @@
 // delete by "everything that isn't the current version".
 const CACHE_PREFIX = "rumble-pickleball-";
 // Bump VERSION on every deploy so clients pick up changes.
-const VERSION = CACHE_PREFIX + "v45";
+const VERSION = CACHE_PREFIX + "v46";
 const SHELL = [
   "./",
   "index.html",
