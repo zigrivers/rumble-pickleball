@@ -1,5 +1,11 @@
 [
   {
+    "version": "v42",
+    "changes": [
+      "Redesign the Champions Page UI (champions card, trophy scorecards, and dimensional podium columns) to a higher premium standard"
+    ]
+  },
+  {
     "version": "v41",
     "changes": [
       "Hide the Text Standings panel in the Round screens if player phone numbers are not entered"

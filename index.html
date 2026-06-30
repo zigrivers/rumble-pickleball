@@ -1323,75 +1323,101 @@
   }
   .seed-meta { color: var(--muted); font-size: 12px; margin-left: auto; }
 
-  .champions { text-align: center; padding: 24px 12px 8px; }
-  .champions .crown { font-size: 80px; line-height: 1; }
+  .champions-card {
+    background: radial-gradient(circle at top, rgba(251, 191, 36, 0.12) 0%, rgba(18, 24, 32, 0.95) 100%);
+    border: 1.5px solid rgba(251, 191, 36, 0.25);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(251, 191, 36, 0.05);
+    position: relative;
+  }
+  .champions { text-align: center; padding: 32px 16px 20px; }
+  .champions .crown {
+    font-size: 80px;
+    line-height: 1;
+    filter: drop-shadow(0 0 12px rgba(251, 191, 36, 0.4));
+    margin-bottom: 6px;
+    display: inline-block;
+  }
   .champions h1 {
-    font-size: 42px;
-    margin: 8px 0 4px;
+    font-size: 16px;
+    font-weight: 800;
+    margin: 8px 0 2px;
     color: var(--gold);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    opacity: 0.9;
   }
   .champions .winners {
-    font-size: 36px;
-    font-weight: 800;
-    margin: 18px 0;
+    font-size: 40px;
+    font-weight: 900;
+    margin: 12px 0 18px;
     line-height: 1.15;
+    background: linear-gradient(135deg, #ffffff 30%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
   .scorecard {
     display: grid;
     grid-template-columns: 1fr auto 1fr;
-    gap: 10px 16px;
+    gap: 10px 20px;
     align-items: center;
     max-width: 480px;
     margin: 18px auto 0;
-    padding: 14px 16px;
-    background: var(--panel-2);
+    padding: 14px 20px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 12px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
   .scorecard .sc-team {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 600;
+    color: var(--text);
   }
   .scorecard .sc-team.left { text-align: right; }
   .scorecard .sc-team.right { text-align: left; }
-  .scorecard .sc-team.win { color: var(--good); font-weight: 800; }
+  .scorecard .sc-team.win { color: var(--gold); font-weight: 800; }
   .scorecard .sc-score {
-    font-size: 36px;
-    font-weight: 800;
+    font-size: 32px;
+    font-weight: 900;
     color: var(--text);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
     white-space: nowrap;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
   }
   .champions .consolation-block {
-    margin-top: 32px;
-    padding-top: 24px;
-    border-top: 1px solid var(--border);
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
   .consolation-title {
     color: var(--silver);
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
+    opacity: 0.95;
   }
   .consolation-winners {
-    font-size: 26px;
+    font-size: 28px;
     font-weight: 800;
-    margin: 8px 0;
+    margin: 10px 0;
+    color: #f1f5f9;
   }
   .consolation-block .scorecard {
-    margin-top: 12px;
-    padding: 10px 14px;
+    margin-top: 14px;
+    padding: 10px 16px;
     max-width: 420px;
   }
-  .consolation-block .scorecard .sc-team { font-size: 16px; }
-  .consolation-block .scorecard .sc-score { font-size: 28px; }
+  .consolation-block .scorecard .sc-team { font-size: 15px; }
+  .consolation-block .scorecard .sc-score { font-size: 24px; padding: 2px 6px; }
   @media (max-width: 480px) {
-    .scorecard { grid-template-columns: 1fr; gap: 2px; padding: 10px 16px; text-align: center; }
+    .scorecard { grid-template-columns: 1fr; gap: 4px; padding: 12px 16px; text-align: center; }
     .scorecard .sc-team.left, .scorecard .sc-team.right { text-align: center; }
-    .scorecard .sc-score { font-size: 32px; margin: 2px 0; }
+    .scorecard .sc-score { font-size: 28px; margin: 4px auto; width: fit-content; }
   }
 
   h2, h3 { margin: 0 0 12px; }
@@ -1714,35 +1740,76 @@
   .podium {
     display: grid;
     grid-template-columns: 1fr 1.2fr 1fr;
-    gap: 8px;
+    gap: 12px;
     align-items: end;
-    max-width: 480px;
-    margin: 28px auto 20px;
+    max-width: 460px;
+    margin: 32px auto 24px;
+    padding: 0 8px;
   }
-  .podium-step { text-align: center; }
-  .podium-name { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
-  .podium-step.gold .podium-name { font-size: 22px; color: var(--gold); }
-  .podium-points { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .podium-step {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .podium-name {
+    font-size: 15px;
+    font-weight: 800;
+    margin-bottom: 4px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100px;
+  }
+  .podium-step.gold .podium-name {
+    font-size: 18px;
+    color: var(--gold);
+    font-weight: 900;
+    max-width: 120px;
+  }
+  .podium-points {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
   .podium-bar {
-    border-radius: 10px 10px 0 0;
+    border-radius: 12px 12px 0 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: none;
+    position: relative;
+  }
+  .podium-bar::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%);
+    border-radius: 11px 11px 0 0;
+    pointer-events: none;
   }
   .podium-step.gold .podium-bar {
-    height: 110px;
-    background: linear-gradient(180deg, #fde047 0%, #fbbf24 100%);
-    box-shadow: 0 0 24px rgba(251, 191, 36, 0.35);
-    font-size: 48px;
+    height: 120px;
+    background: linear-gradient(180deg, #fef08a 0%, #fbbf24 100%);
+    box-shadow: 0 0 32px rgba(251, 191, 36, 0.25);
+    border-color: rgba(251, 191, 36, 0.3);
+    font-size: 44px;
   }
   .podium-step.silver .podium-bar {
-    height: 80px;
-    background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%);
-    font-size: 38px;
+    height: 85px;
+    background: linear-gradient(180deg, #f1f5f9 0%, #94a3b8 100%);
+    box-shadow: 0 0 20px rgba(148, 163, 184, 0.1);
+    font-size: 36px;
   }
   .podium-step.bronze .podium-bar {
-    height: 60px;
-    background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+    height: 65px;
+    background: linear-gradient(180deg, #ffedd5 0%, #c2410c 100%);
+    box-shadow: 0 0 20px rgba(194, 65, 12, 0.1);
     font-size: 32px;
   }
   /* Tournament awards */
@@ -14079,7 +14146,7 @@ function renderDoneScreenCrown() {
   const champTeam = crownWinner === "team1" ? state.crownFinal.team1 : state.crownFinal.team2;
   const rsMVP = crownLeaderboard()[0];
 
-  const card = el("div", { class: "card" });
+  const card = el("div", { class: "card champions-card" });
   const champions = el("div", { class: "champions" });
   champions.appendChild(el("div", { class: "crown" }, "👑"));
   champions.appendChild(el("h1", null, "CHAMPIONS"));
@@ -15880,7 +15947,7 @@ function renderDoneScreen() {
     queueMicrotask(runConfetti);
   }
 
-  const card = el("div", { class: "card" });
+  const card = el("div", { class: "card champions-card" });
   const champions = el("div", { class: "champions" });
   champions.appendChild(el("div", { class: "crown" }, "👑"));
   champions.appendChild(el("h1", null, "CHAMPIONS"));
