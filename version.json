@@ -1,5 +1,11 @@
 [
   {
+    "version": "v27",
+    "changes": [
+      "Fix PWA upgrade card changes diff to display latest version updates by default"
+    ]
+  },
+  {
     "version": "v26",
     "changes": [
       "Calibrate tournament duration estimates: side-out to 11 matches default to 10–20 minutes (avg 15m)",
