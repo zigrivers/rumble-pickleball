@@ -2650,7 +2650,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v58";
+const APP_VERSION    = "v59";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -6204,6 +6204,8 @@ function runSelfTests() {
       "migration: rrPairingModes defaults to []");
     console.assert(legacy.sameGenderOpponents === true, "migration: sameGenderOpponents defaults to true");
     console.assert(legacy.skipChampionship === false, "migration: skipChampionship defaults to false");
+    console.assert(Array.isArray(legacy.rrOddCourtModes) && legacy.rrOddCourtModes.length === 0,
+      "migration: rrOddCourtModes defaults to []");
 
     // pairSameGroupAware maximizes same-group teams
     state = newState();
@@ -6305,6 +6307,102 @@ function runSelfTests() {
         previousRanks: [], notifiedRounds: [], awardsShown: true, winScore: 11, finals: null };
       console.assert(noUndef("king"), "place card: king metrics have no undefined", getPlayerChampionsStats(1, "king"));
     }
+
+    // === Odd-court predicates ===
+    state = newState();
+    state.mixedMode = true;
+    state.slotGroups = ["a","a","a","a","b","b","b","b","",""];
+    console.assert(isOddCourt([1,2,5,6]) === true,  "isOddCourt: mixed a/b court is odd");
+    console.assert(isOddCourt([1,2,3,4]) === false, "isOddCourt: single-group court is not odd");
+    console.assert(isOddCourt([1,2,9,10]) === false, "isOddCourt: unset players don't make a court odd");
+    console.assert(isOddCourt([1,2,3]) === false,    "isOddCourt: not 4 players");
+    console.assert(isMixedCapable([1,2,5,6]) === true,  "isMixedCapable: 2a+2b");
+    console.assert(isMixedCapable([1,2,3,5]) === false, "isMixedCapable: 3a+1b cannot form two mixed teams");
+
+    // === Odd-court mode lookup ===
+    state = newState();
+    state.mixedMode = true; state.format = "rr";
+    state.rrOddCourtModes = ["samegroup", "mixed"];
+    console.assert(rrOddCourtModeForRound(1) === "samegroup", "rrOddCourtModeForRound: explicit samegroup");
+    console.assert(rrOddCourtModeForRound(2) === "mixed",      "rrOddCourtModeForRound: explicit mixed");
+    console.assert(rrOddCourtModeForRound(3) === "mixed",      "rrOddCourtModeForRound: absent entry defaults to mixed");
+
+    // === staffOddCourtForCoverage ===
+    state = newState();
+    state.mixedMode = true;
+    state.slotGroups = ["a","a","a","a","a","a","b","b","b","b","b","b"]; // 6a + 6b
+    // Prior same-gender round: two PURE courts [1,2,3,4](a) and [9,10,11,12](b) give
+    // coverage to 1-4 and 9-12; odd court [5,6,7,8](2a+2b) gives none.
+    const priorCov = [{ round: 5, pairingMode: "samegender",
+      games: [makeGame(1,[1,2],[3,4]), makeGame(2,[9,10],[11,12]), makeGame(3,[5,6],[7,8])], byes: [] }];
+    const courtsCov = [[1,2,3,4],[9,10,11,12],[5,6,7,8]]; // odd = idx 2
+    staffOddCourtForCoverage(courtsCov, priorCov);
+    const oddRoster = courtsCov[2];
+    console.assert(oddRoster.includes(1) && oddRoster.includes(2),
+      "staffOddCourt: odd court takes highest-coverage a's", oddRoster);
+    console.assert(oddRoster.includes(9) && oddRoster.includes(10),
+      "staffOddCourt: odd court takes highest-coverage b's", oddRoster);
+    console.assert(!oddRoster.includes(5) && !oddRoster.includes(6),
+      "staffOddCourt: low-coverage a's displaced to pure courts", oddRoster);
+    const evenCourts = [[1,2,3,4],[7,8,9,10]];   // both pure (1-6=a, 7-12=b) → no odd court
+    staffOddCourtForCoverage(evenCourts, []);
+    console.assert(JSON.stringify(evenCourts) === JSON.stringify([[1,2,3,4],[7,8,9,10]]),
+      "staffOddCourt: no odd court → unchanged");
+
+    // === Odd-court pairing through the full scheduler: 6a+6b / 3 courts ===
+    state = newState();
+    state.format = "rr"; state.mixedMode = true; state.courtCount = 3;
+    state.sameGenderOpponents = true;
+    state.slotGroups = ["a","a","a","a","a","a","b","b","b","b","b","b"];
+    state.mixedGroupLabels = { a: "Men", b: "Women" };
+
+    // (a) odd-court "mixed" (default) → 2 pure courts + 1 court with two mixed teams
+    state.rrPairingModes = ["samegender"];
+    state.rrOddCourtModes = ["mixed"];
+    const sg1 = generateRRSchedule([1,2,3,4,5,6,7,8,9,10,11,12], 3, 1, [], mulberry32(7));
+    let pure1 = 0, oddMixed1 = 0;
+    for (const g of gamesOf(sg1[0])) {
+      const four = [...g.team1, ...g.team2];
+      if (groupSet(four).size === 1) pure1++;
+      else if (isMixedTeam(g.team1) && isMixedTeam(g.team2)) oddMixed1++;
+    }
+    console.assert(pure1 === 2 && oddMixed1 === 1,
+      "RR odd mixed: 2 pure courts + 1 court with two mixed teams", { pure1, oddMixed1 });
+
+    // (b) odd-court "samegroup" → odd court pairs [a,a] vs [b,b] (today's behavior)
+    state.rrOddCourtModes = ["samegroup"];
+    const sg2 = generateRRSchedule([1,2,3,4,5,6,7,8,9,10,11,12], 3, 1, [], mulberry32(7));
+    let oddSameGroup = false;
+    for (const g of gamesOf(sg2[0])) {
+      const four = [...g.team1, ...g.team2];
+      if (groupSet(four).size >= 2) oddSameGroup = (!isMixedTeam(g.team1) && !isMixedTeam(g.team2));
+    }
+    console.assert(oddSameGroup, "RR odd samegroup: odd court is [a,a] vs [b,b]");
+
+    // (c) Fairness across TWO same-gender rounds — every active player gets >=1 pure-court
+    // game. SEED-INDEPENDENT (staffing is deterministic).
+    for (const seed of [1, 99, 12345]) {
+      state.rrPairingModes = ["samegender", "samegender"];
+      state.rrOddCourtModes = ["mixed", "mixed"];
+      const two = generateRRSchedule([1,2,3,4,5,6,7,8,9,10,11,12], 3, 2, [], mulberry32(seed));
+      const gotPure = new Set();
+      for (const r of two) for (const g of gamesOf(r)) {
+        const four = [...g.team1, ...g.team2];
+        if (groupSet(four).size === 1) for (const s of four) gotPure.add(s);
+      }
+      console.assert(gotPure.size === 12,
+        "RR fairness (seed " + seed + "): all 12 players get a pure-court game", gotPure.size);
+    }
+
+    // (d) Byte-identical baseline: evenly-tiling same-gender round (4a+4b / 2 courts)
+    state.courtCount = 2;
+    state.slotGroups = ["a","a","a","a","b","b","b","b"];
+    state.rrPairingModes = ["samegender"];
+    state.rrOddCourtModes = ["mixed"];
+    const tiled = generateRRSchedule([1,2,3,4,5,6,7,8], 2, 1, [], mulberry32(7));
+    let allPure = true;
+    for (const g of gamesOf(tiled[0])) if (groupSet([...g.team1, ...g.team2]).size !== 1) allPure = false;
+    console.assert(allPure, "RR no-odd-court: evenly tiling round stays all-pure");
 
     state = newState();
   })();
@@ -7167,6 +7265,7 @@ function backfillStateDefaults(obj) {
   if (!Array.isArray(obj.rrPairingModes)) obj.rrPairingModes = [];
   if (typeof obj.sameGenderOpponents !== "boolean") obj.sameGenderOpponents = true;
   if (typeof obj.skipChampionship !== "boolean") obj.skipChampionship = false;
+  if (!Array.isArray(obj.rrOddCourtModes)) obj.rrOddCourtModes = [];
   return obj;
 }
 // A restored state is only usable if its phase's core structures are present.
@@ -8064,6 +8163,19 @@ function mixedToggleLabels() {
 function groupOf(slot) {
   return (state.slotGroups || [])[slot - 1] || "";
 }
+function groupSet(four) {
+  const set = new Set();
+  for (const s of four) { const g = groupOf(s); if (g) set.add(g); }
+  return set;
+}
+function isOddCourt(four) {
+  return four.length === 4 && groupSet(four).size >= 2;
+}
+function isMixedCapable(four) {
+  let na = 0, nb = 0;
+  for (const s of four) { const g = groupOf(s); if (g === "a") na++; else if (g === "b") nb++; }
+  return na >= 2 && nb >= 2;
+}
 
 const PAIRING_PRESETS = [
   { id: "gender", label: "Men / Women",       a: "Men",      b: "Women" },
@@ -8238,6 +8350,9 @@ function rrPairingModeForRound(roundNum) {
   if (!state.mixedMode || state.format !== "rr") return "mixed";
   return (state.rrPairingModes || [])[roundNum - 1] === "samegender" ? "samegender" : "mixed";
 }
+function rrOddCourtModeForRound(roundNum) {
+  return (state.rrOddCourtModes || [])[roundNum - 1] === "samegroup" ? "samegroup" : "mixed";
+}
 // Inverse of pairMixedAware: returns [team1, team2] MAXIMIZING same-group teams
 // (man/man, woman/woman). Tie-broken by repeat-partner/opponent cost.
 function pairSameGroupAware(four, opts) {
@@ -8277,6 +8392,34 @@ function dealSingleGenderCourts(playing, activeCourts, rng) {
     if (aPool.length >= bPool.length) { drain(aPool, court); drain(bPool, court); }
     else { drain(bPool, court); drain(aPool, court); }
     drain(unset, court);  // last resort for unassigned players
+  }
+  return courts;
+}
+function staffOddCourtForCoverage(courts, prior) {
+  const oddIdx = courts.findIndex(c => isOddCourt(c));
+  if (oddIdx < 0) return courts;
+  const coverage = {};
+  for (const r of prior || []) {
+    if (!r || r.pairingMode !== "samegender") continue;
+    for (const g of gamesOf(r)) {
+      const four = [...(g.team1 || []), ...(g.team2 || [])];
+      if (groupSet(four).size === 1) for (const s of four) coverage[s] = (coverage[s] || 0) + 1;
+    }
+  }
+  const byGroup = {};
+  for (const c of courts) for (const s of c) {
+    const g = groupOf(s); if (g) (byGroup[g] = byGroup[g] || []).push(s);
+  }
+  for (const g of Object.keys(byGroup))
+    byGroup[g].sort((a, b) => (coverage[b] || 0) - (coverage[a] || 0) || a - b);
+  const ptr = {}; for (const g of Object.keys(byGroup)) ptr[g] = 0;
+  const order = [oddIdx, ...courts.map((_, i) => i).filter(i => i !== oddIdx)];
+  for (const c of order) {
+    courts[c] = courts[c].map(s => {
+      const g = groupOf(s);
+      if (!g) return s;
+      return byGroup[g][ptr[g]++];
+    });
   }
   return courts;
 }
@@ -10181,6 +10324,9 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
         courts = state.sameGenderOpponents
           ? dealSingleGenderCourts(alloc.playing, alloc.activeCourts, rng)
           : dealBalancedCourts(alloc.playing, alloc.activeCourts, rng, prior);
+        // Deterministically staff the odd court with the players who least need a
+        // pure-court seat. Only meaningful under restrict-ON (pure + odd structure).
+        if (state.sameGenderOpponents) staffOddCourtForCoverage(courts, prior);
       } else {
         courts = state.mixedMode
           ? dealBalancedCourts(alloc.playing, alloc.activeCourts, rng, prior)
@@ -10191,9 +10337,17 @@ function generateRRSchedule(actives, courtCount, roundsWanted, history, rng) {
       for (let c = 0; c < alloc.activeCourts; c++) {
         const four = courts ? courts[c] : shuffled.slice(c * 4, c * 4 + 4);
         if (four && four.length === 4) {
-          games.push(roundMode === "samegender"
-            ? bestSameGenderSplit(four, c + 1, prior, games)
-            : bestRRSplit(four, c + 1, prior, games));
+          let game;
+          if (roundMode === "samegender") {
+            const oddMixed = state.sameGenderOpponents && isOddCourt(four)
+              && rrOddCourtModeForRound(roundNum) === "mixed" && isMixedCapable(four);
+            game = oddMixed
+              ? bestRRSplit(four, c + 1, prior, games)
+              : bestSameGenderSplit(four, c + 1, prior, games);
+          } else {
+            game = bestRRSplit(four, c + 1, prior, games);
+          }
+          games.push(game);
         }
       }
       let cost = rrRoundCost(games, prior);
@@ -12123,20 +12277,39 @@ function renderRRPairingControls() {
     sameLabel + " = " + labels.a + "/" + labels.a + " and " + labels.b + "/" + labels.b + " teams."));
 
   const grid = el("div", { style: "display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;" });
+  const oddModeFor = (i) => (state.rrOddCourtModes || [])[i] === "samegroup" ? "samegroup" : "mixed";
   for (let i = 0; i < n; i++) {
     grid.appendChild(el("span", { style: "font-size:14px;color:var(--muted);" }, "Round " + (i + 1)));
+    const cell = el("div", { style: "display:flex;flex-direction:column;gap:4px;" });
     const sel = el("select", {
       style: "min-height:34px;font-size:14px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px 8px;",
       onchange: () => {
         if (!Array.isArray(state.rrPairingModes)) state.rrPairingModes = [];
         state.rrPairingModes[i] = sel.value;
-        save();
-        render();
+        save(); render();
       },
     });
     sel.appendChild(el("option", { value: "mixed", selected: modeFor(i) === "mixed" }, "Mixed (1 + 1)"));
     sel.appendChild(el("option", { value: "samegender", selected: modeFor(i) === "samegender" }, sameLabel));
-    grid.appendChild(sel);
+    cell.appendChild(sel);
+    // Odd-court dropdown: shown for same-gender rounds under restrict-ON (where pure +
+    // odd courts arise). Harmless no-op when a round tiles evenly into pure courts.
+    if (modeFor(i) === "samegender" && state.sameGenderOpponents) {
+      const oddSel = el("select", {
+        style: "min-height:30px;font-size:13px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:3px 8px;",
+        onchange: () => {
+          if (!Array.isArray(state.rrOddCourtModes)) state.rrOddCourtModes = [];
+          state.rrOddCourtModes[i] = oddSel.value;
+          save(); render();
+        },
+      });
+      oddSel.appendChild(el("option", { value: "mixed", selected: oddModeFor(i) === "mixed" },
+        "Odd court: Mixed (1 + 1)"));
+      oddSel.appendChild(el("option", { value: "samegroup", selected: oddModeFor(i) === "samegroup" },
+        "Odd court: " + sameLabel + " pairs"));
+      cell.appendChild(oddSel);
+    }
+    grid.appendChild(cell);
   }
   wrap.appendChild(grid);
 
@@ -12172,8 +12345,10 @@ function renderRRPairingControls() {
         const groupWord = detectPreset() === "gender" ? "gender" : "group";
         wrap.appendChild(el("div", { style: "font-size:13px;margin-top:8px;line-height:1.45;color:var(--warn,#e0a341);border-left:2px solid var(--warn,#e0a341);padding-left:8px;" },
           "⚠️ With " + nA + " " + labels.a + " and " + nB + " " + labels.b + " on " + courts +
-          " courts, each " + sameLabel.toLowerCase() + " round will have one mixed-" + groupWord + " court — " +
-          "the counts don't split evenly into all-" + labels.a + " / all-" + labels.b + " courts of 4."));
+          " courts, each " + sameLabel.toLowerCase() + " round has one mixed-" + groupWord +
+          " court. Its pairing defaults to Mixed (1 + 1) — set it per round above if you'd " +
+          "rather keep " + sameLabel.toLowerCase() + " pairs there. Rumble also rotates who " +
+          "sits on that court so everyone gets a " + sameLabel.toLowerCase() + " game."));
       }
     }
   }
@@ -15604,7 +15779,7 @@ function renderRoundCourts(round, isFinals, refreshes) {
     });
   } else {
     const sameGenderRound = !!(round && round.pairingMode === "samegender");
-    for (const g of gamesOf(round)) wrap.appendChild(renderCourtCard(g, g.court, refreshes, { sameGenderRound }));
+    for (const g of gamesOf(round)) wrap.appendChild(renderCourtCard(g, g.court, refreshes, { sameGenderRound, roundNum: round ? round.round : 0 }));
   }
   return wrap;
 }
@@ -15651,12 +15826,19 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
   if (!isFinalCard && seedInfo && seedInfo.sameGenderRound) {
     const groups = [...(game.team1 || []), ...(game.team2 || [])].map(groupOf);
     const labels = state.mixedGroupLabels || { a: "Men", b: "Women" };
-    const groupWord = detectPreset() === "gender" ? "gender" : "group";
+    const four = [...(game.team1 || []), ...(game.team2 || [])];
     const allSame = groups.length === 4 && groups.every(gr => gr && gr === groups[0]);
-    card.appendChild(el("div", { class: "pairing-caption" },
-      allSame
-        ? (groups[0] === "a" ? labels.a : labels.b) + " doubles"
-        : "Mixed-" + groupWord + " court — roster doesn't divide evenly"));
+    let caption;
+    if (allSame) {
+      caption = (groups[0] === "a" ? labels.a : labels.b) + " doubles";
+    } else if (isOddCourt(four)) {
+      caption = rrOddCourtModeForRound(seedInfo.roundNum || 0) === "mixed"
+        ? "Mixed pairs — odd court"
+        : "Same-group pairs — odd court";
+    } else {
+      caption = "Mixed-group court — roster doesn't divide evenly";
+    }
+    card.appendChild(el("div", { class: "pairing-caption" }, caption));
   }
 
   const matchup = el("div", { class: "matchup" });
