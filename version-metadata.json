@@ -1,5 +1,13 @@
 [
   {
+    "version": "v59",
+    "changes": [
+      "Let Round Robin same-gender rounds choose how the odd court pairs when the roster can't fill every court with same-gender teams (e.g. 6 Men + 6 Women on 3 courts): each same-gender round now has an 'Odd court' dropdown defaulting to Mixed (1 man + 1 woman per team), with Same-gender pairs as the alternative",
+      "Rotate who sits on the odd court across same-gender rounds so every player gets a same-gender game before anyone plays the odd court twice — the app now deterministically seats the players who've already had a same-gender game onto the odd court, freeing pure same-gender courts for those who haven't",
+      "Relabel the odd court's card caption to 'Mixed pairs — odd court' or 'Same-group pairs — odd court' so players can see why one court looks different, and rewrite the setup warning to point at the new per-round control"
+    ]
+  },
+  {
     "version": "v58",
     "changes": [
       "Support large tournaments: raise the limits from 24 players / 6 courts to up to 32 players and 8 courts across Round Robin, Stack, King of the Court, and Gauntlet — every screen (setup, rounds, byes, finals, champions, awards) scales to the bigger field",
