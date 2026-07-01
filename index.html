@@ -2650,7 +2650,7 @@
 "use strict";
 
 // RUMBLE:STATE:start
-const APP_VERSION    = "v59";
+const APP_VERSION    = "v60";
 const STORAGE_KEY    = "pb_tourney_v5";
 const STORAGE_KEY_V4 = "pb_tourney_v4";
 const STORAGE_KEY_V3 = "pb_tourney_v3";
@@ -12295,8 +12295,10 @@ function renderRRPairingControls() {
     // Odd-court dropdown: shown for same-gender rounds under restrict-ON (where pure +
     // odd courts arise). Harmless no-op when a round tiles evenly into pure courts.
     if (modeFor(i) === "samegender" && state.sameGenderOpponents) {
+      const oddRow = el("div", { style: "display:flex;align-items:center;gap:6px;padding-left:10px;border-left:2px solid var(--border);" },
+        el("span", { style: "font-size:12px;color:var(--muted);white-space:nowrap;" }, "Odd court"));
       const oddSel = el("select", {
-        style: "min-height:30px;font-size:13px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:3px 8px;",
+        style: "flex:1;min-height:28px;font-size:12px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 6px;",
         onchange: () => {
           if (!Array.isArray(state.rrOddCourtModes)) state.rrOddCourtModes = [];
           state.rrOddCourtModes[i] = oddSel.value;
@@ -12304,10 +12306,11 @@ function renderRRPairingControls() {
         },
       });
       oddSel.appendChild(el("option", { value: "mixed", selected: oddModeFor(i) === "mixed" },
-        "Odd court: Mixed (1 + 1)"));
+        "Mixed (1 + 1)"));
       oddSel.appendChild(el("option", { value: "samegroup", selected: oddModeFor(i) === "samegroup" },
-        "Odd court: " + sameLabel + " pairs"));
-      cell.appendChild(oddSel);
+        sameLabel + " pairs"));
+      oddRow.appendChild(oddSel);
+      cell.appendChild(oddRow);
     }
     grid.appendChild(cell);
   }
@@ -12343,12 +12346,15 @@ function renderRRPairingControls() {
       const noByes = (nA + nB === cnt) && (cnt === courts * 4) && courts > 0;
       if (noByes && (nA % 4 !== 0 || nB % 4 !== 0)) {
         const groupWord = detectPreset() === "gender" ? "gender" : "group";
+        const sameCount = Array.from({ length: n }).filter((_, i) => modeFor(i) === "samegender").length;
+        const fairnessNote = sameCount >= 2
+          ? "Rumble rotates who plays on it so everyone gets a " + sameLabel.toLowerCase() + " game."
+          : "Four players will play on it this round.";
         wrap.appendChild(el("div", { style: "font-size:13px;margin-top:8px;line-height:1.45;color:var(--warn,#e0a341);border-left:2px solid var(--warn,#e0a341);padding-left:8px;" },
           "⚠️ With " + nA + " " + labels.a + " and " + nB + " " + labels.b + " on " + courts +
           " courts, each " + sameLabel.toLowerCase() + " round has one mixed-" + groupWord +
           " court. Its pairing defaults to Mixed (1 + 1) — set it per round above if you'd " +
-          "rather keep " + sameLabel.toLowerCase() + " pairs there. Rumble also rotates who " +
-          "sits on that court so everyone gets a " + sameLabel.toLowerCase() + " game."));
+          "rather keep " + sameLabel.toLowerCase() + " pairs there. " + fairnessNote));
       }
     }
   }
@@ -15831,10 +15837,12 @@ function renderCourtCard(game, courtKey, refreshes, seedInfo) {
     let caption;
     if (allSame) {
       caption = (groups[0] === "a" ? labels.a : labels.b) + " doubles";
-    } else if (isOddCourt(four)) {
+    } else if (state.sameGenderOpponents && isOddCourt(four)) {
       caption = rrOddCourtModeForRound(seedInfo.roundNum || 0) === "mixed"
         ? "Mixed pairs — odd court"
         : "Same-group pairs — odd court";
+    } else if (!state.sameGenderOpponents) {
+      caption = labels.a + " pair vs " + labels.b + " pair";
     } else {
       caption = "Mixed-group court — roster doesn't divide evenly";
     }

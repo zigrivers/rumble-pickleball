@@ -1,5 +1,14 @@
 [
   {
+    "version": "v60",
+    "changes": [
+      "Fix same-gender court captions in restrict-OFF mode: courts now correctly read 'Men pair vs Women pair' instead of all being mislabeled as 'odd court'",
+      "Improve odd-court dropdown visual hierarchy: now sits in an indented row with a left border and a small 'Odd court' label, clearly showing it's a sub-option of the same-gender pairing",
+      "Shorten odd-court option text to 'Mixed (1 + 1)' / 'Same-gender pairs' (the label is now separate from the dropdown) so it fits cleanly on phone screens",
+      "Make the setup warning honest about fairness: promises rotation only when there are 2+ same-gender rounds; for a single round it correctly says 'Four players will play on it this round'"
+    ]
+  },
+  {
     "version": "v59",
     "changes": [
       "Let Round Robin same-gender rounds choose how the odd court pairs when the roster can't fill every court with same-gender teams (e.g. 6 Men + 6 Women on 3 courts): each same-gender round now has an 'Odd court' dropdown defaulting to Mixed (1 man + 1 woman per team), with Same-gender pairs as the alternative",
